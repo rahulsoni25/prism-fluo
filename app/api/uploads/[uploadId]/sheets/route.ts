@@ -6,9 +6,9 @@ import type { SheetMeta } from '@/types/dataset';
 
 export const GET = async (
   req: NextRequest,
-  { params }: { params: { uploadId: string } }
+  { params }: { params: Promise<{ uploadId: string }> }
 ) => {
-  const { uploadId } = params;
+  const { uploadId } = await params;
 
   try {
     // 1. Fetch GWI Leads

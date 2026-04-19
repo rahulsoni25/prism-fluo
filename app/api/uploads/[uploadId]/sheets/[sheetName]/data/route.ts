@@ -3,9 +3,9 @@ import { db } from '@/lib/db/client';
 
 export const GET = async (
   req: NextRequest,
-  { params }: { params: { uploadId: string; sheetName: string } }
+  { params }: { params: Promise<{ uploadId: string; sheetName: string }> }
 ) => {
-  const { uploadId, sheetName } = params;
+  const { uploadId, sheetName } = await params;
 
   try {
     // 1. Try GWI data

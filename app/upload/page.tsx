@@ -8,7 +8,7 @@ import {
 } from '@/components/charts/AppChart';
 import { 
   UploadCloud, Brain, Zap, ShieldCheck, 
-  Table as TableIcon, Layers, TrendingUp, AlertTriangle
+  Table as TableIcon, Layers, TrendingUp, AlertTriangle, BarChart
 } from 'lucide-react';
 import { inferSchema, autoGenerateLayout, detectAnomalies, generateStrategicBrief } from '@/lib/inference';
 import type { UploadSummary, SheetMeta } from '@/types/dataset';
@@ -112,6 +112,33 @@ export default function UploadData() {
     } catch (err: any) {
       setAgentLog(prev => [...prev, `❌ Analysis failed: ${err.message}`]);
     }
+  };
+
+  // ---- 3. CHART DATA BUILDER ----
+  const getChartData = (chart: any, dataSlice: any[]) => {
+    // DEFAULT: Bar / Line / Pie / Area / HBar
+    const groups: Record<string, number> = {};
+    dataSlice.forEach(row => {
+      const label = String(row[chart.xCol] || 'Other').trim();
+      if (!label || label === 'undefined') return;
+      groups[label] = (groups[label] || 0) + (parseFloat(row[chart.yCol]) || 0);
+    });
+
+    const entries = Object.entries(groups).sort((a,b) => b[1] - a[1]).slice(0, chart.type === 'pie' ? 6 : 12);
+    
+    return {
+      labels: entries.map(e => e[0]),
+      datasets: [{
+        label: chart.yCol,
+        data: entries.map(e => e[1]),
+        backgroundColor: chart.type === 'pie' 
+          ? ['#2563EB','#7C3AED','#059669','#D97706','#DC2626','#0891B2'] 
+          : 'rgba(37, 99, 235, 0.85)',
+        borderColor: chart.type === 'line' || chart.type === 'area' ? 'rgba(37, 99, 235, 1)' : undefined,
+        borderRadius: 6,
+        fill: chart.type === 'area',
+      }]
+    };
   };
 
   return (
@@ -222,16 +249,16 @@ export default function UploadData() {
                         <h3 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">{c.title}</h3>
                       </div>
                       <div className="h-10 w-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
-                        <ChartBar size={20} />
+                        <BarChart size={20} />
                       </div>
                     </div>
 
                     <div className="h-[300px] w-full mb-8 relative">
-                      {c.type === 'bar' && <ChartBar data={rawData} xCol={c.xCol} yCol={c.yCol} title={c.title} />}
-                      {c.type === 'line' && <ChartLine data={rawData} xCol={c.xCol} yCol={c.yCol} title={c.title} />}
-                      {c.type === 'hbar' && <ChartHBar data={rawData} xCol={c.xCol} yCol={c.yCol} title={c.title} />}
-                      {c.type === 'pie' && <ChartPie data={rawData} xCol={c.xCol} yCol={c.yCol} title={c.title} />}
-                      {c.type === 'area' && <ChartArea data={rawData} xCol={c.xCol} yCol={c.yCol} title={c.title} />}
+                      {c.type === 'bar' && <ChartBar data={getChartData(c, rawData)} />}
+                      {c.type === 'line' && <ChartLine data={getChartData(c, rawData)} />}
+                      {c.type === 'hbar' && <ChartHBar data={getChartData(c, rawData)} />}
+                      {c.type === 'pie' && <ChartPie data={getChartData(c, rawData)} />}
+                      {c.type === 'area' && <ChartArea data={getChartData(c, rawData)} />}
                     </div>
 
                     <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 group-hover:border-blue-100 transition-colors">

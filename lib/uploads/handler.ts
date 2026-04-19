@@ -8,7 +8,7 @@ import { tidyKeywordPlan } from '@/lib/keywords/parser';
 import { keywordDefaultChartSpecs } from '@/lib/keywords/charts';
 import type { UploadSummary, SheetMeta, SheetType } from '@/types/dataset';
 
-export async function handleUpload(buffer: Buffer, filename: string): Promise<UploadSummary> {
+export async function handleUpload(buffer: any, filename: string): Promise<UploadSummary> {
   const uploadId = crypto.randomUUID();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
