@@ -40,7 +40,8 @@ export default function UploadData() {
   const fileInputRef = useRef(null);
 
   // ---- AGENT SIMULATION ----
-
+  const runAgent = async (cols, data) => {
+    setAgentPhase('reading');
     setAgentLog([`📂 Ingested ${data.length} rows across ${cols.length} columns`]);
     await delay(600);
 
