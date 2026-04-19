@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { inferSchema, autoGenerateLayout, detectAnomalies, generateStrategicBrief } from '@/lib/inference';
 import { isKeywordPlan, enrichKeywordData } from '@/lib/keywords';
+import { isGWISheet, tidyGWIData } from '@/lib/gwi';
 
 export default function UploadData() {
   const [file, setFile] = useState(null);
@@ -46,17 +47,27 @@ export default function UploadData() {
     await delay(600);
 
     let activeData = data;
+    let activeSchema = null;
+
     if (isKeywordPlan(data)) {
       setAgentPhase('reading');
       setAgentLog(prev => [...prev, '🔍 Google Ads Keyword Plan detected. Running PRISM Enrichment Engine...']);
       activeData = enrichKeywordData(data);
       await delay(800);
       setAgentLog(prev => [...prev, '✨ Enrichment complete: Tiers, Brands, and Categories isolated.']);
+    } else if (isGWISheet(cols, data)) {
+      setAgentPhase('reading');
+      setAgentLog(prev => [...prev, '📊 GWI Survey Sheet detected. Running PRISM Survey-Tidy Engine...']);
+      const gwi = tidyGWIData(cols, data);
+      activeData = gwi.data;
+      await delay(800);
+      setAgentLog(prev => [...prev, `✨ Survey Harmonization complete: Parsed "${gwi.meta.question}"`]);
     }
 
     setAgentPhase('analyzing');
     const s = inferSchema(activeData);
     setSchema(s);
+    activeSchema = s;
     
     // Anomaly Detection
     const detected = detectAnomalies(activeData, s);
@@ -588,7 +599,7 @@ export default function UploadData() {
                     onChange={e => handleUpdateChart(isEditing, { xCol: e.target.value })}
                     style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '2px solid #F1F5F9', fontWeight: 500 }}
                   >
-                    {headers.map(h => <option key={h} value={h}>{h}</option>)}
+                    {headers.map((h, idx) => <option key={`${h}-${idx}`} value={h}>{h}</option>)}
                   </select>
                 </div>
                 <div>
@@ -598,7 +609,7 @@ export default function UploadData() {
                     onChange={e => handleUpdateChart(isEditing, { yCol: e.target.value })}
                     style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '2px solid #F1F5F9', fontWeight: 500 }}
                   >
-                    {headers.map(h => <option key={h} value={h}>{h}</option>)}
+                    {headers.map((h, idx) => <option key={`${h}-${idx}`} value={h}>{h}</option>)}
                   </select>
                 </div>
               </div>
