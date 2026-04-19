@@ -12,6 +12,7 @@ import {
   Layers, Brain, Zap, ArrowRight, ShieldCheck, TrendingUp, AlertTriangle
 } from 'lucide-react';
 import { inferSchema, autoGenerateLayout, detectAnomalies, generateStrategicBrief } from '@/lib/inference';
+import { isKeywordPlan, enrichKeywordData } from '@/lib/keywords';
 
 export default function UploadData() {
   const [file, setFile] = useState(null);
@@ -40,17 +41,24 @@ export default function UploadData() {
 
   // ---- AGENT SIMULATION ----
 
-  const runAgent = async (cols, data) => {
-    setAgentPhase('reading');
     setAgentLog([`📂 Ingested ${data.length} rows across ${cols.length} columns`]);
     await delay(600);
 
+    let activeData = data;
+    if (isKeywordPlan(data)) {
+      setAgentPhase('reading');
+      setAgentLog(prev => [...prev, '🔍 Google Ads Keyword Plan detected. Running PRISM Enrichment Engine...']);
+      activeData = enrichKeywordData(data);
+      await delay(800);
+      setAgentLog(prev => [...prev, '✨ Enrichment complete: Tiers, Brands, and Categories isolated.']);
+    }
+
     setAgentPhase('analyzing');
-    const s = inferSchema(data);
+    const s = inferSchema(activeData);
     setSchema(s);
     
     // Anomaly Detection
-    const detected = detectAnomalies(data, s);
+    const detected = detectAnomalies(activeData, s);
     setAnomalies(detected);
     
     setAgentLog(prev => [
@@ -83,8 +91,8 @@ export default function UploadData() {
     await delay(700);
 
     setHeaders(cols);
-    setRawData(data);
-    setFilteredData(data);
+    setRawData(activeData);
+    setFilteredData(activeData);
     setScorecards(layout.scorecards);
     setCharts(layout.charts.map(c => ({ ...c, instanceId: Math.random().toString(36).substr(2, 9) })));
     setAgentPhase('done');
@@ -498,7 +506,7 @@ export default function UploadData() {
                   <div className="ic-header">
                     <span className="ic-source">{c.source}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span className="ic-confidence">● {c.confidence}% confidence</span>
+                      <span className="ic-confidence">● {c.conviction}% conviction</span>
                       <button onClick={() => setIsEditing(c.instanceId)} style={{ padding: '4px 8px', background: '#F8FAFC', border: '1px solid #E2E8F0', cursor: 'pointer', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#64748B', fontWeight: 600 }} title="Edit Tile">
                         <Edit3 size={12} color="#64748B" /> Edit
                       </button>
