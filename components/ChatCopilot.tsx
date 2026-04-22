@@ -97,9 +97,10 @@ export default function ChatCopilot({ sessionId }: { sessionId: string }) {
             alignItems: 'center' 
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ background: '#3B82F6', p: '8px', borderRadius: '10px' }}>
+              <div style={{ background: '#3B82F6', padding: '8px', borderRadius: '10px' }}>
                  <Bot size={20} />
               </div>
+
               <div>
                 <div style={{ fontWeight: 800, fontSize: '16px' }}>PRISM Copilot</div>
                 <div style={{ fontSize: '10px', color: '#64748B', fontWeight: 700 }}>AI STRATEGIST ONLINE</div>
