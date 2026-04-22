@@ -21,6 +21,9 @@ export default function Navbar() {
         </Link>
         {pathname === '/dashboard' && (
           <>
+            <Link href="/dashboards" className={`nav-link ${pathname === '/dashboards' ? 'active' : ''}`} style={{ textDecoration: 'none' }}>
+              Strategic Pillars
+            </Link>
             <span className="nav-link">Templates</span>
             <span className="nav-link">Team</span>
             <Link href="/upload" className="nav-link" style={{ textDecoration: 'none' }}>

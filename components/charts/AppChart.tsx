@@ -164,12 +164,30 @@ interface ScorecardProps {
 
 export function Scorecard({ label, value, trend, isPositive }: ScorecardProps) {
   return (
-    <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', border: '1px solid #E2E8F0', flex: 1 }}>
-      <div style={{ color: '#64748B', fontSize: '13px', fontWeight: 600, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
-        <div style={{ fontSize: '32px', fontWeight: 800, color: '#0F172A' }}>{value}</div>
+    <div style={{ 
+      background: '#fff', 
+      padding: '32px 28px', 
+      borderRadius: '24px', 
+      border: '1px solid #E2E8F0', 
+      flex: 1, 
+      boxShadow: '0 10px 25px -5px rgba(0,0,0,0.03), 0 8px 10px -6px rgba(0,0,0,0.03)',
+      transition: 'all 0.3s ease'
+    }}>
+      <div style={{ color: '#64748B', fontSize: '11px', fontWeight: 800, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '14px' }}>
+        <div style={{ fontSize: '42px', fontWeight: 900, color: '#0F172A', letterSpacing: '-0.02em' }}>{value}</div>
         {trend && (
-          <div style={{ fontSize: '14px', fontWeight: 700, color: isPositive ? '#059669' : '#DC2626' }}>
+          <div style={{ 
+            fontSize: '14px', 
+            fontWeight: 800, 
+            color: isPositive ? '#059669' : '#DC2626',
+            background: isPositive ? '#F0FDF4' : '#FEF2F2',
+            padding: '4px 10px',
+            borderRadius: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2px'
+          }}>
             {isPositive ? '↑' : '↓'} {trend}%
           </div>
         )}
@@ -186,36 +204,38 @@ interface HeatmapData {
 export function Heatmap({ data }: { data: HeatmapData[] }) {
   const hmColor = (s: number) => {
     const t = s / 100;
-    const r = Math.round(219 + (30 - 219) * t);
-    const g = Math.round(234 + (58 - 234) * t);
-    const b = Math.round(254 + (163 - 254) * t);
+    const r = Math.round(248 + (37 - 248) * t);
+    const g = Math.round(250 + (99 - 250) * t);
+    const b = Math.round(252 + (235 - 252) * t);
     return `rgb(${r},${g},${b})`;
   };
-  const hmText = (s: number) => (s > 62 ? '#1E3A8A' : '#334155');
+  const hmText = (s: number) => (s > 60 ? '#fff' : '#334155');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {data.map((r, i) => (
-        <div key={i}>
-          <div className="hm-region-label" style={{ fontSize: '12px', fontWeight: 600, color: '#64748B', marginBottom: '8px', display: 'flex', alignItems: 'center' }}>
-            <span style={{ width: '7px', height: '7px', background: '#CBD5E1', borderRadius: '2px', marginRight: '6px', display: 'inline-block' }}></span>
+        <div key={i} style={{ background: '#F8FAFC', padding: '16px', borderRadius: '16px' }}>
+          <div className="hm-region-label" style={{ fontSize: '11px', fontWeight: 800, color: '#94A3B8', marginBottom: '12px', display: 'flex', alignItems: 'center', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <span style={{ width: '8px', height: '8px', background: '#3B82F6', borderRadius: '2px', marginRight: '8px', display: 'inline-block' }}></span>
             {r.region}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '5px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
             {r.cities.map((c, j) => (
               <div
                 key={j}
                 className="heatmap-cell"
                 style={{ 
                   background: hmColor(c.s), 
-                  padding: '10px', 
-                  borderRadius: '8px', 
-                  textAlign: 'center' 
+                  padding: '12px 8px', 
+                  borderRadius: '12px', 
+                  textAlign: 'center',
+                  boxShadow: c.s > 70 ? '0 4px 12px rgba(37,99,235,0.2)' : 'none',
+                  transition: 'transform 0.2s'
                 }}
                 title={`${c.n}: ${c.s}/100`}
               >
-                <div className="hm-city" style={{ color: hmText(c.s), fontSize: '10px', fontWeight: 600 }}>{c.n}</div>
-                <div className="hm-score" style={{ color: hmText(c.s), fontSize: '12px', fontWeight: 800 }}>{c.s}</div>
+                <div className="hm-city" style={{ color: hmText(c.s), fontSize: '9px', fontWeight: 700, marginBottom: '2px' }}>{c.n}</div>
+                <div className="hm-score" style={{ color: hmText(c.s), fontSize: '14px', fontWeight: 900 }}>{c.s}</div>
               </div>
             ))}
           </div>

@@ -11,9 +11,11 @@ export const POST = async (req: NextRequest) => {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const summary = await handleUpload(buffer, (file as File).name);
+    const sessionId = formData.get('sessionId') as string || null;
+    const summary = await handleUpload(buffer, (file as File).name, sessionId);
     
     return NextResponse.json(summary);
+
   } catch (error: any) {
     console.error('Upload Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
