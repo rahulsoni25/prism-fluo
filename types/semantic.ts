@@ -5,12 +5,15 @@ export type TopicType =
   | 'SearchDemand'
   | 'Culture'
   | 'Content'
+  | 'Commerce'
+  | 'Communication'
   | 'KeywordPlan'
   | 'BrandInterest'
   | 'SalesPerformance'
   | 'SocialSentiment'
   | 'TrafficYield'
   | 'Other';
+
 
 export type GrainType =
   | 'SegmentByTimeBucket'
