@@ -47,11 +47,11 @@ export default function ChatCopilot({ sessionId }: { sessionId: string }) {
         onClick={() => setIsOpen(true)}
         style={{
           position: 'fixed',
-          bottom: '30px',
-          right: '30px',
-          width: '64px',
-          height: '64px',
-          borderRadius: '24px',
+          bottom: '20px',
+          right: '20px',
+          width: '56px',
+          height: '56px',
+          borderRadius: '20px',
           background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)',
           color: '#fff',
           border: 'none',
@@ -73,10 +73,10 @@ export default function ChatCopilot({ sessionId }: { sessionId: string }) {
       {isOpen && (
         <div style={{
           position: 'fixed',
-          bottom: '110px',
-          right: '30px',
-          width: '400px',
-          height: '600px',
+          bottom: '90px',
+          right: '20px',
+          width: 'min(400px, calc(100vw - 24px))',
+          height: 'min(600px, calc(100dvh - 110px))',
           background: '#fff',
           borderRadius: '32px',
           boxShadow: '0 30px 60px -15px rgba(0,0,0,0.15)',

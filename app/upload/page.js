@@ -408,14 +408,14 @@ export default function UnifiedDashboard() {
     <div className="screen fade-in" style={{ backgroundColor: '#F8FAFC', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
       <Navbar />
 
-      <main style={{ padding: '60px 40px' }}>
+      <main style={{ padding: 'clamp(16px, 4vw, 60px) clamp(16px, 4vw, 40px)' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
 
           {/* LANDING / UPLOAD QUEUE */}
           {!unifiedInsights && !isProcessing && (
             <div className="fade-in" style={{ textAlign: 'center', marginTop: '40px' }}>
               <div style={{ fontSize: '64px', marginBottom: '24px' }}>🧠</div>
-              <h1 style={{ fontSize: '48px', fontWeight: 900, color: '#0F172A', letterSpacing: '-0.04em', lineHeight: 1, marginBottom: '16px' }}>
+              <h1 style={{ fontSize: 'clamp(28px, 6vw, 48px)', fontWeight: 900, color: '#0F172A', letterSpacing: '-0.04em', lineHeight: 1, marginBottom: '16px' }}>
                 Universal Strategic Engine
               </h1>
               <p style={{ color: '#64748B', fontSize: '18px', maxWidth: '600px', margin: '0 auto 48px' }}>
@@ -496,7 +496,7 @@ export default function UnifiedDashboard() {
               </div>
               
               <h2 style={{ fontSize: '32px', fontWeight: 900, color: '#0F172A', marginBottom: '16px', letterSpacing: '-0.02em' }}>Synthesis in Progress</h2>
-              <div style={{ width: '400px', background: '#fff', borderRadius: '24px', padding: '24px', border: '1px solid #E2E8F0', boxShadow: '0 10px 25px -10px rgba(0,0,0,0.05)' }}>
+              <div style={{ width: 'min(400px, calc(100vw - 48px))', background: '#fff', borderRadius: '24px', padding: '24px', border: '1px solid #E2E8F0', boxShadow: '0 10px 25px -10px rgba(0,0,0,0.05)' }}>
                 {STEPS.map((s, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: i === STEPS.length - 1 ? 0 : '16px', opacity: processingStep >= i ? 1 : 0.3, transition: 'all 0.5s ease' }}>
                     <div style={{ 
@@ -516,7 +516,7 @@ export default function UnifiedDashboard() {
           {unifiedInsights && (
             <div className="fade-in">
               {/* Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '50px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '50px', gap: '20px' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                     <span style={{ fontSize: '10px', fontWeight: 900, background: '#3B82F6', color: '#fff', padding: '2px 8px', borderRadius: '4px' }}>EXECUTIVE</span>
@@ -544,7 +544,7 @@ export default function UnifiedDashboard() {
               </div>
 
               {/* Insights Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '40px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 520px), 1fr))', gap: 'clamp(20px, 3vw, 40px)' }}>
                 {unifiedInsights.map((c, idx) => (
                   <div key={idx} className="unified-card shadow-xl" style={{ 
                     background: '#fff', borderRadius: '40px', border: '1px solid #E2E8F0', padding: '40px', position: 'relative', transition: 'all 0.3s ease'

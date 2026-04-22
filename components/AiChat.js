@@ -73,8 +73,8 @@ export default function AiChat({ dataContext }) {
         <button
           onClick={() => setIsOpen(true)}
           style={{
-            position: 'fixed', bottom: '28px', right: '28px', zIndex: 999,
-            width: '64px', height: '64px', borderRadius: '50%',
+            position: 'fixed', bottom: '20px', right: '20px', zIndex: 999,
+            width: '56px', height: '56px', borderRadius: '50%',
             background: 'linear-gradient(135deg, #2563EB, #7C3AED)',
             border: 'none', cursor: 'pointer',
             boxShadow: '0 8px 32px rgba(37, 99, 235, 0.4), 0 0 0 4px rgba(37, 99, 235, 0.1)',
@@ -91,8 +91,9 @@ export default function AiChat({ dataContext }) {
       {/* CHAT PANEL */}
       {isOpen && (
         <div style={{
-          position: 'fixed', bottom: '28px', right: '28px', zIndex: 1000,
-          width: '440px', height: '620px',
+          position: 'fixed', bottom: '20px', right: '20px', zIndex: 1000,
+          width: 'min(440px, calc(100vw - 24px))',
+          height: 'min(620px, calc(100dvh - 40px))',
           background: '#fff', borderRadius: '28px',
           boxShadow: '0 25px 60px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0,0,0,0.05)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',

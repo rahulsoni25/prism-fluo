@@ -112,9 +112,9 @@ export default function DashboardsGrid() {
     <div className="screen fade-in" style={{ background: '#F8FAFC', minHeight: '100vh' }}>
       <Navbar />
       
-      <div style={{ padding: '40px 60px' }}>
+      <div style={{ padding: 'clamp(16px, 4vw, 40px) clamp(16px, 5vw, 60px)' }}>
         {/* Header Section */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '40px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '40px', gap: '16px' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
               <span style={{ fontSize: '10px', fontWeight: 900, background: '#0F172A', color: '#fff', padding: '2px 8px', borderRadius: '4px' }}>EXECUTIVE COMMAND</span>
@@ -137,7 +137,7 @@ export default function DashboardsGrid() {
         </div>
 
         {/* Pillar Navigation */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '40px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))', gap: '16px', marginBottom: '40px' }}>
           {PILLARS.map(p => (
             <div 
               key={p.id}
@@ -173,7 +173,7 @@ export default function DashboardsGrid() {
         </div>
 
         {/* Dashboard Content Area */}
-        <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '30px' }}>
+        <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 600px), 1fr))', gap: '30px' }}>
           {/* Main Insights Column */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
             {loading ? (
@@ -206,7 +206,7 @@ export default function DashboardsGrid() {
                     
                     <h3 style={{ fontSize: '28px', fontWeight: 900, color: '#0F172A', marginBottom: '24px', letterSpacing: '-0.02em' }}>{ins.title}</h3>
                     
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', alignItems: 'center' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap: '24px', alignItems: 'center' }}>
                       <div>
                         <div style={{ marginBottom: '24px' }}>
                           <div style={{ fontSize: '11px', fontWeight: 900, color: PILLARS.find(p => p.id === activePillar).color, textTransform: 'uppercase', marginBottom: '8px' }}>THE OBSERVATION</div>

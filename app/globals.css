@@ -80,6 +80,7 @@ textarea {resize:vertical;min-height:80px}
 .chip.selected {border-color:var(--primary);background:#EFF6FF;color:var(--primary)}
 .chips {display:flex;flex-wrap:wrap;gap:8px}
 .divider {height:1px;background:var(--border);margin:24px 0}
+.sort-pill {font-size:11px;font-weight:600;color:var(--muted);background:#fff;border:1px solid var(--border);padding:5px 12px;border-radius:20px;white-space:nowrap}
 .progress-bar {background:#E2E8F0;border-radius:4px;height:6px;overflow:hidden; width: 100%;}
 .progress-fill {height:100%;border-radius:4px;background:linear-gradient(90deg,#2563EB,#7C3AED);transition:width 1s ease}
 
@@ -221,10 +222,131 @@ textarea {resize:vertical;min-height:80px}
 .ac-item {padding:9px 13px;font-size:13px;cursor:pointer;transition:background .1s}
 .ac-item:hover {background:#EFF6FF;color:var(--primary)}
 
+/* ── RESPONSIVE BREAKPOINTS ── */
+
+/* Tablet: ≤ 900px */
 @media(max-width:900px){
+  .container {padding:24px}
   .form-row,.brief-layout {grid-template-columns:1fr}
   .stats-row {grid-template-columns:repeat(2,1fr)}
   .bucket-progress-grid {grid-template-columns:repeat(2,1fr)}
   .insights-grid {grid-template-columns:1fr}
   .scatter-legend {grid-template-columns:repeat(2,1fr)}
+  .briefs-grid {grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+  .insights-hero {padding:20px 24px 0}
+  .insights-body {padding:20px 24px}
+  .bucket-tabs-bar {flex-direction:column;align-items:flex-start;gap:12px}
+  .ins-meta {padding-bottom:14px}
+}
+
+/* Mobile: ≤ 768px */
+@media(max-width:768px){
+  /* Nav */
+  .nav {padding:0 16px;gap:12px;height:56px}
+  .nav-prism-text {display:none}
+  .nav-links {gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .nav-links::-webkit-scrollbar {display:none}
+  .nav-link {font-size:12px;padding:5px 10px;white-space:nowrap}
+  .nav-user span {display:none}
+
+  /* Container */
+  .container {padding:16px}
+
+  /* Page header */
+  .page-header {flex-direction:column;align-items:flex-start;gap:12px}
+  .page-header .btn {width:100%;justify-content:center}
+
+  /* Stats */
+  .stats-row {grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px}
+  .stat-val {font-size:24px}
+
+  /* Briefs */
+  .briefs-grid {grid-template-columns:1fr;gap:12px}
+  .filter-bar {flex-wrap:wrap;gap:6px}
+
+  /* Forms */
+  .form-row {grid-template-columns:1fr}
+  .form-card {padding:20px}
+  .brief-layout {grid-template-columns:1fr;gap:16px}
+
+  /* Buttons — touch-friendly */
+  .btn {min-height:44px;padding:11px 18px}
+  .btn-sm {min-height:36px}
+
+  /* Login */
+  .login-card {width:calc(100% - 32px);padding:28px 20px;border-radius:16px}
+
+  /* Processing */
+  .proc-hero {padding:24px 16px}
+  .proc-title {font-size:20px}
+  .bucket-progress-grid {grid-template-columns:repeat(2,1fr);gap:10px}
+  .platform-grid {grid-template-columns:1fr}
+
+  /* Insights */
+  .insights-hero {padding:16px 16px 0}
+  .insights-top {flex-direction:column;gap:12px}
+  .ins-actions {flex-wrap:wrap}
+  .bucket-tabs {flex-wrap:wrap;gap:4px}
+  .bucket-tab {padding:7px 14px;font-size:12px}
+  .insights-body {padding:16px}
+  .insights-grid {grid-template-columns:1fr;gap:14px}
+  .insight-card {padding:16px}
+
+  /* Charts */
+  .chart-wrap {padding:10px 8px 8px}
+  .scatter-legend {grid-template-columns:repeat(2,1fr)}
+}
+
+/* Small mobile: ≤ 480px */
+@media(max-width:480px){
+  /* Nav — minimal */
+  .nav {height:52px;padding:0 12px;gap:8px}
+  .nav-link {font-size:11px;padding:4px 8px}
+
+  /* Typography */
+  .page-title {font-size:18px}
+  .stat-val {font-size:22px}
+  .proc-title {font-size:18px}
+  .ins-title {font-size:17px}
+
+  /* Stats — single column on very small screens */
+  .stats-row {grid-template-columns:1fr 1fr}
+  .stat-card {padding:14px}
+
+  /* Bucket progress — 2 col */
+  .bucket-progress-grid {grid-template-columns:1fr 1fr}
+
+  /* Bucket tabs — scrollable row */
+  .bucket-tabs {flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;width:100%}
+  .bucket-tabs::-webkit-scrollbar {display:none}
+  .bucket-tab {flex-shrink:0;font-size:11px;padding:6px 12px}
+
+  /* Forms */
+  .form-card {padding:16px}
+  .chips {gap:6px}
+  .chip {padding:5px 11px;font-size:11px}
+
+  /* Buttons */
+  .btn {min-height:44px;font-size:13px}
+  .btn-full {width:100%}
+
+  /* Login */
+  .login-card {padding:24px 16px}
+  .login-logo-text {font-size:22px}
+
+  /* Processing hero */
+  .proc-hero {padding:20px 12px}
+  .eta-pill {font-size:11px;padding:6px 14px}
+
+  /* Insights */
+  .insights-hero {padding:12px 12px 0}
+  .ins-actions .btn-glass {padding:6px 12px;font-size:11px}
+  .insights-body {padding:12px}
+  .insight-card {padding:14px}
+  .ic-title {font-size:13px}
+
+  /* Brief layout sidebar stacks below */
+  .brief-layout {grid-template-columns:1fr}
+  .sla-card {padding:16px}
+  .sla-val {font-size:22px}
 }

@@ -175,7 +175,7 @@ export function Scorecard({ label, value, trend, isPositive }: ScorecardProps) {
     }}>
       <div style={{ color: '#64748B', fontSize: '11px', fontWeight: 800, marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '14px' }}>
-        <div style={{ fontSize: '42px', fontWeight: 900, color: '#0F172A', letterSpacing: '-0.02em' }}>{value}</div>
+        <div style={{ fontSize: 'clamp(28px, 5vw, 42px)', fontWeight: 900, color: '#0F172A', letterSpacing: '-0.02em' }}>{value}</div>
         {trend && (
           <div style={{ 
             fontSize: '14px', 
@@ -219,7 +219,7 @@ export function Heatmap({ data }: { data: HeatmapData[] }) {
             <span style={{ width: '8px', height: '8px', background: '#3B82F6', borderRadius: '2px', marginRight: '8px', display: 'inline-block' }}></span>
             {r.region}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(60px, 18%), 1fr))', gap: '8px' }}>
             {r.cities.map((c, j) => (
               <div
                 key={j}
