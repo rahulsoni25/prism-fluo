@@ -8,7 +8,7 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-RUN npm install
+RUN npm_config_build_from_source=true npm install
 
 # Copy the rest of the app
 COPY . .
