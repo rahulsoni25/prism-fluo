@@ -1,18 +1,7 @@
 export type SourceType = 'GWI' | 'GoogleTrends' | 'GoogleAds' | 'Brandwatch' | 'Helium10' | 'SimilarWeb' | 'Konnect' | 'Other';
 
-export type TopicType =
-  | 'TimeSpent'
-  | 'SearchDemand'
-  | 'Culture'
-  | 'Content'
-  | 'Commerce'
-  | 'Communication'
-  | 'KeywordPlan'
-  | 'BrandInterest'
-  | 'SalesPerformance'
-  | 'SocialSentiment'
-  | 'TrafficYield'
-  | 'Other';
+export type TopicType = 'TimeSpent' | 'SearchDemand' | 'Culture' | 'Content' | 'Commerce' | 'Communication' | 'KeywordPlan' | 'BrandInterest' | 'SalesPerformance' | 'SocialSentiment' | 'TrafficYield' | 'Unified' | 'Other' | 'timespent' | 'searchdemand' | 'culture' | 'content' | 'commerce' | 'communication' | 'keywordplan' | 'other' | 'unified';
+
 
 
 export type GrainType =
