@@ -26,7 +26,7 @@ interface InsightCard {
   id: string;
   title: string;
   sources: string[];
-  topic: 'content' | 'commerce' | 'communication' | 'culture';
+  topic: 'Content' | 'Commerce' | 'Communication' | 'Culture';
   geography: string;
   period: string;
   metrics: { label: string; value: string; unit?: string; source: string }[];
@@ -40,7 +40,7 @@ interface InsightCard {
   conviction: number;
 }
 
-CRITICAL: The 'topic' field MUST be exactly one of: 'content', 'commerce', 'communication', or 'culture'.
+CRITICAL: The 'topic' field MUST be exactly one of: 'Content', 'Commerce', 'Communication', or 'Culture'.
 
 REQUIRED OUTPUT: A raw JSON array of ${count} InsightCard objects. Do not include markdown formatting or explanations.`;
 

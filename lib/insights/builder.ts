@@ -28,7 +28,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
       id: `unified_${geography}_engagement`,
       title: "Engagement Velocity vs. Search Demand",
       sources: ['GWI', 'GoogleTrends'],
-      topic: 'content',
+      topic: 'Content',
       geography,
       period: gwi.period,
       metrics: [
@@ -51,7 +51,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
       id: `unified_${geography}_sales_intent`,
       title: "Market Demand vs. Sales Realization",
       sources: ['Helium10', 'GoogleTrends'],
-      topic: 'commerce',
+      topic: 'Commerce',
       geography,
       period: helium.period,
       metrics: [
@@ -74,7 +74,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
       id: `unified_${geography}_social_pulse`,
       title: "Social Sentiment vs. Public Interest",
       sources: ['Konnect', 'GoogleTrends'],
-      topic: 'communication',
+      topic: 'Communication',
       geography,
       period: konnect.period,
       metrics: [
@@ -97,7 +97,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
       id: `unified_${geography}_traffic_yield`,
       title: "Traffic Yield vs. Search Strategy",
       sources: ['SimilarWeb', 'GoogleAds'],
-      topic: 'commerce',
+      topic: 'Commerce',
       geography,
       period: similar.period,
       metrics: [
@@ -122,7 +122,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
       id: `deep_${helium.datasetId}`,
       title: "Pricing Strategy & Ranking Dominance",
       sources: ['Helium10'],
-      topic: 'commerce',
+      topic: 'Commerce',
       geography,
       period: helium.period,
       metrics: [
@@ -142,7 +142,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
       id: `deep_${gwi.datasetId}`,
       title: "Target Audience Cultural Over-Index",
       sources: ['GWI'],
-      topic: 'culture',
+      topic: 'Culture',
       geography,
       period: gwi.period,
       metrics: [
@@ -162,7 +162,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
       id: `deep_${konnect.datasetId}`,
       title: "Conversational Sentiment & Platform Mix",
       sources: ['Konnect'],
-      topic: 'communication',
+      topic: 'Communication',
       geography,
       period: konnect.period,
       metrics: [
@@ -182,7 +182,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
       id: `deep_${similar.datasetId}`,
       title: "Web Traffic Velocity & Bounce Benchmark",
       sources: ['SimilarWeb'],
-      topic: 'commerce',
+      topic: 'Commerce',
       geography,
       period: similar.period,
       metrics: [
@@ -202,7 +202,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
       id: `deep_${ads.datasetId}`,
       title: "Keyword Plan Search Volume & CPC Tiers",
       sources: ['GoogleAds'],
-      topic: 'communication',
+      topic: 'Communication',
       geography,
       period: ads.period,
       metrics: [
@@ -229,7 +229,7 @@ export async function buildInsightCardsForGroup(group: DatasetGroup): Promise<In
         id: `fallback_${ds.datasetId}_${cards.length}`,
         title: `${cardType} Insights: ${ds.sheetName}`,
         sources: [ds.source],
-        topic: ['content', 'commerce', 'communication', 'culture'][cards.length % 4],
+        topic: (['Content', 'Commerce', 'Communication', 'Culture'] as any)[cards.length % 4],
         geography: ds.geography,
         period: ds.period,
         metrics: [
