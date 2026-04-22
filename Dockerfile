@@ -1,5 +1,5 @@
 # Use Node 20 as the base
-FROM node:20-slim
+FROM node:20
 
 # Install sqlite3 dependencies
 RUN apt-get update && apt-get install -y sqlite3 python3 make g++ && rm -rf /var/lib/apt/lists/*
