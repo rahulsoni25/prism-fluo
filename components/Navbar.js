@@ -13,8 +13,8 @@ export default function Navbar() {
       </Link>
       
       <div className="nav-links">
-        <Link 
-          href="/dashboard" 
+        <Link
+          href="/dashboard"
           className={`nav-link ${pathname === '/dashboard' || pathname.includes('/brief') || pathname.includes('/insights') ? 'active' : ''}`}
         >
           {pathname.includes('/processing') || pathname.includes('/insights') || pathname.includes('/brief/new') ? '← My Briefs' : 'My Briefs'}
@@ -28,6 +28,9 @@ export default function Navbar() {
             </Link>
           </>
         )}
+        <Link href="/culture" className={`nav-link ${pathname === '/culture' ? 'active' : ''}`}>
+          Culture
+        </Link>
       </div>
 
       <div className="nav-user">

@@ -126,3 +126,15 @@ CREATE INDEX IF NOT EXISTS idx_briefs_created      ON briefs(created_at DESC);
 -- Jobs
 CREATE INDEX IF NOT EXISTS idx_jobs_upload         ON upload_jobs(upload_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status         ON upload_jobs(status);
+
+-- ── Generic Tool Data (Helium10, Google Trends, Konnect, etc.) ─
+CREATE TABLE IF NOT EXISTS tool_data (
+    id          SERIAL PRIMARY KEY,
+    upload_id   UUID NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,
+    sheet_name  TEXT NOT NULL,
+    tool_type   TEXT NOT NULL DEFAULT 'generic',
+    row_data    JSONB NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tool_data_upload_sheet ON tool_data(upload_id, sheet_name);
+CREATE INDEX IF NOT EXISTS idx_tool_data_tool_type    ON tool_data(tool_type);

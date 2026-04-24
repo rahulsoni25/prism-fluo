@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import SheetList from '@/components/SheetList';
 import {
@@ -184,6 +185,7 @@ export default function UploadData() {
   const [agentLog, setAgentLog]           = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
   const addLog = (msg: string) => setAgentLog(prev => [...prev, msg]);
 
   // ── Sheet analysis ────────────────────────────────────────
@@ -223,15 +225,40 @@ export default function UploadData() {
       const brief = generateStrategicBrief(layout.scorecards, layout.charts, detected);
       setStrategicBrief(brief);
 
-      setAgentPhase('done');
       addLog(`✨ Intelligence Hub generated — ${layout.charts.length} charts · ${layout.scorecards.length} scorecards`);
 
-      // Persist results asynchronously (non-blocking)
-      const chartsWithData = layout.charts.map((c: ChartSpec) => ({
+      // Enhance titles with Gemini (server-side, non-blocking failure)
+      let finalCharts = layout.charts;
+      try {
+        addLog('🤖 Enhancing insight titles with Gemini AI…');
+        const enhanceRes = await fetch('/api/ai/enhance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            charts: layout.charts.map((c: ChartSpec) => ({
+              title: c.title, type: c.type, lbl: (c as any).lbl, obs: (c as any).obs, rec: (c as any).rec
+            })),
+            context: `${(layout.meta as any)?.domain || 'market research'} — ${sheet.sheetName}`,
+          }),
+        });
+        if (enhanceRes.ok) {
+          const { titles } = await enhanceRes.json();
+          if (Array.isArray(titles) && titles.length === layout.charts.length) {
+            finalCharts = layout.charts.map((c: ChartSpec, i: number) => ({ ...c, title: titles[i] || c.title }));
+            addLog('✨ AI titles applied.');
+          }
+        }
+      } catch {
+        addLog('⚡ Gemini unavailable — using auto-generated titles.');
+      }
+
+      // Save analysis (blocking — need the ID to redirect)
+      const chartsWithData = finalCharts.map((c: ChartSpec) => ({
         ...c,
         computedChartData: buildChartData(c, data),
       }));
-      fetch('/api/analyses', {
+      addLog('💾 Saving intelligence report…');
+      const saveRes = await fetch('/api/analyses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -246,9 +273,18 @@ export default function UploadData() {
             meta: layout.meta,
           },
         }),
-      }).catch(err => {
-        console.warn('Analysis save failed (non-blocking):', err.message);
       });
+      if (saveRes.ok) {
+        const { id } = await saveRes.json();
+        if (id) {
+          addLog(`🚀 Redirecting to Intelligence Report…`);
+          setAgentPhase('done');
+          router.push(`/insights?id=${id}`);
+          return;
+        }
+      }
+
+      setAgentPhase('done');
 
     } catch (err: any) {
       addLog(`❌ Analysis failed: ${err.message}`);
@@ -261,6 +297,14 @@ export default function UploadData() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
+
+    const ext = f.name.split('.').pop()?.toLowerCase();
+    const MAX_MB = ext === 'pdf' ? 15 : 10;
+    if (f.size > MAX_MB * 1024 * 1024) {
+      setErrorMsg(`File too large. Max ${MAX_MB}MB for ${ext?.toUpperCase()} files.`);
+      setLoading(false);
+      return;
+    }
 
     setFile(f);
     setUploadSummary(null);
@@ -357,7 +401,7 @@ export default function UploadData() {
                 <p className="text-xl font-bold text-slate-900">
                   {loading ? 'Processing file…' : 'Drop GWI or Keyword Plan here'}
                 </p>
-                <p className="text-slate-500">Supports Excel and CSV multi-sheet workbooks · Max 20 MB</p>
+                <p className="text-slate-500">Supports Excel, CSV, and PDF files · Max 10 MB (PDF: 15 MB)</p>
               </div>
             </div>
             <input
@@ -365,7 +409,7 @@ export default function UploadData() {
               ref={fileInputRef}
               className="hidden"
               onChange={handleFileChange}
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,.xls,.csv,.pdf"
             />
           </div>
         )}
@@ -442,41 +486,34 @@ export default function UploadData() {
               </div>
             )}
 
-            {/* Chart grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Chart grid — prototype insight-card layout */}
+            <div className="insights-grid" style={{ marginTop: '0' }}>
               {charts.map((c, i) => (
                 <div
                   key={i}
-                  className="bg-white rounded-[2rem] border border-slate-100 p-8 shadow-sm hover:shadow-xl transition-all duration-500 overflow-hidden relative group"
+                  className="insight-card fade-in"
+                  style={{ animationDelay: `${i * 0.08}s` }}
                 >
-                  <div className="flex justify-between items-start mb-8">
-                    <div>
-                      <div className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em] mb-2">{c.lbl}</div>
-                      <h3 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">{c.title}</h3>
-                    </div>
-                    <div className="h-10 w-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors">
-                      <BarChart size={20} />
-                    </div>
+                  <div className="ic-header">
+                    <span className="ic-source">{c.lbl || 'PRISM Engine'}</span>
+                    <span className="ic-confidence">● {c.conviction}% confidence</span>
                   </div>
-
-                  <div className="h-[300px] w-full mb-8 relative">
+                  <div className="ic-title">{c.title}</div>
+                  <div className="chart-wrap">
+                    <div className="chart-label">{c.lbl}</div>
                     <ChartRenderer chart={c} data={rawData} />
                   </div>
-
-                  <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 group-hover:border-blue-100 transition-colors">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <ShieldCheck size={14} className="text-blue-600" />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        Strategic Hook (Conviction: {c.conviction}%)
-                      </span>
-                    </div>
-                    <p className="text-slate-600 text-sm leading-relaxed">{c.obs}</p>
-                    {c.rec && (
-                      <p className="text-slate-500 text-xs mt-2 leading-relaxed border-t border-slate-200 pt-2">
-                        💡 {c.rec}
-                      </p>
-                    )}
+                  <div className="ic-section">
+                    <div className="ic-label obs">📊 Observation</div>
+                    <div className="ic-text">{c.obs}</div>
+                    {c.stat && <div className="ic-stat">{c.stat}</div>}
                   </div>
+                  {c.rec && (
+                    <div className="ic-section">
+                      <div className="ic-label rec">💡 Recommendation</div>
+                      <div className="ic-text">{c.rec}</div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
