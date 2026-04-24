@@ -1,0 +1,109 @@
+/**
+ * GET /api/dashboard/overview
+ *
+ * Single endpoint that powers the entire dashboard page in ONE round trip.
+ * Previously the dashboard called /api/briefs + potentially multiple stat
+ * queries separately.  Now it's all aggregated IN the DB (not in JS) and
+ * cached for 90 seconds.
+ *
+ * Response shape:
+ * {
+ *   stats:  { total, ready, processing, draft },
+ *   briefs: Brief[],
+ *   recentAnalyses: AnalysisMeta[],
+ * }
+ */
+
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db/client';
+import { cache } from '@/lib/cache';
+import { logger } from '@/lib/logger';
+
+const CACHE_KEY = 'dashboard:overview';
+const CACHE_TTL = 90; // seconds
+
+export async function GET() {
+  const t0 = Date.now();
+
+  // ── Cache hit ─────────────────────────────────────────────
+  const cached = cache.get<object>(CACHE_KEY);
+  if (cached) {
+    logger.debug('dashboard:overview:cache_hit', { ms: Date.now() - t0 });
+    return NextResponse.json(cached);
+  }
+
+  try {
+    // ── 1. Brief counts — aggregated in SQL (not JS) ─────────
+    const statsPromise = logger.query('dashboard:stats', () =>
+      db.query(`
+        SELECT
+          COUNT(*)                                            AS total,
+          COUNT(*) FILTER (WHERE status = 'ready')           AS ready,
+          COUNT(*) FILTER (WHERE status = 'processing')      AS processing,
+          COUNT(*) FILTER (WHERE status = 'draft')           AS draft
+        FROM briefs
+      `)
+    );
+
+    // ── 2. Most recent 50 briefs — only the columns we actually render ──
+    const briefsPromise = logger.query('dashboard:briefs', () =>
+      db.query(`
+        SELECT
+          id, brand, category, objective, status,
+          age_ranges, gender, market,
+          analysis_id, created_at
+        FROM briefs
+        ORDER BY created_at DESC
+        LIMIT 50
+      `)
+    );
+
+    // ── 3. Recent analyses for the "Data Mapper" card ────────
+    const analysesPromise = logger.query('dashboard:analyses', () =>
+      db.query(`
+        SELECT
+          a.id,
+          a.sheet_name,
+          a.filename,
+          a.created_at,
+          a.results_json->'meta'->>'domain' AS domain,
+          a.results_json->'meta'->>'title'  AS title
+        FROM analyses a
+        ORDER BY a.created_at DESC
+        LIMIT 10
+      `)
+    );
+
+    // Run all three queries in parallel
+    const [statsRes, briefsRes, analysesRes] = await Promise.all([
+      statsPromise, briefsPromise, analysesPromise,
+    ]);
+
+    const raw = statsRes.rows[0];
+    const stats = {
+      total:      parseInt(raw.total,      10),
+      ready:      parseInt(raw.ready,      10),
+      processing: parseInt(raw.processing, 10),
+      draft:      parseInt(raw.draft,      10),
+    };
+
+    const payload = {
+      stats,
+      briefs:          briefsRes.rows,
+      recentAnalyses:  analysesRes.rows,
+    };
+
+    // ── Cache & return ────────────────────────────────────────
+    cache.set(CACHE_KEY, payload, CACHE_TTL);
+
+    logger.info('dashboard:overview', { ms: Date.now() - t0, briefs: briefsRes.rows.length });
+    return NextResponse.json(payload);
+
+  } catch (err: any) {
+    logger.error('dashboard:overview:error', { error: err.message, ms: Date.now() - t0 });
+    return NextResponse.json(
+      { error: 'DASHBOARD_ERROR', message: err.message },
+      { status: 500 }
+    );
+  }
+}
