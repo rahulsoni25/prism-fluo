@@ -53,38 +53,53 @@ export async function analyzeDataForPRISM(
     model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   }
 
-  const prompt = `You are a senior strategic insights analyst at PRISM, a leading consumer intelligence consultancy.
+  const prompt = `You are a world-class Creative Strategist and Media Planner at PRISM, a leading consumer intelligence consultancy in India. Your job is to turn raw survey data into compelling strategic stories that help brand teams make smarter creative and media decisions.
 
 DATASET: ${context}
 
 ${dataSummary}
 
 ━━ GWI DATA GLOSSARY ━━
-• Index score: 100 = market average. Index 150 = audience is 50% MORE likely than average to have this attribute. Index 200 = twice as likely. Focus on Index >130 for strong signals.
+• Index score: 100 = market average. Index 150 = this audience is 50% MORE likely than average to have this attribute. Index 200 = twice as likely. Anything above 130 is a strong targeting signal.
 • Audience % = proportion of YOUR target audience with this attribute
-• Data point % = proportion of general population with this attribute
-• Universe = estimated population size with this attribute in India
+• Universe = estimated population size in India with this attribute
 
 ━━ YOUR TASK ━━
-Generate exactly 8 strategic insight cards — 2 per PRISM bucket — based on the highest-Index, most commercially significant findings in the data.
+Generate exactly 8 insight cards — 2 per PRISM bucket — that a brand strategist or media planner can act on immediately. Each insight must read like a mini creative brief, not a data report.
 
 PRISM BUCKET DEFINITIONS:
-• "content"       — Digital media consumption, content formats, device ownership, owned media engagement
-• "commerce"      — Purchase behavior, transaction preferences, price/value trade-offs, retail channels, income signals
-• "communication" — Brand discovery, advertising receptivity, brand relationships, word-of-mouth, advocacy
-• "culture"       — Lifestyle indicators, household structure, demographics, personal values, life stage
+• "content"       — What content formats, devices, and owned media this audience consumes and how to reach them
+• "commerce"      — How this audience buys, what drives purchase decisions, price sensitivity, channel preference
+• "communication" — How brands should talk to them: tone, discovery channels, advertising receptivity, advocacy triggers
+• "culture"       — Who they are as people: lifestyle, household, values, life stage — the human truth behind the data
 
-RULES:
+━━ CARD FORMAT RULES ━━
+
+TITLE — must have 3 elements fused into one sharp headline (max 14 words):
+  1. The HOOK: an unexpected or counterintuitive lead (e.g. "Not Just Online Shoppers —")
+  2. The INSIGHT: the single strongest data finding (e.g. "India's Gamers Are the Most Device-Rich Segment")
+  3. The NUMBER: the Index or % that proves it (e.g. "at Index 197")
+  Example: "Not Just Scrollers — India's PC Users Over-Index on Premium Devices at Index 154"
+
+OBSERVATION (obs) — tell a story in 3 sentences:
+  Sentence 1: Set the scene — what is happening in this data, stated as a human truth, not a metric.
+  Sentence 2: Prove it with numbers — cite the exact Index score, Audience %, and Universe size.
+  Sentence 3: So what? — explain the strategic implication for a brand or media planner.
+
+STAT — one punchy data highlight formatted as: "[Key metric] · [What it means]"
+  Example: "Index 197 · Gamers are 2× more likely to own a smart device than the average Indian internet user"
+
+RECOMMENDATION (rec) — one sentence, written as a direct brief to a creative or media team. Start with a verb. Be specific about the FORMAT, CHANNEL, or CREATIVE ANGLE.
+  Example: "Run high-impact video pre-rolls on gaming platforms targeting device-rich 25–34M audiences in metro India, leading with aspirational smart-home imagery."
+
+━━ OUTPUT RULES ━━
 • Each bucket must have exactly 2 insights (total = 8)
-• Pick findings with Index >130 whenever possible — these are the strongest audience signals
-• Titles must be sharp, ≤12 words, reference actual data (e.g. "197 Index: Gamers Over-Index 2× on Device Ownership")
-• obs: 2 sentences, cite specific numbers (%, Index, Universe size)
-• stat: punchy 1-line highlight (e.g. "Index 197 · 2.3× market average")
-• rec: one specific, actionable recommendation starting with a verb
-• chartLabels: up to 8 attribute names from the data (for bar/hbar charts)
-• chartValues: corresponding Audience % values — use actual numbers from the data
+• Use findings with the highest Index scores — these are the most actionable signals
+• chartLabels: up to 8 attribute names from the data
+• chartValues: corresponding Audience % values (real numbers from the data)
+• type: use "hbar" for rankings/comparisons, "bar" for categories, "pie" for share splits
 
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON (no markdown, no code fences, no explanation):
 [
   {
     "title": "string",
@@ -150,21 +165,24 @@ export async function enhanceInsightTitles(
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-    const prompt = `You are a senior strategic insights analyst at a top market research firm.
+    const prompt = `You are a world-class Creative Strategist and Media Planner at a top consumer intelligence firm.
 
-Given these data charts from ${context}, rewrite each chart title as a sharp, compelling insight headline.
-Rules:
-- Max 12 words per title
-- Be specific to the data (use metrics, audience names, categories mentioned)
-- Sound like an expert human analyst, not a bot
-- Start with a strong verb or key finding where possible
-- No generic titles like "Data Overview" or "Chart Analysis"
+Rewrite each chart title as a sharp, story-driven insight headline for brand and media planning teams.
+
+Each title must fuse 3 elements (max 14 words):
+1. A HOOK — surprising or counterintuitive lead
+2. The INSIGHT — the key human truth from the data
+3. The PROOF — a specific number, Index score, or % that validates it
+
+Example: "Not Just Scrollers — India's PC Users Are 54% More Device-Rich at Index 154"
+
+Dataset context: ${context}
 
 Charts:
-${charts.map((c, i) => `${i + 1}. Type: ${c.type} | Label: "${c.lbl || ''}" | Current: "${c.title}" | Observation: "${c.obs || ''}"`).join('\n')}
+${charts.map((c, i) => `${i + 1}. Type: ${c.type} | Label: "${c.lbl || ''}" | Current title: "${c.title}" | Observation: "${c.obs || ''}"`).join('\n')}
 
 Return ONLY a valid JSON array of strings, one per chart, in the same order.
-Example output: ["Title 1 here", "Title 2 here"]`;
+Example: ["Title 1", "Title 2"]`;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
