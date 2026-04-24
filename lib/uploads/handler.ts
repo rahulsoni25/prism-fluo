@@ -11,6 +11,7 @@
  */
 
 import ExcelJS from 'exceljs';
+import type { PoolClient } from 'pg';
 import { db } from '@/lib/db/client';
 import { logger } from '@/lib/logger';
 import { isGwiTimeSpentFormat } from '@/lib/gwi/detector';
@@ -24,7 +25,7 @@ import type { UploadSummary, SheetMeta, SheetType } from '@/types/dataset';
 // ── Bulk insert helpers ───────────────────────────────────────
 
 async function bulkInsertGwi(
-  client: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  client: PoolClient,
   rows: Awaited<ReturnType<typeof tidyGwiTimeSpent>>
 ) {
   if (rows.length === 0) return;
@@ -61,7 +62,7 @@ async function bulkInsertGwi(
 }
 
 async function bulkInsertKeywords(
-  client: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  client: PoolClient,
   rows: Awaited<ReturnType<typeof tidyKeywordPlan>>
 ) {
   if (rows.length === 0) return;
