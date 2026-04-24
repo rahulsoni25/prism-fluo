@@ -73,28 +73,39 @@ PRISM BUCKET DEFINITIONS:
 • "communication" — How brands should talk to them: tone, discovery channels, advertising receptivity, advocacy triggers
 • "culture"       — Who they are as people: lifestyle, household, values, life stage — the human truth behind the data
 
+━━ TONE ━━
+Write like you are explaining this to a smart 14-year-old or a first-time brand manager.
+• NO jargon. Replace "over-index" with "are much more likely than most people". Replace "Index 197" with "almost twice as likely as the average person".
+• Use everyday words. Short sentences. Active voice.
+• Sound like a smart friend explaining something interesting — not a consultant writing a report.
+• It is okay to use "they", "these people", "this group", "most Indians" etc.
+• Numbers are good — but always explain what they mean in plain English right after.
+
 ━━ CARD FORMAT RULES ━━
 
-TITLE — must have 3 elements fused into one sharp headline (max 14 words):
-  1. The HOOK: an unexpected or counterintuitive lead (e.g. "Not Just Online Shoppers —")
-  2. The INSIGHT: the single strongest data finding (e.g. "India's Gamers Are the Most Device-Rich Segment")
-  3. The NUMBER: the Index or % that proves it (e.g. "at Index 197")
-  Example: "Not Just Scrollers — India's PC Users Over-Index on Premium Devices at Index 154"
+TITLE — one punchy headline, max 14 words, written like a magazine cover line:
+  • Start with the surprising or interesting finding
+  • Include one real number (%, how many times more likely, or population size)
+  • Use plain words — no buzzwords, no jargon
+  Good example: "India's Gamers Are Nearly Twice as Likely to Own a Smart Home Device"
+  Bad example: "Gamers Over-Index at 197 on Smart Home Product Ownership"
 
-OBSERVATION (obs) — tell a story in 3 sentences:
-  Sentence 1: Set the scene — what is happening in this data, stated as a human truth, not a metric.
-  Sentence 2: Prove it with numbers — cite the exact Index score, Audience %, and Universe size.
-  Sentence 3: So what? — explain the strategic implication for a brand or media planner.
+OBSERVATION (obs) — 3 short, clear sentences written like a story:
+  Sentence 1: What is happening — state the finding as a simple human truth. ("Almost 1 in 4 Indians in our target group owns a smart home device.")
+  Sentence 2: Why it matters — give the numbers in plain English. ("That is nearly twice the national average, which means this group is spending far more on connected living than most households.")
+  Sentence 3: What this means for a brand team — one clear so-what. ("For a media planner, this is a signal to go heavy on platforms where tech-forward audiences spend time.")
 
-STAT — one punchy data highlight formatted as: "[Key metric] · [What it means]"
-  Example: "Index 197 · Gamers are 2× more likely to own a smart device than the average Indian internet user"
+STAT — one short, plain-English proof point. No Index jargon.
+  Good example: "22 million Indians in this group own a games console — nearly 2× the average household"
+  Bad example: "Index 197 · Games console ownership"
 
-RECOMMENDATION (rec) — one sentence, written as a direct brief to a creative or media team. Start with a verb. Be specific about the FORMAT, CHANNEL, or CREATIVE ANGLE.
-  Example: "Run high-impact video pre-rolls on gaming platforms targeting device-rich 25–34M audiences in metro India, leading with aspirational smart-home imagery."
+RECOMMENDATION (rec) — one direct sentence telling a brand or creative team exactly what to do. Simple words, specific action.
+  Good example: "Create short video ads for YouTube and Instagram Reels showing how your product fits into a busy, tech-loving Indian household."
+  Bad example: "Leverage high-impact pre-roll inventory on gaming-adjacent platforms to capture device-rich cohorts."
 
 ━━ OUTPUT RULES ━━
 • Each bucket must have exactly 2 insights (total = 8)
-• Use findings with the highest Index scores — these are the most actionable signals
+• Use findings with the highest Index scores — these are the strongest signals
 • chartLabels: up to 8 attribute names from the data
 • chartValues: corresponding Audience % values (real numbers from the data)
 • type: use "hbar" for rankings/comparisons, "bar" for categories, "pie" for share splits
@@ -165,18 +176,18 @@ export async function enhanceInsightTitles(
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-    const prompt = `You are a world-class Creative Strategist and Media Planner at a top consumer intelligence firm.
+    const prompt = `You are a Creative Strategist writing insight headlines for brand and media teams. Write like a smart magazine editor — clear, plain English, no jargon.
 
-Rewrite each chart title as a sharp, story-driven insight headline for brand and media planning teams.
+Rules for each title (max 14 words):
+• State the finding as a simple human truth anyone can understand
+• Include one real number (% or "X times more likely") — but explain it in plain English
+• No buzzwords like "over-index", "leverage", "cohort", or "synergy"
+• Sound like a magazine cover line, not a consulting report
 
-Each title must fuse 3 elements (max 14 words):
-1. A HOOK — surprising or counterintuitive lead
-2. The INSIGHT — the key human truth from the data
-3. The PROOF — a specific number, Index score, or % that validates it
+Good example: "India's Gamers Are Nearly Twice as Likely to Own a Smart Home Device"
+Bad example: "Gamers Over-Index at 197 on Smart Home Product Ownership"
 
-Example: "Not Just Scrollers — India's PC Users Are 54% More Device-Rich at Index 154"
-
-Dataset context: ${context}
+Dataset: ${context}
 
 Charts:
 ${charts.map((c, i) => `${i + 1}. Type: ${c.type} | Label: "${c.lbl || ''}" | Current title: "${c.title}" | Observation: "${c.obs || ''}"`).join('\n')}
