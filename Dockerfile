@@ -24,7 +24,7 @@ COPY . .
 # '/app/node_modules/.cache'" during the Railway/Nixpacks build.
 # The webpack cache is already redirected to /tmp/next-webpack-cache via
 # next.config.mjs, so we lose nothing meaningful by dropping the mount.
-RUN --mount=type=cache,target=/app/.next/cache \
+RUN --mount=type=cache,id=next-cache,target=/app/.next/cache \
     npm run build
 
 # Initialise the database schema then start the Next.js server
