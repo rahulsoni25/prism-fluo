@@ -117,21 +117,47 @@ const BUCKET_KW: Record<PrismBucket, RegExp> = {
   content:       /\b(content|media|video|article|blog|view|watch|read|page|format|channel|creat)\b/,
 };
 
-function assignPrismBucket(chart: Partial<ChartSpec> & { id: string }, domainCls: PrismBucket): PrismBucket {
-  // Hard-coded by chart ID first
-  if (chart.id === 'gwi_index_heatmap')                  return 'culture';
+function assignPrismBucket(
+  chart: Partial<ChartSpec> & { id: string },
+  domainCls: PrismBucket,
+  idx: number = 0,
+): PrismBucket {
+  // ── 1. Hard-coded chart-ID rules ──────────────────────────
+  if (chart.id === 'gwi_index_heatmap')                         return 'culture';
   if (chart.id === 'keyword_tiers' || chart.id === 'brand_share') return 'commerce';
+  if (chart.id === 'corr_scatter')                               return 'communication';
+  if (chart.id === 'bubble_3way')                                return 'culture';
+  if (chart.id === 'radar_bench')                                return 'culture';
+  if (chart.id === 'cross_cat')                                  return 'commerce';
+  if (chart.id.startsWith('time_'))
+    return (idx % 2 === 0) ? 'content' : 'communication';
+  if (chart.id.startsWith('cat_')) {
+    const rot: PrismBucket[] = ['commerce', 'culture', 'content'];
+    return rot[idx % 3];
+  }
 
+  // ── 2. Text keyword scoring ───────────────────────────────
   const text = [chart.id, chart.title, chart.lbl, chart.obs, chart.source, chart.xCol, chart.yCol]
     .filter(Boolean).join(' ').toLowerCase().replace(/_/g, ' ');
 
-  // Score each bucket by keyword matches
   const scores = (Object.entries(BUCKET_KW) as [PrismBucket, RegExp][])
     .map(([b, rx]) => ({ b, n: (text.match(new RegExp(rx.source, 'g')) ?? []).length }))
     .sort((a, z) => z.n - a.n);
 
-  // Use keyword winner if it scored; otherwise fall back to domain class
-  return scores[0].n > 0 ? scores[0].b : domainCls;
+  if (scores[0].n > 0) return scores[0].b;
+
+  // ── 3. Chart-type semantic fallback ──────────────────────
+  switch (chart.type) {
+    case 'pie':
+    case 'bar':
+    case 'hbar':   return 'commerce';
+    case 'line':
+    case 'area':   return 'content';
+    case 'scatter':return 'communication';
+    case 'bubble':
+    case 'radar':  return 'culture';
+    default:       return domainCls;
+  }
 }
 
 // ── Layout Generator ─────────────────────────────────────────
@@ -404,9 +430,9 @@ export function autoGenerateLayout(data: Record<string, unknown>[], schema: Sche
   // Assign a PRISM bucket to every chart based on its content + domain
   const domainCls = (meta.cls || 'content') as 'content' | 'commerce' | 'communication' | 'culture';
   const toolLabel = META_TOOL_LABEL[meta.domain] ?? meta.domain;
-  const finalCharts = charts.slice(0, 8).map(c => ({
+  const finalCharts = charts.slice(0, 8).map((c, idx) => ({
     ...c,
-    bucket:    assignPrismBucket(c, domainCls),
+    bucket:    assignPrismBucket(c, domainCls, idx),
     toolLabel: toolLabel,
   }));
 

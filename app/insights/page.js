@@ -188,6 +188,7 @@ const SOURCE_BADGE_MAP = {
   'content performance':      'CONTENT DATA',
   'data intelligence':        'PRISM ANALYSIS',
   'user & product analytics': 'PRODUCT DATA',
+  'multi-source':             'MULTI-SOURCE',
 };
 
 /* Maps tool domain → primary PRISM bucket (fallback when chart.bucket is absent) */

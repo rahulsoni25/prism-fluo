@@ -107,10 +107,10 @@ export default function UploadData() {
   const updateEntry = (idx: number, patch: Partial<FileEntry>) =>
     setFileEntries(prev => prev.map((e, i) => i === idx ? { ...e, ...patch } : e));
 
-  // ── Upload + analyse one file → return charts ──────────────
-  async function processFile(entry: FileEntry, idx: number): Promise<ChartSpec[]> {
+  // ── Upload + analyse one file → return { charts, uploadId } ─
+  async function processFile(entry: FileEntry, entryIdx: number): Promise<{ charts: ChartSpec[]; uploadId: string }> {
     const { file } = entry;
-    updateEntry(idx, { status: 'uploading' });
+    updateEntry(entryIdx, { status: 'uploading' });
     addLog(`📤 Uploading "${file.name}"…`);
 
     const formData = new FormData();
@@ -120,24 +120,21 @@ export default function UploadData() {
     if (!upRes.ok) throw new Error(summary.message ?? `Upload failed (${upRes.status})`);
 
     const { uploadId, sheets } = summary;
-    if (!sheets?.length) { addLog(`⚠ No sheets found in "${file.name}"`); return []; }
+    if (!sheets?.length) { addLog(`⚠ No sheets found in "${file.name}"`); return { charts: [], uploadId }; }
 
-    updateEntry(idx, { status: 'analyzing' });
+    updateEntry(entryIdx, { status: 'analyzing' });
     addLog(`🔍 Analysing ${sheets.length} sheet(s) from "${file.name}"…`);
 
     const allCharts: ChartSpec[] = [];
 
-    for (const sheet of sheets.slice(0, 3)) { // max 3 sheets per file
+    for (const sheet of sheets.slice(0, 3)) {
       const dataRes = await fetch(`/api/uploads/${uploadId}/sheets/${encodeURIComponent(sheet.sheetName)}/data`);
       const data: any[] = await dataRes.json();
       if (!Array.isArray(data) || data.length === 0) continue;
 
       addLog(`  └─ "${sheet.sheetName}": ${data.length} rows`);
-
       const schema = inferSchema(data);
       const layout = autoGenerateLayout(data, schema);
-
-      // Attach computed chart data
       const chartsWithData = layout.charts.map(c => ({
         ...c,
         computedChartData: buildChartData(c, data),
@@ -145,9 +142,9 @@ export default function UploadData() {
       allCharts.push(...chartsWithData);
     }
 
-    updateEntry(idx, { status: 'done', chartsFound: allCharts.length });
+    updateEntry(entryIdx, { status: 'done', chartsFound: allCharts.length });
     addLog(`✅ "${file.name}" → ${allCharts.length} insight${allCharts.length !== 1 ? 's' : ''}`);
-    return allCharts;
+    return { charts: allCharts, uploadId };
   }
 
   // ── Process all files → merge → Gemini → save → redirect ──
@@ -158,9 +155,11 @@ export default function UploadData() {
 
     try {
       const allCharts: ChartSpec[] = [];
+      let firstUploadId = '';
 
       for (let i = 0; i < entries.length; i++) {
-        const charts = await processFile(entries[i], i);
+        const { charts, uploadId } = await processFile(entries[i], i);
+        if (i === 0) firstUploadId = uploadId;
         allCharts.push(...charts);
       }
 
@@ -197,25 +196,21 @@ export default function UploadData() {
         }
       } catch { addLog('⚡ Gemini unavailable — using auto titles.'); }
 
-      // Save combined analysis
+      // Save combined analysis (use uploadId from first file — no re-upload needed)
       addLog('💾 Saving PRISM Intelligence Report…');
-      const firstFileName = entries[0].file.name;
-      const combinedName  = entries.length > 1
+      const combinedName = entries.length > 1
         ? `PRISM Combined — ${entries.length} sources`
-        : firstFileName.replace(/\.[^.]+$/, '');
+        : entries[0].file.name.replace(/\.[^.]+$/, '');
 
-      // Need an uploadId — re-upload first file to get a fresh one, or use a sentinel
-      const formData = new FormData();
-      formData.append('file', entries[0].file);
-      const reUp  = await fetch('/api/upload', { method: 'POST', body: formData });
-      const reSum = await reUp.json();
-      const uploadId = reSum.uploadId ?? 'combined';
+      const domainValue = entries.length > 1
+        ? 'multi-source'
+        : ((finalCharts[0] as any)?.toolLabel ?? 'PRISM ANALYSIS');
 
       const saveRes = await fetch('/api/analyses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          uploadId,
+          uploadId:  firstUploadId,
           sheetName: combinedName,
           filename:  entries.map(e => e.file.name).join(' + '),
           results: {
@@ -224,7 +219,7 @@ export default function UploadData() {
             strategicBrief: null,
             anomalies:      [],
             meta: {
-              domain: entries.length > 1 ? 'multi-source' : (finalCharts[0] as any)?.toolLabel ?? 'PRISM',
+              domain: domainValue,
               title:  combinedName,
               cls:    'content',
             },
