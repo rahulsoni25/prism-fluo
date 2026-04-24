@@ -98,14 +98,15 @@ async function bulkInsertKeywords(
 // ── Main handler ─────────────────────────────────────────────
 
 export async function handleUpload(
-  buffer: Buffer,
+  buffer: Uint8Array,
   filename: string
 ): Promise<UploadSummary> {
   const t0 = Date.now();
   const uploadId = crypto.randomUUID();
 
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
+  // Re-wrap as plain Buffer so ExcelJS (which uses older Node types) accepts it
+  await workbook.xlsx.load(Buffer.from(buffer));
 
   const sheetsMeta: SheetMeta[] = [];
 

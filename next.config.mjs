@@ -1,13 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Skip TypeScript type-checking during `next build` so Railway CI builds
-  // don't fail on strict-mode warnings.  Remove once all types are clean.
   typescript: {
+    // ExcelJS types are incompatible with the newer @types/node bundled in
+    // Next.js 16 (Buffer<ArrayBuffer> vs Buffer type mismatch).
+    // This is a package-level type conflict — NOT a real runtime bug.
+    // Re-enable once exceljs ships updated types.
     ignoreBuildErrors: true,
-  },
-  // Skip ESLint during `next build` for the same reason.
-  eslint: {
-    ignoreDuringBuilds: true,
   },
   experimental: {
     // Allow large Excel uploads (up to 25 MB) through Server Actions
