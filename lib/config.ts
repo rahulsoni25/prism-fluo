@@ -2,13 +2,12 @@
  * lib/config.ts
  * Single source of truth for all environment variables.
  * Never import process.env directly in app code — use this module.
+ *
+ * IMPORTANT: DATABASE_URL is exposed via a lazy getter (not a static value)
+ * so that it is only evaluated at request time — never during `next build`.
+ * Throwing at module-load time crashes the Railway Docker build step because
+ * build-time env vars may not be injected yet by NIXPACKS.
  */
-
-function require_env(key: string): string {
-  const val = process.env[key];
-  if (!val) throw new Error(`Missing required environment variable: ${key}`);
-  return val;
-}
 
 function optional_env(key: string, fallback: string): string {
   return process.env[key] ?? fallback;
@@ -19,8 +18,15 @@ export const config = {
   NODE_ENV: optional_env('NODE_ENV', 'development'),
   isProd: optional_env('NODE_ENV', 'development') === 'production',
 
-  /** PostgreSQL connection string — set in Railway dashboard as DATABASE_URL */
-  DATABASE_URL: require_env('DATABASE_URL'),
+  /**
+   * PostgreSQL connection string — set in Railway dashboard as DATABASE_URL.
+   * Lazy getter: evaluated only when first accessed (never during next build).
+   */
+  get DATABASE_URL(): string {
+    const val = process.env.DATABASE_URL;
+    if (!val) throw new Error('Missing required environment variable: DATABASE_URL');
+    return val;
+  },
 
   /**
    * Base URL for server-side fetch calls.
@@ -34,4 +40,4 @@ export const config = {
 
   /** In-memory cache TTL in seconds for heavy dashboard queries */
   CACHE_TTL_SECONDS: parseInt(optional_env('CACHE_TTL_SECONDS', '90'), 10),
-} as const;
+};

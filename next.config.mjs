@@ -1,13 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Allow large Excel uploads (25 MB) through Server Actions and Route Handlers.
+  // In Next.js 15+ this is a top-level key, not under experimental.
+  serverExternalPackages: ['pg', 'exceljs'],
   experimental: {
-    // Allow large Excel uploads through the API body parser
     serverActions: {
       bodySizeLimit: '25mb',
     },
   },
-  // Increase the default API body size limit (used by route handlers)
-  // This is separate from serverActions — both are needed
 };
 
 export default nextConfig;
