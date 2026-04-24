@@ -173,45 +173,47 @@ function ApiChartRenderer({ chart }) {
 
 /* Maps tool domain → human-readable source badge */
 const SOURCE_BADGE_MAP = {
+  // handler.ts tool keys
   gwi:       'GWI',
   keywords:  'GOOGLE KEYWORDS',
   helium10:  'HELIUM10',
   trends:    'GOOGLE TRENDS',
   konnect:   'KONNECT INSIGHTS',
+  // inference.ts domain labels
+  'consumer insights':        'GWI',
+  'search & seo':             'GOOGLE KEYWORDS',
+  'sales & revenue':          'SALES DATA',
+  'marketing & performance':  'MARKETING DATA',
+  'social media intelligence':'SOCIAL DATA',
+  'content performance':      'CONTENT DATA',
+  'data intelligence':        'PRISM ANALYSIS',
+  'user & product analytics': 'PRODUCT DATA',
 };
 
-/* Maps tool domain → primary PRISM bucket */
+/* Maps tool domain → primary PRISM bucket (fallback when chart.bucket is absent) */
 const DOMAIN_TO_BUCKET = {
-  gwi:       'content',
-  keywords:  'commerce',
-  helium10:  'commerce',
-  trends:    'culture',
-  konnect:   'communication',
+  gwi:                        'culture',
+  keywords:                   'commerce',
+  helium10:                   'commerce',
+  trends:                     'culture',
+  konnect:                    'communication',
+  'consumer insights':        'culture',
+  'search & seo':             'commerce',
+  'sales & revenue':          'commerce',
+  'marketing & performance':  'communication',
+  'social media intelligence':'communication',
+  'content performance':      'content',
+  'data intelligence':        'content',
 };
 
-/* Distribute charts across the 4 buckets.
-   ~40 % go to the primary bucket, ~20 % each to the rest.
-   If there are ≤ 4 charts they all land in the primary bucket. */
+/* Distribute charts using their pre-assigned chart.bucket field.
+   Falls back to primaryBucket for any chart that has no bucket tag. */
 function assignChartsToBuckets(charts, primaryBucket) {
-  const allBuckets  = ['content', 'commerce', 'communication', 'culture'];
-  const ordered     = [primaryBucket, ...allBuckets.filter(b => b !== primaryBucket)];
-  const result      = { content: [], commerce: [], communication: [], culture: [] };
-
-  if (charts.length === 0) return result;
-  if (charts.length <= 4)  { result[primaryBucket] = charts; return result; }
-
-  const primaryCount = Math.max(1, Math.ceil(charts.length * 0.4));
-  const remaining    = charts.length - primaryCount;
-  const perOther     = Math.floor(remaining / 3);
-  const extras       = remaining - perOther * 3;
-
-  let idx = 0;
-  ordered.forEach((bucket, bi) => {
-    const count = bi === 0 ? primaryCount : perOther + (bi - 1 < extras ? 1 : 0);
-    result[bucket] = charts.slice(idx, idx + count);
-    idx += count;
+  const result = { content: [], commerce: [], communication: [], culture: [] };
+  charts.forEach(c => {
+    const b = c.bucket && result[c.bucket] !== undefined ? c.bucket : primaryBucket;
+    result[b].push(c);
   });
-
   return result;
 }
 
@@ -343,7 +345,8 @@ function AnalysisDetail({ id }) {
         ) : (
           <div className="insights-grid">
             {activeCharts.map((chart, i) => {
-              const confidence = chart.conviction ?? (78 + (i * 3) % 15);
+              const confidence  = chart.conviction ?? (78 + (i * 3) % 15);
+              const cardSource  = chart.toolLabel || sourceBadge;
               return (
                 <div
                   key={i}
@@ -352,7 +355,7 @@ function AnalysisDetail({ id }) {
                 >
                   {/* Card header */}
                   <div className="ic-header">
-                    <span className="ic-source">{sourceBadge}</span>
+                    <span className="ic-source">{cardSource}</span>
                     <span className="ic-confidence">● {confidence}% confidence</span>
                   </div>
 
