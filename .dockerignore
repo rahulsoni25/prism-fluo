@@ -1,0 +1,16 @@
+# Dependencies — installed fresh inside the image
+node_modules
+
+# Previous build output — rebuilt inside the image
+.next
+
+# Local env files — secrets are injected by Railway at runtime
+.env
+.env.*
+!.env.example
+
+# Dev tooling / editor artefacts
+.git
+.gitignore
+*.md
+.DS_Store
