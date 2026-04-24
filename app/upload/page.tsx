@@ -69,6 +69,28 @@ function buildChartData(chart: ChartSpec, data: any[]) {
   }
 }
 
+// ─── Gemini chart data builder ───────────────────────────────
+const BUCKET_CHART_COLORS: Record<string, string> = {
+  content:       'rgba(37,99,235,0.85)',
+  commerce:      'rgba(5,150,105,0.85)',
+  communication: 'rgba(124,58,237,0.85)',
+  culture:       'rgba(217,119,6,0.85)',
+};
+
+function buildGeminiChartData(type: string, labels: string[], values: number[], bucket: string) {
+  const color = BUCKET_CHART_COLORS[bucket] || 'rgba(37,99,235,0.85)';
+  if (type === 'pie') {
+    return {
+      labels,
+      datasets: [{ data: values, backgroundColor: ['#2563EB','#7C3AED','#059669','#D97706','#DC2626','#0891B2','#9333EA','#16A34A'] }],
+    };
+  }
+  return {
+    labels,
+    datasets: [{ label: 'Audience %', data: values, backgroundColor: color, borderRadius: 6 }],
+  };
+}
+
 // ─── Types ───────────────────────────────────────────────────
 interface FileEntry {
   file: File;
@@ -123,28 +145,83 @@ export default function UploadData() {
     if (!sheets?.length) { addLog(`⚠ No sheets found in "${file.name}"`); return { charts: [], uploadId }; }
 
     updateEntry(entryIdx, { status: 'analyzing' });
-    addLog(`🔍 Analysing ${sheets.length} sheet(s) from "${file.name}"…`);
 
-    const allCharts: ChartSpec[] = [];
+    // ── Pick the best sheet: prefer "ALL ROWS" for GWI, else first sheet ──
+    const preferredSheet =
+      sheets.find((s: any) => /all\s*rows?/i.test(s.sheetName)) ?? sheets[0];
 
-    for (const sheet of sheets.slice(0, 3)) {
-      const dataRes = await fetch(`/api/uploads/${uploadId}/sheets/${encodeURIComponent(sheet.sheetName)}/data`);
-      const data: any[] = await dataRes.json();
-      if (!Array.isArray(data) || data.length === 0) continue;
+    addLog(`🔍 Reading "${preferredSheet.sheetName}" from "${file.name}"…`);
 
-      addLog(`  └─ "${sheet.sheetName}": ${data.length} rows`);
-      const schema = inferSchema(data);
-      const layout = autoGenerateLayout(data, schema);
-      const chartsWithData = layout.charts.map(c => ({
-        ...c,
-        computedChartData: buildChartData(c, data),
-      }));
-      allCharts.push(...chartsWithData);
+    const dataRes = await fetch(
+      `/api/uploads/${uploadId}/sheets/${encodeURIComponent(preferredSheet.sheetName)}/data`,
+    );
+    const rawData: any[] = await dataRes.json();
+
+    if (!Array.isArray(rawData) || rawData.length === 0) {
+      addLog(`⚠ No data in "${preferredSheet.sheetName}"`);
+      return { charts: [], uploadId };
+    }
+    addLog(`  └─ ${rawData.length} rows loaded`);
+
+    // ── 1. Try Gemini 2.5 first ───────────────────────────────
+    addLog('🤖 Sending data to Gemini 2.5 for PRISM analysis…');
+    try {
+      const aiRes = await fetch('/api/ai/analyze-data', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rows:      rawData,
+          sheetName: preferredSheet.sheetName,
+          fileNames: [file.name],
+        }),
+      });
+
+      if (aiRes.ok) {
+        const { insights } = await aiRes.json();
+        if (Array.isArray(insights) && insights.length > 0) {
+          addLog(`✨ Gemini generated ${insights.length} PRISM insights`);
+
+          // Convert Gemini insight cards → ChartSpec with computedChartData
+          const charts: ChartSpec[] = insights.map((ins: any, i: number) => ({
+            id:         `gemini_${entryIdx}_${i}`,
+            type:       ins.type || 'hbar',
+            xCol:       'Attributes',
+            yCol:       'Audience %',
+            title:      ins.title,
+            lbl:        ins.toolLabel || 'GWI',
+            source:     ins.toolLabel || 'GWI',
+            conviction: ins.conviction ?? 88,
+            obs:        ins.obs  ?? '',
+            stat:       ins.stat ?? '',
+            rec:        ins.rec  ?? '',
+            bucket:     ins.bucket || 'content',
+            toolLabel:  ins.toolLabel || 'GWI',
+            computedChartData: ins.chartLabels?.length
+              ? buildGeminiChartData(ins.type, ins.chartLabels, ins.chartValues, ins.bucket)
+              : null,
+          }));
+
+          updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
+          addLog(`✅ "${file.name}" → ${charts.length} insights ready`);
+          return { charts, uploadId };
+        }
+      }
+    } catch (err: any) {
+      addLog(`⚡ Gemini unavailable (${err.message}) — falling back to rule engine`);
     }
 
-    updateEntry(entryIdx, { status: 'done', chartsFound: allCharts.length });
-    addLog(`✅ "${file.name}" → ${allCharts.length} insight${allCharts.length !== 1 ? 's' : ''}`);
-    return { charts: allCharts, uploadId };
+    // ── 2. Fallback: rule-based inference engine ──────────────
+    addLog('⚙️ Running PRISM rule engine…');
+    const schema = inferSchema(rawData);
+    const layout = autoGenerateLayout(rawData, schema);
+    const charts: ChartSpec[] = layout.charts.map(c => ({
+      ...c,
+      computedChartData: buildChartData(c, rawData),
+    }));
+
+    updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
+    addLog(`✅ "${file.name}" → ${charts.length} insights (rule engine)`);
+    return { charts, uploadId };
   }
 
   // ── Process all files → merge → Gemini → save → redirect ──

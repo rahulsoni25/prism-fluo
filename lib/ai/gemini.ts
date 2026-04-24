@@ -1,6 +1,6 @@
 /**
  * lib/ai/gemini.ts
- * Google Gemini client for AI-powered insight title generation.
+ * Google Gemini client — insight titles, narratives, and full PRISM analysis.
  * Falls back gracefully if GEMINI_API_KEY is not set.
  */
 
@@ -17,6 +17,118 @@ async function getGenAI() {
     _genAI = null;
   }
   return _genAI;
+}
+
+export interface GeminiInsightCard {
+  title: string;
+  bucket: 'content' | 'commerce' | 'communication' | 'culture';
+  type: 'hbar' | 'bar' | 'pie' | 'line';
+  conviction: number;
+  obs: string;
+  stat: string;
+  rec: string;
+  toolLabel: string;
+  chartLabels: string[];
+  chartValues: number[];
+}
+
+/**
+ * Primary PRISM analysis — Gemini 2.5 Flash reads a structured data
+ * summary and returns 8 fully-formed insight cards spread across the
+ * four PRISM buckets.
+ */
+export async function analyzeDataForPRISM(
+  dataSummary: string,
+  context: string,
+  toolLabel: string = 'GWI',
+): Promise<GeminiInsightCard[]> {
+  const genAI = await getGenAI();
+  if (!genAI) return [];
+
+  // Try 2.5 Flash first, fall back to 1.5 Flash
+  let model: any;
+  try {
+    model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' });
+  } catch {
+    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  }
+
+  const prompt = `You are a senior strategic insights analyst at PRISM, a leading consumer intelligence consultancy.
+
+DATASET: ${context}
+
+${dataSummary}
+
+━━ GWI DATA GLOSSARY ━━
+• Index score: 100 = market average. Index 150 = audience is 50% MORE likely than average to have this attribute. Index 200 = twice as likely. Focus on Index >130 for strong signals.
+• Audience % = proportion of YOUR target audience with this attribute
+• Data point % = proportion of general population with this attribute
+• Universe = estimated population size with this attribute in India
+
+━━ YOUR TASK ━━
+Generate exactly 8 strategic insight cards — 2 per PRISM bucket — based on the highest-Index, most commercially significant findings in the data.
+
+PRISM BUCKET DEFINITIONS:
+• "content"       — Digital media consumption, content formats, device ownership, owned media engagement
+• "commerce"      — Purchase behavior, transaction preferences, price/value trade-offs, retail channels, income signals
+• "communication" — Brand discovery, advertising receptivity, brand relationships, word-of-mouth, advocacy
+• "culture"       — Lifestyle indicators, household structure, demographics, personal values, life stage
+
+RULES:
+• Each bucket must have exactly 2 insights (total = 8)
+• Pick findings with Index >130 whenever possible — these are the strongest audience signals
+• Titles must be sharp, ≤12 words, reference actual data (e.g. "197 Index: Gamers Over-Index 2× on Device Ownership")
+• obs: 2 sentences, cite specific numbers (%, Index, Universe size)
+• stat: punchy 1-line highlight (e.g. "Index 197 · 2.3× market average")
+• rec: one specific, actionable recommendation starting with a verb
+• chartLabels: up to 8 attribute names from the data (for bar/hbar charts)
+• chartValues: corresponding Audience % values — use actual numbers from the data
+
+Return ONLY valid JSON (no markdown, no explanation):
+[
+  {
+    "title": "string",
+    "bucket": "content|commerce|communication|culture",
+    "type": "hbar|bar|pie",
+    "conviction": 90,
+    "obs": "string",
+    "stat": "string",
+    "rec": "string",
+    "chartLabels": ["label1","label2"],
+    "chartValues": [42.5, 38.1]
+  }
+]`;
+
+  try {
+    const result  = await model.generateContent(prompt);
+    const rawText = result.response.text().trim();
+
+    // Strip markdown fences if present
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const match   = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('No JSON array found in response');
+
+    const parsed: any[] = JSON.parse(match[0]);
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
+
+    // Normalise and attach toolLabel
+    return parsed.slice(0, 8).map(c => ({
+      title:       String(c.title  || 'Untitled Insight'),
+      bucket:      (['content','commerce','communication','culture'].includes(c.bucket) ? c.bucket : 'content') as GeminiInsightCard['bucket'],
+      type:        (['hbar','bar','pie','line'].includes(c.type) ? c.type : 'hbar') as GeminiInsightCard['type'],
+      conviction:  Number(c.conviction) || 88,
+      obs:         String(c.obs  || ''),
+      stat:        String(c.stat || ''),
+      rec:         String(c.rec  || ''),
+      toolLabel,
+      chartLabels: Array.isArray(c.chartLabels) ? c.chartLabels.map(String) : [],
+      chartValues: Array.isArray(c.chartValues) ? c.chartValues.map(Number)  : [],
+    }));
+
+  } catch (err) {
+    console.warn('[Gemini 2.5] analyzeDataForPRISM failed:', (err as Error).message);
+    return [];
+  }
 }
 
 export interface ChartSpecInput {
