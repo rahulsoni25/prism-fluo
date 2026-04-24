@@ -1,0 +1,6 @@
+# nixpacks.toml
+# Tells Railway's NIXPACKS builder to use Node.js 20 (LTS).
+# Next.js 16 requires Node >= 20.9.0; Railway defaults to Node 18 otherwise.
+
+[variables]
+NIXPACKS_NODE_VERSION = "20"
