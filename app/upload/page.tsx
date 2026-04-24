@@ -77,17 +77,58 @@ const BUCKET_CHART_COLORS: Record<string, string> = {
   culture:       'rgba(217,119,6,0.85)',
 };
 
-function buildGeminiChartData(type: string, labels: string[], values: number[], bucket: string) {
-  const color = BUCKET_CHART_COLORS[bucket] || 'rgba(37,99,235,0.85)';
+const BUCKET_CHART_BORDERS: Record<string, string> = {
+  content:       'rgba(30,58,138,1)',
+  commerce:      'rgba(6,95,70,1)',
+  communication: 'rgba(76,29,149,1)',
+  culture:       'rgba(120,53,15,1)',
+};
+
+function buildGeminiChartData(
+  type:    string,
+  labels:  string[],
+  values:  number[],
+  bucket:  string,
+  values2?: number[],
+) {
+  const bg     = BUCKET_CHART_COLORS[bucket]  || 'rgba(37,99,235,0.85)';
+  const border = BUCKET_CHART_BORDERS[bucket] || 'rgba(37,99,235,1)';
+
   if (type === 'pie') {
     return {
       labels,
-      datasets: [{ data: values, backgroundColor: ['#2563EB','#7C3AED','#059669','#D97706','#DC2626','#0891B2','#9333EA','#16A34A'] }],
+      datasets: [{
+        data: values,
+        backgroundColor: ['#1E3A8A','#4C1D95','#065F46','#78350F','#1D4ED8','#7C3AED','#059669','#D97706'],
+        borderWidth: 2, borderColor: '#fff',
+      }],
     };
   }
+
+  if (type === 'scatter' && values2 && values2.length === values.length) {
+    // X = Audience %, Y = Index multiplier
+    return {
+      datasets: [{
+        label: 'Audience % vs Likelihood',
+        data: labels.map((lbl, i) => ({ x: values[i], y: values2[i], label: lbl })),
+        backgroundColor: bg,
+        pointRadius: 7,
+        pointHoverRadius: 9,
+      }],
+    };
+  }
+
+  // bar / hbar
   return {
     labels,
-    datasets: [{ label: 'Audience %', data: values, backgroundColor: color, borderRadius: 6 }],
+    datasets: [{
+      label: 'Audience %',
+      data: values,
+      backgroundColor: bg,
+      borderColor: border,
+      borderWidth: 1,
+      borderRadius: 3,
+    }],
   };
 }
 
@@ -197,7 +238,7 @@ export default function UploadData() {
             bucket:     ins.bucket || 'content',
             toolLabel:  ins.toolLabel || 'GWI',
             computedChartData: ins.chartLabels?.length
-              ? buildGeminiChartData(ins.type, ins.chartLabels, ins.chartValues, ins.bucket)
+              ? buildGeminiChartData(ins.type, ins.chartLabels, ins.chartValues, ins.bucket, ins.chartValues2)
               : null,
           }));
 
