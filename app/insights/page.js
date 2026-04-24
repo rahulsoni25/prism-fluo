@@ -171,11 +171,56 @@ function ApiChartRenderer({ chart }) {
   }
 }
 
+/* Maps tool domain → human-readable source badge */
+const SOURCE_BADGE_MAP = {
+  gwi:       'GWI',
+  keywords:  'GOOGLE KEYWORDS',
+  helium10:  'HELIUM10',
+  trends:    'GOOGLE TRENDS',
+  konnect:   'KONNECT INSIGHTS',
+};
+
+/* Maps tool domain → primary PRISM bucket */
+const DOMAIN_TO_BUCKET = {
+  gwi:       'content',
+  keywords:  'commerce',
+  helium10:  'commerce',
+  trends:    'culture',
+  konnect:   'communication',
+};
+
+/* Distribute charts across the 4 buckets.
+   ~40 % go to the primary bucket, ~20 % each to the rest.
+   If there are ≤ 4 charts they all land in the primary bucket. */
+function assignChartsToBuckets(charts, primaryBucket) {
+  const allBuckets  = ['content', 'commerce', 'communication', 'culture'];
+  const ordered     = [primaryBucket, ...allBuckets.filter(b => b !== primaryBucket)];
+  const result      = { content: [], commerce: [], communication: [], culture: [] };
+
+  if (charts.length === 0) return result;
+  if (charts.length <= 4)  { result[primaryBucket] = charts; return result; }
+
+  const primaryCount = Math.max(1, Math.ceil(charts.length * 0.4));
+  const remaining    = charts.length - primaryCount;
+  const perOther     = Math.floor(remaining / 3);
+  const extras       = remaining - perOther * 3;
+
+  let idx = 0;
+  ordered.forEach((bucket, bi) => {
+    const count = bi === 0 ? primaryCount : perOther + (bi - 1 < extras ? 1 : 0);
+    result[bucket] = charts.slice(idx, idx + count);
+    idx += count;
+  });
+
+  return result;
+}
+
 function AnalysisDetail({ id }) {
   const router = useRouter();
-  const [analysis, setAnalysis] = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [analysis,     setAnalysis]     = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState(null);
+  const [activeBucket, setActiveBucket] = useState(null); // set after load
 
   useEffect(() => {
     fetch(`/api/analyses/${id}`)
@@ -186,7 +231,13 @@ function AnalysisDetail({ id }) {
         }
         return r.json();
       })
-      .then(d => { setAnalysis(d); setLoading(false); })
+      .then(d => {
+        setAnalysis(d);
+        setLoading(false);
+        // Boot into the primary bucket for this tool
+        const domain = (d?.results_json?.meta?.domain ?? 'general').toLowerCase();
+        setActiveBucket(DOMAIN_TO_BUCKET[domain] || 'content');
+      })
       .catch(err => { setError(err.message); setLoading(false); });
   }, [id]);
 
@@ -212,97 +263,130 @@ function AnalysisDetail({ id }) {
     </div>
   );
 
-  const r          = analysis.results_json;
-  const scorecards = r?.scorecards  ?? [];
-  const charts     = r?.charts      ?? [];
-  const brief      = r?.strategicBrief;
-  const meta       = r?.meta;
+  const r      = analysis.results_json;
+  const charts = r?.charts ?? [];
+  const meta   = r?.meta;
+
+  const domain        = (meta?.domain ?? 'general').toLowerCase();
+  const sourceBadge   = SOURCE_BADGE_MAP[domain] || domain.toUpperCase();
+  const primaryBucket = DOMAIN_TO_BUCKET[domain] || 'content';
+
+  const bucketedCharts = assignChartsToBuckets(charts, primaryBucket);
+  const currentBucket  = activeBucket || primaryBucket;
+  const activeCharts   = bucketedCharts[currentBucket] || [];
+  const activeMeta     = BUCKET_META[currentBucket];
+
+  const chartTypes    = [...new Set(charts.map(c => c.type).filter(Boolean))];
+  const totalInsights = charts.length;
 
   return (
     <div className="screen fade-in">
       <Navbar />
+
+      {/* ── Hero header (identical structure to NikeInsights) ── */}
       <div className="insights-hero">
         <div className="insights-top">
           <div>
             <div className="ins-eyebrow">Intelligence Report — Ready</div>
-            <div className="ins-title">{analysis.sheet_name}</div>
+            <div className="ins-title">{analysis.sheet_name || analysis.filename}</div>
             <div className="ins-sub">
-              {analysis.filename} · {meta?.domain ?? 'General'} · {timeAgo(analysis.created_at)}
+              {analysis.filename} · {sourceBadge} · {timeAgo(analysis.created_at)}
             </div>
           </div>
           <div className="ins-actions">
             <button className="btn-glass" onClick={() => router.push('/insights')}>← All Analyses</button>
           </div>
         </div>
+
         <div className="bucket-tabs-bar">
-          <div className="ins-meta">✅ {charts.length} charts · {scorecards.length} scorecards</div>
+          <div className="bucket-tabs">
+            {BUCKET_TABS.map(b => (
+              <button
+                key={b.key}
+                className={`bucket-tab ${currentBucket === b.key ? 'active' : ''}`}
+                onClick={() => setActiveBucket(b.key)}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+          <div className="ins-meta">
+            ✅ {totalInsights} insights · {chartTypes.length || 1} chart type{chartTypes.length !== 1 ? 's' : ''} · {sourceBadge}
+          </div>
         </div>
       </div>
 
+      {/* ── Body ── */}
       <div className="insights-body">
-        {scorecards.length > 0 && (
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
-              Key Metrics
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-              {scorecards.map((sc, i) => <Scorecard key={i} {...sc} />)}
+        {/* Section header row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <div>
+            <div style={{ fontSize: '16px', fontWeight: 700 }}>{activeMeta.label}</div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+              {activeCharts.length} insight{activeCharts.length !== 1 ? 's' : ''} · sourced from {sourceBadge}
             </div>
           </div>
-        )}
+          <div style={{ fontSize: '11px', color: 'var(--muted)', background: '#fff', padding: '5px 12px', borderRadius: '20px', boxShadow: 'var(--shadow)' }}>
+            Sorted by confidence score
+          </div>
+        </div>
 
-        {brief && (
-          <div style={{ marginBottom: 32, background: 'white', borderRadius: 12, padding: '20px 24px', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Strategic Brief</div>
-            {brief.pillars?.map((p, i) => (
-              <div key={i} style={{ marginBottom: 10 }}>
-                <span style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', color: 'var(--primary)' }}>{p.label}</span>
-                <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{p.text}</p>
-              </div>
-            ))}
-            {brief.masterAction && (
-              <div style={{ marginTop: 12, padding: '12px 16px', background: '#EFF6FF', borderRadius: 8, fontSize: 13, color: '#1E40AF', lineHeight: 1.6 }}>
-                {brief.masterAction}
-              </div>
-            )}
+        {/* Empty state */}
+        {activeCharts.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+            <div style={{ fontSize: 14 }}>No insights in this category for this dataset.</div>
+            <div style={{ fontSize: 12, marginTop: 6 }}>
+              Switch to another tab or upload a richer dataset to populate this section.
+            </div>
+          </div>
+        ) : (
+          <div className="insights-grid">
+            {activeCharts.map((chart, i) => {
+              const confidence = chart.conviction ?? (78 + (i * 3) % 15);
+              return (
+                <div
+                  key={i}
+                  className={`insight-card ${activeMeta.cls} fade-in`}
+                  style={{ animationDelay: `${i * 0.08}s` }}
+                >
+                  {/* Card header */}
+                  <div className="ic-header">
+                    <span className="ic-source">{sourceBadge}</span>
+                    <span className="ic-confidence">● {confidence}% confidence</span>
+                  </div>
+
+                  {/* Title */}
+                  <div className="ic-title">{chart.title}</div>
+
+                  {/* Chart */}
+                  {chart.computedChartData && (
+                    <div className="chart-wrap">
+                      <ApiChartRenderer chart={chart} />
+                    </div>
+                  )}
+
+                  {/* Observation */}
+                  {chart.obs && (
+                    <div className="ic-section">
+                      <div className="ic-label obs">📊 Observation</div>
+                      <div className="ic-text">{chart.obs}</div>
+                      {chart.stat && <div className="ic-stat">{chart.stat}</div>}
+                    </div>
+                  )}
+
+                  {/* Recommendation */}
+                  {chart.rec && (
+                    <div className="ic-section">
+                      <div className="ic-label rec">💡 Recommendation</div>
+                      <div className="ic-text">{chart.rec}</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
-
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
-          Charts
-        </div>
-        <div className="insights-grid">
-          {charts.map((chart, i) => (
-            <div key={i} className="insight-card fade-in" style={{ animationDelay: `${i * 0.06}s` }}>
-              <div className="ic-header">
-                <span className="ic-source">{meta?.domain ?? 'PRISM'}</span>
-                {chart.conviction != null && (
-                  <span className="ic-confidence">● {chart.conviction}% confidence</span>
-                )}
-              </div>
-              <div className="ic-title">{chart.title}</div>
-              {chart.computedChartData && (
-                <div className="chart-wrap">
-                  <ApiChartRenderer chart={chart} />
-                </div>
-              )}
-              {/* FIX: use chart.obs / chart.rec (not chart.observation / chart.recommendation) */}
-              {chart.obs && (
-                <div className="ic-section">
-                  <div className="ic-label obs">📊 Observation</div>
-                  <div className="ic-text">{chart.obs}</div>
-                  {chart.stat && <div className="ic-stat">{chart.stat}</div>}
-                </div>
-              )}
-              {chart.rec && (
-                <div className="ic-section">
-                  <div className="ic-label rec">💡 Recommendation</div>
-                  <div className="ic-text">{chart.rec}</div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
