@@ -96,7 +96,7 @@ ${slotBlock}
 ━━ ANTI-HALLUCINATION RULE — READ THIS FIRST ━━
 Every single number, percentage, or statistic in your observation MUST come directly from the slot data above.
 Do NOT invent, guess, round differently, or add any number that is not in the slot.
-If a slot says "${r => r}3.45× the national average", you can write "about 3 and a half times more likely".
+If a slot says "3.45× the national average", you can write "about 3 and a half times more likely".
 If a slot says "21.8% of this audience", you can write "roughly 1 in 5 people" or "about 22 out of every 100".
 Translate numbers into plain English — but stay accurate to what the data actually says.
 

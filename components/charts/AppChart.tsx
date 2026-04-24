@@ -137,10 +137,36 @@ export function ChartScatter({ data, extraOptions = {} }: ChartProps) {
     ...BASE,
     aspectRatio: 2.1,
     scales: {
-      x: { ...XA, grid: { color: '#EEF2F7', display: true } },
-      y: { ...YA }
+      x: {
+        ...XA,
+        grid: { color: '#EEF2F7', display: true },
+        title: { display: true, text: 'Audience %', font: { size: 10, family: 'Inter' }, color: '#94A3B8' },
+      },
+      y: {
+        ...YA,
+        title: { display: true, text: 'Likelihood (×avg)', font: { size: 10, family: 'Inter' }, color: '#94A3B8' },
+      },
     },
-    ...extraOptions
+    plugins: {
+      ...BASE.plugins,
+      tooltip: {
+        ...TIP,
+        callbacks: {
+          title: (items: any[]) => {
+            const raw = items[0]?.raw as any;
+            return raw?.label ?? '';
+          },
+          label: (item: any) => {
+            const raw = item.raw as any;
+            return [
+              `Audience: ${(raw?.x ?? 0).toFixed(1)}%`,
+              `Likelihood: ${(raw?.y ?? 0).toFixed(2)}× avg`,
+            ];
+          },
+        },
+      },
+    },
+    ...extraOptions,
   };
   return <Scatter data={data} options={options} />;
 }

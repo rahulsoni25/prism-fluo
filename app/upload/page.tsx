@@ -293,26 +293,31 @@ export default function UploadData() {
       setBucketPreview(preview);
       addLog(`📊 PRISM distribution — Content: ${preview.content} · Commerce: ${preview.commerce} · Comms: ${preview.communication} · Culture: ${preview.culture}`);
 
-      // Optional Gemini title enhancement
+      // Optional Gemini title enhancement — skip if charts already came from Gemini 2.5
       let finalCharts = allCharts;
-      try {
-        addLog('🤖 Enhancing titles with Gemini AI…');
-        const eRes = await fetch('/api/ai/enhance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            charts: allCharts.map(c => ({ title: c.title, type: c.type, obs: (c as any).obs })),
-            context: `PRISM multi-source analysis — ${entries.map(e => e.file.name).join(', ')}`,
-          }),
-        });
-        if (eRes.ok) {
-          const { titles } = await eRes.json();
-          if (Array.isArray(titles) && titles.length === allCharts.length) {
-            finalCharts = allCharts.map((c, i) => ({ ...c, title: titles[i] || c.title }));
-            addLog('✨ AI titles applied.');
+      const fromGemini = allCharts.every(c => c.id?.startsWith('gemini_'));
+      if (fromGemini) {
+        addLog('✨ Gemini 2.5 insights used — skipping redundant enhance step.');
+      } else {
+        try {
+          addLog('🤖 Enhancing titles with Gemini AI…');
+          const eRes = await fetch('/api/ai/enhance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              charts: allCharts.map(c => ({ title: c.title, type: c.type, obs: (c as any).obs })),
+              context: `PRISM multi-source analysis — ${entries.map(e => e.file.name).join(', ')}`,
+            }),
+          });
+          if (eRes.ok) {
+            const { titles } = await eRes.json();
+            if (Array.isArray(titles) && titles.length === allCharts.length) {
+              finalCharts = allCharts.map((c, i) => ({ ...c, title: titles[i] || c.title }));
+              addLog('✨ AI titles applied.');
+            }
           }
-        }
-      } catch { addLog('⚡ Gemini unavailable — using auto titles.'); }
+        } catch { addLog('⚡ Gemini unavailable — using auto titles.'); }
+      }
 
       // Save combined analysis (use uploadId from first file — no re-upload needed)
       addLog('💾 Saving PRISM Intelligence Report…');

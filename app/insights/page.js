@@ -174,11 +174,13 @@ function ApiChartRenderer({ chart }) {
 /* Maps tool domain → human-readable source badge */
 const SOURCE_BADGE_MAP = {
   // handler.ts tool keys
-  gwi:       'GWI',
-  keywords:  'GOOGLE KEYWORDS',
-  helium10:  'HELIUM10',
-  trends:    'GOOGLE TRENDS',
-  konnect:   'KONNECT INSIGHTS',
+  gwi:                'GWI',
+  'gwi household':    'GWI HOUSEHOLD',
+  'gwi_household':    'GWI HOUSEHOLD',
+  keywords:           'GOOGLE KEYWORDS',
+  helium10:           'HELIUM10',
+  trends:             'GOOGLE TRENDS',
+  konnect:            'KONNECT INSIGHTS',
   // inference.ts domain labels
   'consumer insights':        'GWI',
   'search & seo':             'GOOGLE KEYWORDS',
