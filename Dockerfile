@@ -76,6 +76,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static    ./.next/static
 # It uses `pg` which is available via the standalone node_modules.
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 
+# Schema SQL read by scripts/init_db.mjs at startup.
+# Without this, init_db crashes with ENOENT and the container never serves.
+COPY --from=builder --chown=nextjs:nodejs /app/lib/db/schema.sql ./lib/db/schema.sql
+
 USER nextjs
 
 EXPOSE 3000
