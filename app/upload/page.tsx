@@ -267,8 +267,20 @@ export default function UploadData() {
       return { charts: [], uploadId };
     }
 
+    // ── Detect GWI-format data (structured survey rows from DB) ──
+    // GWI rows have index_score / time_bucket / audience_pct fields.
+    // The generic rule engine was built for sales/marketing data and produces
+    // nonsense "tailspin" / "Convergence Zone" cards on GWI columns.
+    // Block it for GWI data — Gemini 2.5 is the ONLY valid analyser for these.
+    const isGwiData = rawData.length > 0 && (
+      'index_score' in rawData[0] ||
+      'time_bucket' in rawData[0] ||
+      ('audience_pct' in rawData[0] && 'universe' in rawData[0])
+    );
+
     // ── TABULAR BRANCH (Excel / CSV) — try Gemini 2.5 first ──────
     addLog('🤖 Sending data to Gemini 2.5 for PRISM analysis…');
+    let geminiError = '';
     try {
       const aiRes = await fetch('/api/ai/analyze-data', {
         method:  'POST',
@@ -280,7 +292,12 @@ export default function UploadData() {
         }),
       });
 
-      if (aiRes.ok) {
+      if (!aiRes.ok) {
+        const errBody = await aiRes.json().catch(() => ({}));
+        geminiError = (errBody as any).error ?? `HTTP ${aiRes.status}`;
+        addLog(`⚠ Gemini returned ${aiRes.status}: ${geminiError}`);
+        if (aiRes.status === 503) addLog('   ↳ GEMINI_API_KEY may not be set on the server');
+      } else {
         const { insights } = await aiRes.json();
         if (Array.isArray(insights) && insights.length > 0) {
           addLog(`✨ Gemini generated ${insights.length} PRISM insights`);
@@ -288,13 +305,25 @@ export default function UploadData() {
           updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
           addLog(`✅ "${file.name}" → ${charts.length} insights ready`);
           return { charts, uploadId };
+        } else {
+          geminiError = 'Gemini returned 0 insights';
+          addLog(`⚠ ${geminiError}`);
         }
       }
     } catch (err: any) {
-      addLog(`⚡ Gemini unavailable (${err.message}) — falling back to rule engine`);
+      geminiError = err.message;
+      addLog(`⚡ Gemini error: ${geminiError}`);
     }
 
-    // ── 2. Fallback: rule-based inference engine (tabular only) ──
+    // ── Block rule engine for GWI data — it produces garbage ──
+    if (isGwiData) {
+      const msg = `Gemini 2.5 is required for GWI data but failed (${geminiError}). Check that GEMINI_API_KEY is set correctly on Railway.`;
+      addLog(`❌ ${msg}`);
+      updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: msg });
+      return { charts: [], uploadId };
+    }
+
+    // ── 2. Fallback: rule-based inference engine (non-GWI tabular data only) ──
     addLog('⚙️ Running PRISM rule engine…');
     const schema = inferSchema(rawData);
     const layout = autoGenerateLayout(rawData, schema);
