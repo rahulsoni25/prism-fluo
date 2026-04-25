@@ -1,6 +1,13 @@
 # nixpacks.toml
-# Tells Railway's NIXPACKS builder to use Node.js 20 (LTS).
-# Next.js 16 requires Node >= 20.9.0; Railway defaults to Node 18 otherwise.
+# Pin Node.js 22 LTS — satisfies all current engine requirements:
+#   eslint-visitor-keys requires >=20.19.0 || >=22.13.0 (Node 20 is at 20.18.1 — fails)
+#   Next.js requires >= 18.17.0
+# Node 22 is LTS as of Oct 2024 and passes all constraints.
+#
+# DO NOT use --prefer-offline in buildCommand.
+# Nixpacks mounts /app/node_modules/.cache via Docker BuildKit cache.
+# npm --prefer-offline tries to rmdir that path → EBUSY deadlock.
+# Plain `npm ci` respects the mounted cache without touching it.
 
 [variables]
-NIXPACKS_NODE_VERSION = "20"
+NIXPACKS_NODE_VERSION = "22"

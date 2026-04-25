@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm ci --prefer-offline && npm run build"
+buildCommand = "npm ci && npm run build"
 
 [deploy]
 # Init DB tables (idempotent IF NOT EXISTS), then start the app
