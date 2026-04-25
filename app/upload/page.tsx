@@ -132,6 +132,28 @@ function buildGeminiChartData(
   };
 }
 
+// ─── Gemini insight cards → ChartSpec[] ─────────────────────
+function insightsToCharts(insights: any[], entryIdx: number): ChartSpec[] {
+  return insights.map((ins: any, i: number) => ({
+    id:         `gemini_${entryIdx}_${i}`,
+    type:       ins.type || 'hbar',
+    xCol:       'Attributes',
+    yCol:       'Audience %',
+    title:      ins.title,
+    lbl:        ins.toolLabel || 'PRISM',
+    source:     ins.toolLabel || 'PRISM',
+    conviction: ins.conviction ?? 85,
+    obs:        ins.obs  ?? '',
+    stat:       ins.stat ?? '',
+    rec:        ins.rec  ?? '',
+    bucket:     ins.bucket || 'content',
+    toolLabel:  ins.toolLabel || 'PRISM',
+    computedChartData: ins.chartLabels?.length
+      ? buildGeminiChartData(ins.type, ins.chartLabels, ins.chartValues, ins.bucket, ins.chartValues2)
+      : null,
+  }));
+}
+
 // ─── Types ───────────────────────────────────────────────────
 interface FileEntry {
   file: File;
@@ -204,7 +226,48 @@ export default function UploadData() {
     }
     addLog(`  └─ ${rawData.length} rows loaded`);
 
-    // ── 1. Try Gemini 2.5 first ───────────────────────────────
+    const isPdf = file.name.toLowerCase().endsWith('.pdf');
+
+    // ── PDF BRANCH — send raw text to Gemini free-text analysis ──
+    if (isPdf) {
+      addLog('📄 PDF detected — extracting text for Gemini analysis…');
+      try {
+        // rawData rows are { text: "line..." } objects from the PDF parser
+        const fullText = rawData
+          .map((r: any) => r.text ?? Object.values(r).join(' '))
+          .filter(Boolean)
+          .join('\n');
+
+        if (fullText.trim().length >= 50) {
+          addLog('🤖 Sending PDF text to Gemini 2.5 for PRISM analysis…');
+          const aiRes = await fetch('/api/ai/analyze-pdf', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: fullText, filename: file.name }),
+          });
+
+          const pdfBody = await aiRes.json().catch(() => ({}));
+          const insights = (pdfBody as any).insights;
+          if (aiRes.ok && Array.isArray(insights) && insights.length > 0) {
+            addLog(`✨ Gemini generated ${insights.length} PRISM insights from PDF`);
+            const charts: ChartSpec[] = insightsToCharts(insights, entryIdx);
+            updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
+            addLog(`✅ "${file.name}" → ${charts.length} insights ready`);
+            return { charts, uploadId };
+          }
+          addLog(`⚠ Gemini PDF analysis returned no insights (${(pdfBody as any).error ?? aiRes.status})`);
+        } else {
+          addLog('⚠ Not enough text extracted from PDF to analyse');
+        }
+      } catch (err: any) {
+        addLog(`⚡ Gemini PDF analysis failed (${err.message})`);
+      }
+      // PDF fallback — no rule engine (it produces garbage on PDF text rows)
+      updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: 'Could not extract insights from this PDF. Try uploading an Excel or CSV file instead.' });
+      return { charts: [], uploadId };
+    }
+
+    // ── TABULAR BRANCH (Excel / CSV) — try Gemini 2.5 first ──────
     addLog('🤖 Sending data to Gemini 2.5 for PRISM analysis…');
     try {
       const aiRes = await fetch('/api/ai/analyze-data', {
@@ -221,27 +284,7 @@ export default function UploadData() {
         const { insights } = await aiRes.json();
         if (Array.isArray(insights) && insights.length > 0) {
           addLog(`✨ Gemini generated ${insights.length} PRISM insights`);
-
-          // Convert Gemini insight cards → ChartSpec with computedChartData
-          const charts: ChartSpec[] = insights.map((ins: any, i: number) => ({
-            id:         `gemini_${entryIdx}_${i}`,
-            type:       ins.type || 'hbar',
-            xCol:       'Attributes',
-            yCol:       'Audience %',
-            title:      ins.title,
-            lbl:        ins.toolLabel || 'GWI',
-            source:     ins.toolLabel || 'GWI',
-            conviction: ins.conviction ?? 88,
-            obs:        ins.obs  ?? '',
-            stat:       ins.stat ?? '',
-            rec:        ins.rec  ?? '',
-            bucket:     ins.bucket || 'content',
-            toolLabel:  ins.toolLabel || 'GWI',
-            computedChartData: ins.chartLabels?.length
-              ? buildGeminiChartData(ins.type, ins.chartLabels, ins.chartValues, ins.bucket, ins.chartValues2)
-              : null,
-          }));
-
+          const charts: ChartSpec[] = insightsToCharts(insights, entryIdx);
           updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
           addLog(`✅ "${file.name}" → ${charts.length} insights ready`);
           return { charts, uploadId };
@@ -251,7 +294,7 @@ export default function UploadData() {
       addLog(`⚡ Gemini unavailable (${err.message}) — falling back to rule engine`);
     }
 
-    // ── 2. Fallback: rule-based inference engine ──────────────
+    // ── 2. Fallback: rule-based inference engine (tabular only) ──
     addLog('⚙️ Running PRISM rule engine…');
     const schema = inferSchema(rawData);
     const layout = autoGenerateLayout(rawData, schema);

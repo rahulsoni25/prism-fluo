@@ -93,6 +93,13 @@ DATASET: ${context}
 
 ${slotBlock}
 
+━━ ONE CARD PER SLOT — UNIQUENESS RULE ━━
+You have ${slots.length} slots above. Write EXACTLY ${slots.length} cards — one card per slot, in order.
+Card 1 → SLOT 1 only. Card 2 → SLOT 2 only. Card 3 → SLOT 3 only. And so on.
+Do NOT mix findings from different slots into a single card.
+Do NOT repeat the same finding, stat, or sentence across any two cards.
+Before returning, verify: no two cards share the same opening sentence, same stat, or same recommendation platform.
+
 ━━ ANTI-HALLUCINATION RULE — READ THIS FIRST ━━
 Every single number, percentage, or statistic in your observation MUST come directly from the slot data above.
 Do NOT invent, guess, round differently, or add any number that is not in the slot.
@@ -107,7 +114,7 @@ Write like a brilliant colleague explaining a finding over coffee — not a cons
 • Banned words: over-index, leverage, cohort, synergy, touchpoint, whitespace, holistic, robust, utilize, paradigm, seamless
 • Use: people, families, buyers, young Indians, 1 in 3, nearly twice, here is the thing, think about this
 
-━━ McKINSEY CARD FORMAT — follow exactly ━━
+━━ CARD FORMAT — follow exactly ━━
 
 TITLE (max 14 words):
 Write like a great magazine cover line. Lead with the surprising finding. Include one plain-English number.
@@ -115,12 +122,12 @@ Write like a great magazine cover line. Lead with the surprising finding. Includ
 ✅ "India's Full-Price Shoppers Are Nearly Twice as Common as Brands Think"
 ❌ "Consumers Over-Index on Full Price vs Sale Purchase Behaviour"
 
-OBSERVATION — 3 sentences, precise and grounded in slot data only:
-• Sentence 1: Start with "Here's something interesting:" or a punchy surprising fact drawn directly from the highest-index item in the slot.
-• Sentence 2: Give the exact numbers in plain English — reference the specific attributes, percentages, and multipliers from the slot data.
+OBSERVATION — 3 sentences, precise and grounded in this slot's data only:
+• Sentence 1: Start with a punchy surprising fact drawn directly from the highest-index item in THIS slot.
+• Sentence 2: Give the exact numbers in plain English — reference the specific attributes, percentages, and multipliers from THIS slot.
 • Sentence 3: State the strategic so-what for a brand or media team in one clear, direct sentence.
 
-STAT — one crisp number that would make a room go quiet. Derived strictly from the slot data.
+STAT — one crisp number that would make a room go quiet. Derived strictly from THIS slot's data.
 ✅ "Nearly 2 in 3 Indian households in this group prefer local stores over big chains"
 ✅ "Full-price buyers are about 70% more common in this audience than in the average household"
 ❌ "Index 168 · Full Price behaviour" (never write Index numbers raw)
@@ -133,10 +140,10 @@ Name a specific creative angle (real Indian homes, confident buyers, family mome
 ✅ "Brief your creative team to build a CTV campaign on Hotstar showing the pride of smart home ownership, targeting metro India evening audiences."
 
 ━━ CHART DATA ━━
-• chartLabels: use the exact attribute names from the slot (up to 8)
-• chartValues: use exact Audience % values from the slot
+• chartLabels: use the exact attribute names from THIS slot (up to 8)
+• chartValues: use exact Audience % values from THIS slot
 • For scatter: chartLabels = attribute names, chartValues = Audience % (X axis), chartValues2 = Index scores converted to multipliers (Y axis, e.g. Index 197 → 1.97)
-• type: match the chartSuggestion from the slot unless a different type is clearly better
+• type: match the chartSuggestion from THIS slot unless a different type is clearly better
 
 Return ONLY valid JSON — no markdown, no fences, no explanation:
 [
@@ -275,4 +282,118 @@ Return ONLY a valid JSON array, one object per chart:
     console.warn('[Gemini] narratives failed:', (err as Error).message);
   }
   return charts.map(c => ({ obs: c.obs || '', rec: c.rec || '' }));
+}
+
+// ── PDF / free-text analysis ───────────────────────────────────
+
+/**
+ * Reads raw PDF text (no structured rows) and generates 8 PRISM insight cards.
+ * Gemini infers the market, geography, and topic from the document text + filename.
+ * Chart data is extracted from any numbers Gemini finds in the text.
+ */
+export async function analyzeTextForPRISM(
+  text:     string,
+  filename: string,
+): Promise<GeminiInsightCard[]> {
+  const genAI = await getGenAI();
+  if (!genAI || !text.trim()) return [];
+
+  let model: any;
+  try {
+    model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' });
+  } catch {
+    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  }
+
+  // Truncate to ~12 000 chars to stay within token budget
+  const excerpt = text.length > 12000 ? text.slice(0, 12000) + '\n…[truncated]' : text;
+
+  const prompt = `You are a senior Creative Strategist at PRISM, a consumer intelligence firm.
+You have been given a market research PDF report. Your job is to read it carefully and generate 8 insight cards — 2 for each PRISM bucket (Content · Commerce · Communication · Culture).
+
+━━ SOURCE DOCUMENT ━━
+Filename: ${filename}
+Text:
+${excerpt}
+
+━━ PRISM BUCKETS — assign each card to the most relevant bucket ━━
+• content       — media consumption, streaming, screen time, content formats, entertainment
+• commerce      — purchase behaviour, shopping, pricing, brand preference, retailers
+• communication — advertising, discovery, word of mouth, brand perception, social media
+• culture       — demographics, lifestyle, family, values, attitudes, employment, society
+
+━━ CARD RULES ━━
+1. Write EXACTLY 8 cards — 2 per bucket, all 4 buckets must appear.
+2. Each card covers a DIFFERENT finding from the report. No repeats.
+3. Every number, percentage, or statistic MUST come from the document text above. Do not invent figures.
+4. If no numeric data exists for a card, still write the obs/stat/rec in plain English, and use chartLabels: [] chartValues: [].
+
+━━ TONE ━━
+• Plain English. Short sentences. Active voice.
+• Banned words: over-index, leverage, cohort, synergy, touchpoint, holistic, robust, utilize, paradigm, seamless
+• Write like a brilliant colleague, not a consulting report.
+• Audience: brand managers and media planners — 7th-grade readable.
+
+━━ CARD FORMAT ━━
+TITLE (max 14 words): Magazine cover line — surprising finding + one plain-English number.
+OBSERVATION (3 sentences): Surprising hook → exact numbers from the document → strategic so-what.
+STAT: One crisp plain-English number that would make a room go quiet.
+RECOMMENDATION: One sentence to a creative director — name a specific platform, format, and creative angle.
+
+━━ CHART DATA ━━
+• For each card, extract up to 8 labels + values from the relevant section of the document.
+• chartLabels: category/attribute names found in the text
+• chartValues: percentage or numeric values found in the text (as numbers, not strings)
+• If scatter makes sense (two numeric dimensions): fill chartValues2 as well
+• type: choose hbar (horizontal bar, best for lists), bar (vertical), pie (max 6 items, parts of a whole), or scatter
+
+Return ONLY valid JSON — no markdown, no fences, no explanation:
+[
+  {
+    "title": "string",
+    "bucket": "content|commerce|communication|culture",
+    "type": "hbar|bar|pie|scatter",
+    "conviction": 85,
+    "obs": "string",
+    "stat": "string",
+    "rec": "string",
+    "chartLabels": ["label1","label2"],
+    "chartValues": [42.5, 38.1],
+    "chartValues2": []
+  }
+]`;
+
+  try {
+    const result  = await model.generateContent(prompt);
+    const rawText = result.response.text().trim();
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const match   = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('No JSON array in Gemini PDF response');
+
+    const parsed: any[] = JSON.parse(match[0]);
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
+
+    const validBuckets = ['content', 'commerce', 'communication', 'culture'];
+    const validTypes   = ['hbar', 'bar', 'pie', 'scatter'];
+    const toolLabel    = filename.replace(/\.[^.]+$/, '').slice(0, 40);
+
+    return parsed.slice(0, 8).map(c => ({
+      title:        String(c.title  || 'Insight'),
+      bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'content') as GeminiInsightCard['bucket'],
+      type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as GeminiInsightCard['type'],
+      conviction:   Number(c.conviction) || 85,
+      obs:          String(c.obs   || ''),
+      stat:         String(c.stat  || ''),
+      rec:          String(c.rec   || ''),
+      toolLabel,
+      chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
+      chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
+      chartValues2: Array.isArray(c.chartValues2) && (c.chartValues2 as any[]).length > 0
+        ? c.chartValues2.map(Number) : undefined,
+    }));
+
+  } catch (err) {
+    console.warn('[Gemini] analyzeTextForPRISM failed:', (err as Error).message);
+    return [];
+  }
 }

@@ -189,6 +189,10 @@ const SOURCE_BADGE_MAP = {
   'social media intelligence':'SOCIAL DATA',
   'content performance':      'CONTENT DATA',
   'data intelligence':        'PRISM ANALYSIS',
+  'pdf data':                 'PDF REPORT',
+  'pdf_extract':              'PDF REPORT',
+  prism:                      'PRISM ANALYSIS',
+  'prism analysis':           'PRISM ANALYSIS',
   'user & product analytics': 'PRODUCT DATA',
   'multi-source':             'MULTI-SOURCE',
 };
