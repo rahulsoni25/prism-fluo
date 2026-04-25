@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Emit a self-contained server bundle into .next/standalone.
+  // The Dockerfile copies only that folder + .next/static + public
+  // into the final image — no node_modules needed at runtime (~50 MB image).
+  output: 'standalone',
+
   typescript: {
     // ExcelJS types are incompatible with the newer @types/node bundled in
     // Next.js 16 (Buffer<ArrayBuffer> vs Buffer type mismatch).

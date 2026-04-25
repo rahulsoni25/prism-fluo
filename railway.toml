@@ -1,10 +1,13 @@
 [build]
-builder = "NIXPACKS"
-buildCommand = "npm ci && npm run build"
+# Docker builder — deterministic, no hidden Nixpacks install steps,
+# no BuildKit cache mount conflicts. Dockerfile is in the repo root.
+builder = "DOCKERFILE"
+# No buildCommand — the Dockerfile owns every step.
 
 [deploy]
-# Init DB tables (idempotent IF NOT EXISTS), then start the app
-startCommand = "node scripts/init_db.mjs && npm start"
+# standalone output uses node server.js, not `npm start`
+# DB init runs first (idempotent CREATE TABLE IF NOT EXISTS)
+startCommand = "node scripts/init_db.mjs && node server.js"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
@@ -14,7 +17,6 @@ name = "prism-fluo"
 [services.variables]
 NODE_ENV = "production"
 PORT     = "3000"
-# DATABASE_URL must be set in Railway dashboard → Variables
-# Either hard-code it or use the Railway reference syntax:
-#   DATABASE_URL = "${{Postgres.DATABASE_URL}}"
-# PGSSLMODE = "require"   ← set this too if Railway Postgres requires it
+HOSTNAME = "0.0.0.0"
+# DATABASE_URL  — set in Railway dashboard → Variables (do not hard-code here)
+# GEMINI_API_KEY — set in Railway dashboard → Variables
