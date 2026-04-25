@@ -157,10 +157,23 @@ function NikeInsights() {
   );
 }
 
+/* ─── Guard: returns true only when chart data has real points ─── */
+function chartHasContent(data) {
+  if (!data) return false;
+  const datasets = data.datasets;
+  if (!Array.isArray(datasets) || datasets.length === 0) return false;
+  const ds = datasets[0];
+  if (!ds || !Array.isArray(ds.data) || ds.data.length < 2) return false;
+  // Scatter: data is array of {x,y} objects
+  if (typeof ds.data[0] === 'object' && ds.data[0] !== null) return ds.data.length >= 2;
+  // Bar / line / pie: require at least one non-zero value
+  return ds.data.some(v => Number(v) > 0);
+}
+
 /* ─── Saved analysis detail view ─── */
 function ApiChartRenderer({ chart }) {
   const data = chart.computedChartData;
-  if (!data) return null;
+  if (!chartHasContent(data)) return null;
   switch (chart.type) {
     case 'bar':     return <ChartBar     data={data} />;
     case 'line':    return <ChartLine    data={data} />;
@@ -369,8 +382,8 @@ function AnalysisDetail({ id }) {
                   {/* Title */}
                   <div className="ic-title">{chart.title}</div>
 
-                  {/* Chart */}
-                  {chart.computedChartData && (
+                  {/* Chart — only render wrapper when there is real data */}
+                  {chartHasContent(chart.computedChartData) && (
                     <div className="chart-wrap">
                       <ApiChartRenderer chart={chart} />
                     </div>

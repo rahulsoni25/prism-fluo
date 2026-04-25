@@ -134,24 +134,47 @@ function buildGeminiChartData(
 
 // ─── Gemini insight cards → ChartSpec[] ─────────────────────
 function insightsToCharts(insights: any[], entryIdx: number): ChartSpec[] {
-  return insights.map((ins: any, i: number) => ({
-    id:         `gemini_${entryIdx}_${i}`,
-    type:       ins.type || 'hbar',
-    xCol:       'Attributes',
-    yCol:       'Audience %',
-    title:      ins.title,
-    lbl:        ins.toolLabel || 'PRISM',
-    source:     ins.toolLabel || 'PRISM',
-    conviction: ins.conviction ?? 85,
-    obs:        ins.obs  ?? '',
-    stat:       ins.stat ?? '',
-    rec:        ins.rec  ?? '',
-    bucket:     ins.bucket || 'content',
-    toolLabel:  ins.toolLabel || 'PRISM',
-    computedChartData: ins.chartLabels?.length
-      ? buildGeminiChartData(ins.type, ins.chartLabels, ins.chartValues, ins.bucket, ins.chartValues2)
-      : null,
-  }));
+  return insights.map((ins: any, i: number) => {
+    // Strip empty/null labels and match values to remaining labels
+    const rawLabels: string[] = Array.isArray(ins.chartLabels) ? ins.chartLabels : [];
+    const rawValues: number[] = Array.isArray(ins.chartValues) ? ins.chartValues.map(Number) : [];
+    const rawValues2: number[] = Array.isArray(ins.chartValues2) ? ins.chartValues2.map(Number) : [];
+
+    // Only keep positions where label is non-empty AND value is a real number
+    const validPairs = rawLabels
+      .map((lbl: any, idx: number) => ({
+        lbl: String(lbl ?? '').trim(),
+        val: rawValues[idx] ?? 0,
+        val2: rawValues2[idx] ?? 0,
+      }))
+      .filter(p => p.lbl.length > 0 && !isNaN(p.val));
+
+    // Require at least 2 data points with at least one non-zero value
+    const hasChart = validPairs.length >= 2 && validPairs.some(p => p.val > 0);
+
+    const cleanLabels  = validPairs.map(p => p.lbl);
+    const cleanValues  = validPairs.map(p => p.val);
+    const cleanValues2 = rawValues2.length > 0 ? validPairs.map(p => p.val2) : undefined;
+
+    return {
+      id:         `gemini_${entryIdx}_${i}`,
+      type:       ins.type || 'hbar',
+      xCol:       'Attributes',
+      yCol:       'Audience %',
+      title:      ins.title,
+      lbl:        ins.toolLabel || 'PRISM',
+      source:     ins.toolLabel || 'PRISM',
+      conviction: ins.conviction ?? 85,
+      obs:        ins.obs  ?? '',
+      stat:       ins.stat ?? '',
+      rec:        ins.rec  ?? '',
+      bucket:     ins.bucket || 'content',
+      toolLabel:  ins.toolLabel || 'PRISM',
+      computedChartData: hasChart
+        ? buildGeminiChartData(ins.type, cleanLabels, cleanValues, ins.bucket, cleanValues2)
+        : null,
+    };
+  });
 }
 
 // ─── Types ───────────────────────────────────────────────────
