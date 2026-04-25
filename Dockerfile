@@ -67,9 +67,14 @@ RUN addgroup --system --gid 1001 nodejs \
 # Static assets (served by Next.js CDN layer)
 COPY --from=builder /app/public ./public
 
-# Standalone server bundle — self-contained, no node_modules needed
+# Standalone server bundle — self-contained, includes bundled node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static    ./.next/static
+
+# DB init script — runs at startup before the server.
+# Must be copied explicitly; it is not part of the standalone bundle.
+# It uses `pg` which is available via the standalone node_modules.
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 
 USER nextjs
 
@@ -78,5 +83,7 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# server.js is emitted by Next.js standalone output
+# Railway overrides this with startCommand from railway.toml:
+#   node scripts/init_db.mjs && node server.js
+# CMD here is the fallback for plain `docker run` without Railway.
 CMD ["node", "server.js"]
