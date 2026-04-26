@@ -10,6 +10,42 @@ import {
 import { ID, HM_DATA, SCATTER_COLORS, SCATTER_LABELS } from '@/lib/data';
 
 /* ─── helpers ─── */
+function fmtTs(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+}
+
+function SlaStrip({ brief }) {
+  const planned = brief.sla_due_at ? new Date(brief.sla_due_at) : null;
+  const actual  = brief.actual_completed_at ? new Date(brief.actual_completed_at) : null;
+  let delta = null;
+  if (planned && actual) {
+    const diffH = (actual.getTime() - planned.getTime()) / 36e5;
+    if (Math.abs(diffH) >= 0.05) {
+      delta = diffH < 0
+        ? `${Math.abs(diffH).toFixed(diffH < -1 ? 0 : 1)}h ahead of plan`
+        : `${diffH.toFixed(diffH > 1 ? 0 : 1)}h behind plan`;
+    } else {
+      delta = 'on time';
+    }
+  }
+  const tone = delta?.includes('ahead') ? '#10B981'
+            : delta?.includes('behind') ? '#F59E0B' : '#A78BFA';
+  return (
+    <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 14, fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>
+      <span>📅 <strong style={{ color: '#fff' }}>Planned:</strong> {fmtTs(planned)}</span>
+      {actual && <span>✅ <strong style={{ color: '#fff' }}>Actual:</strong> {fmtTs(actual)}</span>}
+      {delta && (
+        <span style={{ color: tone, fontWeight: 600 }}>
+          {delta === 'on time' ? '✓ On time' : `↳ ${delta}`}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function timeAgo(ts) {
   const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
   if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
@@ -315,6 +351,9 @@ function AnalysisDetail({ id }) {
             <div className="ins-sub">
               {analysis.filename} · {sourceBadge} · {timeAgo(analysis.created_at)}
             </div>
+            {analysis.brief?.sla_due_at && (
+              <SlaStrip brief={analysis.brief} />
+            )}
           </div>
           <div className="ins-actions">
             <button className="btn-glass" onClick={() => router.push('/insights')}>← All Analyses</button>

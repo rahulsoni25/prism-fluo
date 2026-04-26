@@ -333,7 +333,8 @@ async function main() {
     );
     const analysisId = anRes.rows[0].id;
 
-    // 2) Briefs
+    // 2) Briefs — capture the Nike brief id so we can backlink the analysis
+    let nikeBriefId = null;
     for (const b of BRIEFS) {
       const created = new Date(Date.now() + b.created_offset_hours * 3600 * 1000);
       const slaDue  = b.sla_hours ? new Date(created.getTime() + b.sla_hours * 3600 * 1000) : null;
@@ -343,13 +344,14 @@ async function main() {
 
       const isNike = b.brand === 'Nike India';
 
-      await c.query(
+      const ins = await c.query(
         `INSERT INTO briefs
            (brand, category, objective, age_ranges, gender, sec, market, geography,
             competitors, background, insight_buckets, status,
             sla_hours, sla_due_at, actual_completed_at,
             analysis_id, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         RETURNING id`,
         [b.brand, b.category, b.objective, b.age_ranges, b.gender, b.sec,
          b.market, b.geography, b.competitors, b.background, b.insight_buckets,
          b.status,
@@ -357,6 +359,14 @@ async function main() {
          isNike ? analysisId : null,
          created],
       );
+      if (isNike) nikeBriefId = ins.rows[0].id;
+    }
+
+    // 3) Backlink — analysis.brief_id + uploads.brief_id → Nike brief.
+    // This powers the "Planned vs Actual" SLA strip on the insights hero.
+    if (nikeBriefId) {
+      await c.query('UPDATE analyses SET brief_id = $1 WHERE id = $2', [nikeBriefId, analysisId]);
+      await c.query('UPDATE uploads  SET brief_id = $1 WHERE id = $2', [nikeBriefId, uploadId]);
     }
 
     console.log(`[seed] inserted ${BRIEFS.length} briefs + 1 analysis with ${NIKE_CHARTS.length} insight cards`);

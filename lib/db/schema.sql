@@ -187,6 +187,12 @@ CREATE INDEX IF NOT EXISTS idx_briefs_user    ON briefs(user_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_user  ON analyses(user_id);
 CREATE INDEX IF NOT EXISTS idx_uploads_user   ON uploads(user_id);
 
+-- Brief linkage on uploads/analyses — files attach to the right brief
+ALTER TABLE uploads  ADD COLUMN IF NOT EXISTS brief_id UUID REFERENCES briefs(id) ON DELETE SET NULL;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS brief_id UUID REFERENCES briefs(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_uploads_brief  ON uploads(brief_id);
+CREATE INDEX IF NOT EXISTS idx_analyses_brief ON analyses(brief_id);
+
 -- SLA fields on briefs
 ALTER TABLE briefs ADD COLUMN IF NOT EXISTS sla_hours           INTEGER;
 ALTER TABLE briefs ADD COLUMN IF NOT EXISTS sla_due_at          TIMESTAMP WITH TIME ZONE;

@@ -22,6 +22,8 @@ export const POST = async (req: NextRequest) => {
   try {
     const formData = await req.formData();
     const file = formData.get('file');
+    const briefIdRaw = formData.get('briefId');
+    const briefId = typeof briefIdRaw === 'string' && briefIdRaw.trim() ? briefIdRaw.trim() : null;
 
     if (!file || !(file instanceof Blob)) {
       return NextResponse.json(
@@ -52,9 +54,9 @@ export const POST = async (req: NextRequest) => {
     }
 
     const buffer = Buffer.from(await fileObj.arrayBuffer());
-    const summary = await handleUpload(buffer, fileObj.name);
+    const summary = await handleUpload(buffer, fileObj.name, briefId);
 
-    logger.info('api:upload', { filename: fileObj.name, sizeMB: sizeMB.toFixed(2), ms: Date.now() - t0 });
+    logger.info('api:upload', { filename: fileObj.name, sizeMB: sizeMB.toFixed(2), briefId, ms: Date.now() - t0 });
 
     if (summary.sheets.length === 0) {
       return NextResponse.json(

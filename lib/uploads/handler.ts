@@ -306,7 +306,8 @@ async function handlePdfUpload(
 
 export async function handleUpload(
   buffer: Buffer,
-  filename: string
+  filename: string,
+  briefId?: string | null,
 ): Promise<UploadSummary> {
   const t0       = Date.now();
   const uploadId = crypto.randomUUID();
@@ -316,9 +317,23 @@ export async function handleUpload(
 
   await db.transaction(async (client) => {
     await client.query(
-      'INSERT INTO uploads (id, filename) VALUES ($1, $2)',
-      [uploadId, filename]
+      'INSERT INTO uploads (id, filename, brief_id) VALUES ($1, $2, $3)',
+      [uploadId, filename, briefId ?? null]
     );
+
+    // First file uploaded against this brief → flip status from
+    // 'waiting_for_data' to 'processing'. We only update from the
+    // waiting state so we don't regress a brief that's already further
+    // along (e.g. 'ready' if files are added post-completion).
+    if (briefId) {
+      await client.query(
+        `UPDATE briefs
+            SET status = 'processing'
+          WHERE id = $1
+            AND status = 'waiting_for_data'`,
+        [briefId],
+      );
+    }
 
     if (ext === 'pdf') {
       const sheets = await handlePdfUpload(client, buffer, filename, uploadId);
@@ -330,7 +345,7 @@ export async function handleUpload(
   });
 
   logger.info('upload:done', {
-    uploadId, filename, sheets: sheetsMeta.length, ms: Date.now() - t0,
+    uploadId, filename, briefId: briefId ?? null, sheets: sheetsMeta.length, ms: Date.now() - t0,
   });
 
   return { uploadId, sheets: sheetsMeta };

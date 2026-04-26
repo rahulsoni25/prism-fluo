@@ -44,24 +44,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Upsert — if this sheet was already analyzed, update the results in place
+    // Upsert — if this sheet was already analyzed, update the results in place.
+    // If a briefId is supplied, write it onto the analysis row too so the
+    // file-to-brief relationship is queryable from either side.
     const { rows } = await logger.query('analyses:upsert', () =>
       db.query(
-        `INSERT INTO analyses (upload_id, sheet_name, filename, results_json)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO analyses (upload_id, sheet_name, filename, results_json, brief_id)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT ON CONSTRAINT analyses_upload_sheet_unique
-         DO UPDATE SET results_json = EXCLUDED.results_json, filename = EXCLUDED.filename
+         DO UPDATE SET results_json = EXCLUDED.results_json,
+                       filename     = EXCLUDED.filename,
+                       brief_id     = COALESCE(EXCLUDED.brief_id, analyses.brief_id)
          RETURNING id`,
-        [uploadId, sheetName, filename ?? null, JSON.stringify(results)]
+        [uploadId, sheetName, filename ?? null, JSON.stringify(results), briefId ?? null]
       )
     );
 
     const id = rows[0]?.id ?? null;
 
-    // If a briefId was supplied, link and mark ready
+    // If a briefId was supplied, link analysis + flip to ready + stamp completion
     if (id && briefId) {
       await db.query(
-        `UPDATE briefs SET analysis_id = $1, status = 'ready' WHERE id = $2`,
+        `UPDATE briefs
+            SET analysis_id         = $1,
+                status              = 'ready',
+                actual_completed_at = COALESCE(actual_completed_at, NOW())
+          WHERE id = $2`,
         [id, briefId]
       ).catch((err: any) => {
         logger.warn('analyses:brief_link_failed', { briefId, error: err.message });
