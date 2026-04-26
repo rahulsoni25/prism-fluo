@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeDataForPRISM } from '@/lib/ai/gemini';
+import { analyzeDataForPRISM, analyzeGenericTabularForPRISM } from '@/lib/ai/gemini';
 import type { DataSlot } from '@/lib/ai/gemini';
 
 // ── Column aliases ────────────────────────────────────────────
@@ -116,14 +116,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 503 });
 
     const slots = buildInsightSlots(rows);
-    if (slots.length === 0)
-      return NextResponse.json({ error: 'No parseable data rows found' }, { status: 422 });
+    const context = [fileNames?.join(' + ') || sheetName].filter(Boolean).join(' ');
 
-    const context   = [fileNames?.join(' + ') || sheetName, '— India 18–64 Gen Pop'].filter(Boolean).join(' ');
-    const toolLabel = fileNames?.[0]?.toLowerCase().includes('household') ? 'GWI HOUSEHOLD' : 'GWI';
+    // GWI-shaped data → structured slot path (exact numbers, anti-hallucination)
+    if (slots.length > 0) {
+      const gwiContext = `${context} — India 18–64 Gen Pop`;
+      const toolLabel  = fileNames?.[0]?.toLowerCase().includes('household') ? 'GWI HOUSEHOLD' : 'GWI';
+      const insights   = await analyzeDataForPRISM(slots, gwiContext, toolLabel);
+      return NextResponse.json({ insights, slots, path: 'gwi-slots' });
+    }
 
-    const insights = await analyzeDataForPRISM(slots, context, toolLabel);
-    return NextResponse.json({ insights, slots });
+    // Non-GWI data (Amazon, Helium10, sales, marketing, etc.)
+    // → generic Gemini path with creative/media-pro prompt.
+    // The rule engine is NOT a fallback any more — its language sounds
+    // like a stock-market terminal, which is wrong for our audience.
+    const firstName  = fileNames?.[0] ?? sheetName ?? 'data';
+    const lower      = firstName.toLowerCase();
+    const toolLabel  = lower.includes('amazon')   ? 'AMAZON'
+                     : lower.includes('helium')   ? 'HELIUM10'
+                     : lower.includes('flipkart') ? 'FLIPKART'
+                     : lower.includes('meesho')   ? 'MEESHO'
+                     : 'TABULAR';
+
+    const insights = await analyzeGenericTabularForPRISM(rows, context, toolLabel);
+
+    if (insights.length === 0) {
+      return NextResponse.json(
+        { error: 'Gemini returned no insights for this dataset. Check GEMINI_API_KEY and try a smaller file.' },
+        { status: 422 },
+      );
+    }
+    return NextResponse.json({ insights, slots: [], path: 'generic-tabular' });
 
   } catch (err: any) {
     console.error('[analyze-data]', err.message);

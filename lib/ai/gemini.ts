@@ -194,6 +194,131 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
   }
 }
 
+// ── Generic tabular analysis (non-GWI: Amazon, Helium10, sales, marketing, etc.) ──
+
+/**
+ * Analyse arbitrary tabular data (any columns) and return PRISM cards.
+ * Works on Amazon / Helium10 / sales / marketing / brand-tracking exports.
+ * Gemini infers the dataset's nature from the column names and a sample
+ * of rows, and writes creative/media-professional copy — never finance jargon.
+ */
+export async function analyzeGenericTabularForPRISM(
+  rows:      any[],
+  context:   string,
+  toolLabel: string,
+): Promise<GeminiInsightCard[]> {
+  const genAI = await getGenAI();
+  if (!genAI || !Array.isArray(rows) || rows.length === 0) return [];
+
+  let model: any;
+  try {
+    model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' });
+  } catch {
+    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  }
+
+  // Sample to keep token use bounded — first 60 rows is plenty for pattern detection
+  const sample = rows.slice(0, 60);
+  const columns = Object.keys(sample[0] ?? {});
+  // Trim long string fields so the prompt stays compact
+  const compactSample = sample.map(r => {
+    const o: Record<string, any> = {};
+    for (const k of columns) {
+      const v = r[k];
+      o[k] = typeof v === 'string' && v.length > 80 ? v.slice(0, 80) + '…' : v;
+    }
+    return o;
+  });
+
+  const prompt = `You are a senior Creative Strategist at PRISM, a consumer-intelligence firm advising brand managers, media planners, content strategists and creative directors in India.
+
+You will receive a tabular dataset (any shape — could be Amazon listings, brand tracking, sales, social, audience research). Your job is to read the columns and rows, infer what this data is about, and write 8 PRISM insight cards — 2 per bucket (Content · Commerce · Communication · Culture).
+
+━━ DATASET ━━
+Source: ${context}
+Columns: ${columns.join(', ')}
+Sample rows (up to 60):
+${JSON.stringify(compactSample, null, 2)}
+
+━━ AUDIENCE & TONE — READ THIS CAREFULLY ━━
+You are writing for **creative and media professionals**, NOT financial analysts.
+• NEVER use stock-market or finance language: tailspin, momentum, volatility, breakout, multiplier, dominance alert, market moat, volume-capture, growth risk, critical warning, capitalise.
+• Write like a smart magazine editor or strategy planner. Plain English, short sentences, active voice.
+• A creative director and a CMO should both find every card sharp and useful.
+• Banned words: over-index, leverage, cohort, synergy, touchpoint, whitespace, holistic, robust, utilize, paradigm, seamless, momentum, tailspin, dominance, volatility.
+• Use: people, shoppers, viewers, audiences, families, 1 in 3, nearly twice, here's the thing.
+
+━━ ANTI-HALLUCINATION ━━
+Every number/percentage in your cards MUST come from the sample rows above. If you can't compute it from the data, leave it out.
+
+━━ BUCKET ASSIGNMENT ━━
+• content       — what people watch/read/play, formats, devices, screen behaviour, listings, titles, descriptions
+• commerce      — purchase, price, ranking (BSR), sales rank, units, sellers, retailers, conversion
+• communication — how brands show up: ads, search visibility, reviews, ratings, social signals, brand voice
+• culture       — who the audience is, lifestyle, values, region, demographics, identity signals
+
+━━ CARD FORMAT ━━
+TITLE (max 14 words): magazine cover line — surprising finding + one plain-English number, no jargon.
+OBSERVATION (3 sentences): hook → exact numbers from the data → strategic so-what for a brand/media team.
+STAT: one crisp plain-English number (NOT a templated "+X% Revenue · Multiplier: Y×" string).
+RECOMMENDATION: one sentence to a creative director. Name a specific Indian platform (Instagram Reels, YouTube, Hotstar, Amazon, Flipkart, JioCinema, Meesho), a specific format (15-second Reel, search ad, sponsored listing, CTV pre-roll, in-feed video), and a specific creative angle.
+
+━━ UNIQUENESS ━━
+Write EXACTLY 8 cards. No two cards may share the same opening sentence, the same stat, or the same recommendation platform+format combo.
+
+━━ CHART DATA ━━
+For each card, pick a small set of labels + values from the sample (up to 8 items). Use the actual values from the rows. If a chart doesn't make sense for a card, return chartLabels: [] and chartValues: [].
+
+Return ONLY valid JSON — no markdown, no fences, no explanation:
+[
+  {
+    "title": "string",
+    "bucket": "content|commerce|communication|culture",
+    "type": "hbar|bar|pie|scatter",
+    "conviction": 88,
+    "obs": "string",
+    "stat": "string",
+    "rec": "string",
+    "chartLabels": ["label1","label2"],
+    "chartValues": [12.5, 8.3],
+    "chartValues2": []
+  }
+]`;
+
+  try {
+    const result  = await model.generateContent(prompt);
+    const rawText = result.response.text().trim();
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const match   = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('No JSON array in Gemini generic response');
+
+    const parsed: any[] = JSON.parse(match[0]);
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
+
+    const validBuckets = ['content','commerce','communication','culture'];
+    const validTypes   = ['hbar','bar','pie','scatter'];
+
+    return parsed.slice(0, 8).map(c => ({
+      title:        String(c.title || 'Insight'),
+      bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'content') as GeminiInsightCard['bucket'],
+      type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as GeminiInsightCard['type'],
+      conviction:   Number(c.conviction) || 88,
+      obs:          String(c.obs  || ''),
+      stat:         String(c.stat || ''),
+      rec:          String(c.rec  || ''),
+      toolLabel,
+      chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
+      chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
+      chartValues2: Array.isArray(c.chartValues2) && (c.chartValues2 as any[]).length > 0
+        ? c.chartValues2.map(Number) : undefined,
+    }));
+
+  } catch (err) {
+    console.warn('[Gemini 2.5] analyzeGenericTabularForPRISM failed:', (err as Error).message);
+    return [];
+  }
+}
+
 // ── Fallback helpers (used when Gemini 2.5 is unavailable) ────
 
 export interface ChartSpecInput {

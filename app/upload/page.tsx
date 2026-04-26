@@ -338,26 +338,17 @@ export default function UploadData() {
       addLog(`⚡ Gemini error: ${geminiError}`);
     }
 
-    // ── Block rule engine for GWI data — it produces garbage ──
-    if (isGwiData) {
-      const msg = `Gemini 2.5 is required for GWI data but failed (${geminiError}). Check that GEMINI_API_KEY is set correctly on Railway.`;
-      addLog(`❌ ${msg}`);
-      updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: msg });
-      return { charts: [], uploadId };
-    }
-
-    // ── 2. Fallback: rule-based inference engine (non-GWI tabular data only) ──
-    addLog('⚙️ Running PRISM rule engine…');
-    const schema = inferSchema(rawData);
-    const layout = autoGenerateLayout(rawData, schema);
-    const charts: ChartSpec[] = layout.charts.map(c => ({
-      ...c,
-      computedChartData: buildChartData(c, rawData),
-    }));
-
-    updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
-    addLog(`✅ "${file.name}" → ${charts.length} insights (rule engine)`);
-    return { charts, uploadId };
+    // ── Rule engine is permanently disabled ─────────────────────
+    // Its language ("tailspin", "Volume-Capture mandate", "Capitalise on
+    // momentum", "Multiplier: Nx") reads like a stock-market terminal,
+    // which is wrong for creative and media professionals — our audience.
+    // Gemini 2.5 (now with a generic-tabular path for Amazon/Helium10/etc.)
+    // is the ONLY valid analyser. If it failed, we surface the error so it
+    // can be fixed — we never silently downgrade the output quality.
+    const msg = `Gemini 2.5 analysis failed (${geminiError || 'no insights returned'}). This usually means GEMINI_API_KEY is missing or rate-limited on Railway.`;
+    addLog(`❌ ${msg}`);
+    updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: msg });
+    return { charts: [], uploadId };
   }
 
   // ── Process all files → merge → Gemini → save → redirect ──
