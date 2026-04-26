@@ -7,7 +7,7 @@ builder = "DOCKERFILE"
 [deploy]
 # standalone output uses node server.js, not `npm start`
 # DB init runs first (idempotent CREATE TABLE IF NOT EXISTS)
-startCommand = "node scripts/init_db.mjs && echo '[startup] launching Next.js server on 0.0.0.0:'$PORT && node server.js"
+startCommand = "node scripts/start.mjs"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
