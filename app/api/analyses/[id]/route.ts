@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
+import { getSession } from '@/lib/auth/server';
 
 export async function GET(
   _req: NextRequest,
@@ -7,9 +8,11 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    // LEFT JOIN the linked brief so the insights page can show planned vs
-    // actual SLA in the hero. The `brief` field is null when this analysis
-    // wasn't created from a brief (e.g. an ad-hoc upload).
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+
+    // Owner check is part of the WHERE — 404 on missing or mis-owned, never
+    // reveals existence of someone else's analysis.
     const { rows } = await db.query(
       `SELECT a.*,
               CASE
@@ -26,8 +29,8 @@ export async function GET(
               END AS brief
          FROM analyses a
          LEFT JOIN briefs b ON b.id = a.brief_id
-        WHERE a.id = $1`,
-      [id]
+        WHERE a.id = $1 AND a.user_id = $2`,
+      [id, session.userId]
     );
     if (rows.length === 0) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });

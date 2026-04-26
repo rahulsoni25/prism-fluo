@@ -12,6 +12,7 @@ import { db } from '@/lib/db/client';
 import { cache } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import { calculateSla } from '@/lib/sla';
+import { getSession } from '@/lib/auth/server';
 
 const VALID_STATUSES = ['draft', 'waiting_for_data', 'processing', 'ready'];
 
@@ -26,9 +27,13 @@ const VALID_STATUSES = ['draft', 'waiting_for_data', 'processing', 'ready'];
 export async function GET(request) {
   const t0 = Date.now();
   try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+
     const url   = new URL(request.url);
-    const where = [];
-    const args  = [];
+    // Owner scope — every list always filters by the current user.
+    const where = ['user_id = $1'];
+    const args  = [session.userId];
 
     const status = url.searchParams.get('status');
     if (status) {
@@ -56,7 +61,7 @@ export async function GET(request) {
              analysis_id, created_at,
              sla_hours, sla_due_at, actual_completed_at
         FROM briefs
-        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        WHERE ${where.join(' AND ')}
         ORDER BY created_at DESC
         LIMIT 200`;
 
@@ -72,6 +77,9 @@ export async function GET(request) {
 export async function POST(request) {
   const t0 = Date.now();
   try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+
     const body = await request.json();
     const {
       brand, category, objective,
@@ -103,18 +111,18 @@ export async function POST(request) {
       db.query(
         `INSERT INTO briefs
            (brand, category, objective, age_ranges, gender, sec, market, geography,
-            competitors, background, insight_buckets, status, sla_hours, sla_due_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            competitors, background, insight_buckets, status, sla_hours, sla_due_at, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          RETURNING *`,
         [brand, category, objective, age_ranges, gender, sec, market, geography,
-         competitors, background, insight_buckets, status, slaHours, slaDueAt]
+         competitors, background, insight_buckets, status, slaHours, slaDueAt, session.userId]
       )
     );
 
-    // Bust the dashboard overview cache so the new brief appears immediately
-    cache.del('dashboard:overview');
+    // Bust the per-user dashboard cache so the new brief appears immediately
+    cache.del(`dashboard:overview:${session.userId}`);
 
-    logger.info('api:POST /api/briefs', { ms: Date.now() - t0, id: rows[0].id, brand, slaHours });
+    logger.info('api:POST /api/briefs', { ms: Date.now() - t0, id: rows[0].id, brand, slaHours, userId: session.userId });
     return NextResponse.json(rows[0], { status: 201 });
 
   } catch (err) {

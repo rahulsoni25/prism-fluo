@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { handleUpload } from '@/lib/uploads/handler';
 import { logger } from '@/lib/logger';
 import { config } from '@/lib/config';
+import { getSession } from '@/lib/auth/server';
 
 export const maxDuration = 60; // seconds
 
@@ -20,6 +21,9 @@ export const POST = async (req: NextRequest) => {
   const t0 = Date.now();
 
   try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+
     const formData = await req.formData();
     const file = formData.get('file');
     const briefIdRaw = formData.get('briefId');
@@ -54,9 +58,9 @@ export const POST = async (req: NextRequest) => {
     }
 
     const buffer = Buffer.from(await fileObj.arrayBuffer());
-    const summary = await handleUpload(buffer, fileObj.name, briefId);
+    const summary = await handleUpload(buffer, fileObj.name, briefId, session.userId);
 
-    logger.info('api:upload', { filename: fileObj.name, sizeMB: sizeMB.toFixed(2), briefId, ms: Date.now() - t0 });
+    logger.info('api:upload', { filename: fileObj.name, sizeMB: sizeMB.toFixed(2), briefId, userId: session.userId, ms: Date.now() - t0 });
 
     if (summary.sheets.length === 0) {
       return NextResponse.json(

@@ -18,22 +18,27 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { cache } from '@/lib/cache';
 import { logger } from '@/lib/logger';
+import { getSession } from '@/lib/auth/server';
 
-const CACHE_KEY = 'dashboard:overview';
 const CACHE_TTL = 90; // seconds
 
 export async function GET() {
   const t0 = Date.now();
 
-  // ── Cache hit ─────────────────────────────────────────────
-  const cached = cache.get<object>(CACHE_KEY);
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+  const userId   = session.userId;
+  const cacheKey = `dashboard:overview:${userId}`;
+
+  // ── Per-user cache hit ────────────────────────────────────
+  const cached = cache.get<object>(cacheKey);
   if (cached) {
-    logger.debug('dashboard:overview:cache_hit', { ms: Date.now() - t0 });
+    logger.debug('dashboard:overview:cache_hit', { ms: Date.now() - t0, userId });
     return NextResponse.json(cached);
   }
 
   try {
-    // ── 1. Brief counts — aggregated in SQL (not JS) ─────────
+    // ── 1. Brief counts — scoped to this user ─────────────────
     const statsPromise = logger.query('dashboard:stats', () =>
       db.query(`
         SELECT
@@ -43,10 +48,11 @@ export async function GET() {
           COUNT(*) FILTER (WHERE status = 'waiting_for_data')     AS waiting,
           COUNT(*) FILTER (WHERE status = 'draft')                AS draft
         FROM briefs
-      `)
+        WHERE user_id = $1
+      `, [userId])
     );
 
-    // ── 2. Most recent 50 briefs — include SLA fields ──────────
+    // ── 2. Most recent 50 briefs — scoped to this user ────────
     const briefsPromise = logger.query('dashboard:briefs', () =>
       db.query(`
         SELECT
@@ -55,12 +61,13 @@ export async function GET() {
           analysis_id, created_at,
           sla_hours, sla_due_at, actual_completed_at
         FROM briefs
+        WHERE user_id = $1
         ORDER BY created_at DESC
         LIMIT 50
-      `)
+      `, [userId])
     );
 
-    // ── 3. Recent analyses for the "Data Mapper" card ────────
+    // ── 3. Recent analyses — scoped to this user ──────────────
     const analysesPromise = logger.query('dashboard:analyses', () =>
       db.query(`
         SELECT
@@ -71,9 +78,10 @@ export async function GET() {
           a.results_json->'meta'->>'domain' AS domain,
           a.results_json->'meta'->>'title'  AS title
         FROM analyses a
+        WHERE a.user_id = $1
         ORDER BY a.created_at DESC
         LIMIT 10
-      `)
+      `, [userId])
     );
 
     // Run all three queries in parallel
@@ -96,10 +104,10 @@ export async function GET() {
       recentAnalyses:  analysesRes.rows,
     };
 
-    // ── Cache & return ────────────────────────────────────────
-    cache.set(CACHE_KEY, payload, CACHE_TTL);
+    // ── Per-user cache & return ───────────────────────────────
+    cache.set(cacheKey, payload, CACHE_TTL);
 
-    logger.info('dashboard:overview', { ms: Date.now() - t0, briefs: briefsRes.rows.length });
+    logger.info('dashboard:overview', { ms: Date.now() - t0, briefs: briefsRes.rows.length, userId });
     return NextResponse.json(payload);
 
   } catch (err: any) {

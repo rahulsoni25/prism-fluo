@@ -1,13 +1,22 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { cache } from '@/lib/cache';
+import { getSession } from '@/lib/auth/server';
 
 const VALID_STATUSES = ['draft', 'waiting_for_data', 'processing', 'ready'];
 
 export async function GET(_req, { params }) {
   const { id } = await params;
   try {
-    const { rows } = await db.query('SELECT * FROM briefs WHERE id = $1', [id]);
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+
+    // Owner check + 404 are indistinguishable on purpose — never reveal
+    // whether a brief id exists for someone else.
+    const { rows } = await db.query(
+      'SELECT * FROM briefs WHERE id = $1 AND user_id = $2',
+      [id, session.userId],
+    );
     if (rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json(rows[0]);
   } catch (err) {
@@ -24,6 +33,9 @@ export async function GET(_req, { params }) {
 export async function PATCH(req, { params }) {
   const { id } = await params;
   try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+
     const body = await req.json();
     const allowed = [
       'status', 'analysis_id',
@@ -49,11 +61,14 @@ export async function PATCH(req, { params }) {
       sets.push('actual_completed_at = COALESCE(actual_completed_at, NOW())');
     }
 
-    const sql = `UPDATE briefs SET ${sets.join(', ')} WHERE id = $${fields.length + 1} RETURNING *`;
-    const { rows } = await db.query(sql, [...vals, id]);
+    const sql = `UPDATE briefs SET ${sets.join(', ')}
+                  WHERE id = $${fields.length + 1}
+                    AND user_id = $${fields.length + 2}
+                  RETURNING *`;
+    const { rows } = await db.query(sql, [...vals, id, session.userId]);
     if (rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    cache.del('dashboard:overview');
+    cache.del(`dashboard:overview:${session.userId}`);
     return NextResponse.json(rows[0]);
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });

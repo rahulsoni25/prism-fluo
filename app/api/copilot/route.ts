@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { chat, ollamaConfigured, type ChatMessage } from '@/lib/ai/ollama';
+import { getSession } from '@/lib/auth/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,9 +85,16 @@ export async function POST(req: NextRequest) {
   if (!question || typeof question !== 'string' || !question.trim())
     return NextResponse.json({ error: 'question required' }, { status: 400 });
 
+  // Owner check — copilot only answers about analyses the user owns.
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+
   let analysis: any;
   try {
-    const { rows } = await db.query('SELECT * FROM analyses WHERE id = $1', [analysisId]);
+    const { rows } = await db.query(
+      'SELECT * FROM analyses WHERE id = $1 AND user_id = $2',
+      [analysisId, session.userId],
+    );
     if (rows.length === 0)
       return NextResponse.json({ error: 'Analysis not found' }, { status: 404 });
     analysis = rows[0];

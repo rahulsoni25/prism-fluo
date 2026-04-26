@@ -1,9 +1,40 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+
+function initials(nameOrEmail) {
+  if (!nameOrEmail) return '··';
+  const s = String(nameOrEmail).trim();
+  // Name with space → first-letter of first two words
+  if (/\s/.test(s)) {
+    const parts = s.split(/\s+/).slice(0, 2);
+    return parts.map(p => p[0]).join('').toUpperCase();
+  }
+  // Email → first two letters of local part
+  const local = s.includes('@') ? s.split('@')[0] : s;
+  return local.slice(0, 2).toUpperCase();
+}
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router   = useRouter();
+  const [me, setMe] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.authenticated) setMe(d); })
+      .catch(() => {});
+  }, [pathname]);
+
+  async function handleSignOut(e) {
+    e.preventDefault();
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+    router.replace('/login');
+  }
 
   return (
     <nav className="nav">
@@ -34,13 +65,16 @@ export default function Navbar() {
       </div>
 
       <div className="nav-user">
-        <div className="avatar">SC</div>
-        <span>Sarah Chen</span>
-        {pathname === '/dashboard' && (
-          <Link href="/login" className="nav-signout" style={{ textDecoration: 'none' }}>
-            {' '}· Sign out
-          </Link>
-        )}
+        <div className="avatar">{initials(me?.name || me?.email)}</div>
+        <span>{me?.name || me?.email || '…'}</span>
+        <a
+          href="#"
+          onClick={handleSignOut}
+          className="nav-signout"
+          style={{ textDecoration: 'none', cursor: 'pointer' }}
+        >
+          {' '}· Sign out
+        </a>
       </div>
     </nav>
   );

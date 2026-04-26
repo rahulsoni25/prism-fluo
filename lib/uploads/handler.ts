@@ -308,6 +308,7 @@ export async function handleUpload(
   buffer: Buffer,
   filename: string,
   briefId?: string | null,
+  userId?: string | null,
 ): Promise<UploadSummary> {
   const t0       = Date.now();
   const uploadId = crypto.randomUUID();
@@ -317,21 +318,22 @@ export async function handleUpload(
 
   await db.transaction(async (client) => {
     await client.query(
-      'INSERT INTO uploads (id, filename, brief_id) VALUES ($1, $2, $3)',
-      [uploadId, filename, briefId ?? null]
+      'INSERT INTO uploads (id, filename, brief_id, user_id) VALUES ($1, $2, $3, $4)',
+      [uploadId, filename, briefId ?? null, userId ?? null]
     );
 
     // First file uploaded against this brief → flip status from
     // 'waiting_for_data' to 'processing'. We only update from the
     // waiting state so we don't regress a brief that's already further
     // along (e.g. 'ready' if files are added post-completion).
+    // Owner check on the brief — never modifies someone else's brief.
     if (briefId) {
+      const params: any[] = [briefId];
+      let where = `id = $1 AND status = 'waiting_for_data'`;
+      if (userId) { params.push(userId); where += ` AND user_id = $${params.length}`; }
       await client.query(
-        `UPDATE briefs
-            SET status = 'processing'
-          WHERE id = $1
-            AND status = 'waiting_for_data'`,
-        [briefId],
+        `UPDATE briefs SET status = 'processing' WHERE ${where}`,
+        params,
       );
     }
 
