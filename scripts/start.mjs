@@ -19,29 +19,37 @@ import path from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-function runInit() {
+function runScript(name, { failOnError = true } = {}) {
   return new Promise((resolve, reject) => {
-    const initPath = path.join(__dirname, 'init_db.mjs');
-    console.log('[startup] running init_db…');
-    const child = spawn(process.execPath, [initPath], {
+    const scriptPath = path.join(__dirname, name);
+    console.log(`[startup] running ${name}…`);
+    const child = spawn(process.execPath, [scriptPath], {
       stdio: 'inherit',
       env: process.env,
     });
     child.on('exit', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`init_db exited with code ${code}`));
+      else if (failOnError) reject(new Error(`${name} exited with code ${code}`));
+      else { console.warn(`[startup] ${name} exited ${code} — continuing`); resolve(); }
     });
-    child.on('error', reject);
+    child.on('error', (err) => {
+      if (failOnError) reject(err);
+      else { console.warn(`[startup] ${name} error: ${err.message} — continuing`); resolve(); }
+    });
   });
 }
 
 async function main() {
   try {
-    await runInit();
+    await runScript('init_db.mjs');
   } catch (err) {
     console.error('[startup] init_db failed:', err.message);
     process.exit(1);
   }
+
+  // Demo data seed — idempotent, never fatal. Skipped automatically once
+  // the briefs table has rows, or if SEED_DEMO=false.
+  await runScript('seed_demo.mjs', { failOnError: false });
 
   console.log(`[startup] launching Next.js server on ${process.env.HOSTNAME ?? '0.0.0.0'}:${process.env.PORT ?? '3000'}`);
 
