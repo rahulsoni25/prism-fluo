@@ -3,6 +3,52 @@
 -- Run via:  node scripts/init_db.mjs
 -- ============================================================
 
+-- ── Users (Auth.js + multi-tenant ownership) ────────────────
+-- Created BEFORE briefs/analyses/uploads so their user_id FKs resolve.
+
+CREATE TABLE IF NOT EXISTS users (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email       TEXT NOT NULL UNIQUE,
+    name        TEXT,
+    image       TEXT,
+    provider    TEXT,                  -- 'google' | 'linkedin' | 'demo'
+    provider_id TEXT,                  -- the provider's user id
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_login  TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS idx_users_email    ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_provider ON users(provider, provider_id);
+
+-- Auth.js sessions (DB strategy — survives restarts, supports revocation)
+CREATE TABLE IF NOT EXISTS sessions (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_token TEXT NOT NULL UNIQUE,
+    expires       TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_token   ON sessions(session_token);
+CREATE INDEX IF NOT EXISTS idx_sessions_user    ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
+
+-- Auth.js OAuth account links (one user can have multiple providers)
+CREATE TABLE IF NOT EXISTS accounts (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider           TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    type               TEXT NOT NULL DEFAULT 'oauth',
+    access_token       TEXT,
+    refresh_token      TEXT,
+    expires_at         BIGINT,
+    token_type         TEXT,
+    scope              TEXT,
+    id_token           TEXT,
+    created_at         TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (provider, provider_account_id)
+);
+CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_id);
+
 -- ── Core Upload Registry ─────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS uploads (
@@ -126,6 +172,31 @@ CREATE INDEX IF NOT EXISTS idx_briefs_created      ON briefs(created_at DESC);
 -- Jobs
 CREATE INDEX IF NOT EXISTS idx_jobs_upload         ON upload_jobs(upload_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status         ON upload_jobs(status);
+
+-- ============================================================
+-- MULTI-USER MIGRATION (additive — safe to re-run)
+-- Adds user_id ownership to existing tables + SLA fields to briefs.
+-- ============================================================
+
+-- Ownership FKs (nullable so existing rows are not orphaned)
+ALTER TABLE briefs   ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE uploads  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_briefs_user    ON briefs(user_id);
+CREATE INDEX IF NOT EXISTS idx_analyses_user  ON analyses(user_id);
+CREATE INDEX IF NOT EXISTS idx_uploads_user   ON uploads(user_id);
+
+-- SLA fields on briefs
+ALTER TABLE briefs ADD COLUMN IF NOT EXISTS sla_hours           INTEGER;
+ALTER TABLE briefs ADD COLUMN IF NOT EXISTS sla_due_at          TIMESTAMP WITH TIME ZONE;
+ALTER TABLE briefs ADD COLUMN IF NOT EXISTS actual_completed_at TIMESTAMP WITH TIME ZONE;
+
+-- Extend status check to include the new lifecycle states
+-- (drop + re-add — the only way to alter a CHECK in Postgres)
+ALTER TABLE briefs DROP CONSTRAINT IF EXISTS briefs_status_check;
+ALTER TABLE briefs ADD CONSTRAINT briefs_status_check
+    CHECK (status IN ('draft', 'waiting_for_data', 'processing', 'ready'));
 
 -- ── Generic Tool Data (Helium10, Google Trends, Konnect, etc.) ─
 CREATE TABLE IF NOT EXISTS tool_data (
