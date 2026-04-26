@@ -1,15 +1,19 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Navbar from '@/components/Navbar';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { PLATFORMS_DATA } from '@/lib/data';
 
 const AGE_OPTIONS = ['13–17', '18–24', '25–34', '35–44', '45–54', '55+'];
 const GEO_OPTIONS = ['Metro Cities', 'Tier 1', 'Tier 2', 'Tier 3', 'Rural'];
 const BUCKET_OPTIONS = ['📝 Content', '🛒 Commerce', '📢 Communication', '🌍 Culture'];
 
-export default function NewBrief() {
-  const router = useRouter();
+function NewBriefInner() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  // ?from=<briefId> → pre-fill every field from that brief, then drop the
+  // status/SLA so the user submits a fresh one.
+  const fromBriefId  = searchParams.get('from');
   const [brands, setBrands] = useState([]);
   const [markets, setMarkets] = useState([]);
   const [showBrandAc, setShowBrandAc] = useState(false);
@@ -31,6 +35,39 @@ export default function NewBrief() {
 
   const toggleItem = (list, setList, item) =>
     setList(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);
+
+  // Prefill from an existing brief when ?from=<id> is present
+  useEffect(() => {
+    if (!fromBriefId) return;
+    let cancelled = false;
+    fetch(`/api/briefs/${fromBriefId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(b => {
+        if (cancelled || !b) return;
+        if (b.brand)       setBrandInput(b.brand);
+        if (b.market)      setMarketInput(b.market);
+        if (b.competitors) setCompInput(b.competitors);
+        if (b.category)    setCategory(b.category);
+        if (b.objective)   setObjective(b.objective);
+        if (b.gender)      setGender(b.gender);
+        if (b.sec)         setSec(b.sec);
+        if (b.background)  setBackground(b.background);
+        if (b.age_ranges) {
+          const list = String(b.age_ranges).split(',').map(s => s.trim()).filter(Boolean);
+          if (list.length) setSelectedAges(list);
+        }
+        if (b.geography) {
+          const list = String(b.geography).split(',').map(s => s.trim()).filter(Boolean);
+          if (list.length) setSelectedGeo(list);
+        }
+        if (b.insight_buckets) {
+          const list = String(b.insight_buckets).split(',').map(s => s.trim()).filter(Boolean);
+          if (list.length) setSelectedBuckets(list);
+        }
+      })
+      .catch(() => { /* best effort — silently ignore */ });
+    return () => { cancelled = true; };
+  }, [fromBriefId]);
 
   const submitBrief = async (status) => {
     if (!brandInput) return alert('Brand name is required');
@@ -301,5 +338,19 @@ export default function NewBrief() {
         </div>
       </div>
     </div>
+  );
+}
+
+// useSearchParams must be wrapped in <Suspense> for Next.js App Router.
+export default function NewBrief() {
+  return (
+    <Suspense fallback={
+      <div className="screen">
+        <Navbar />
+        <div className="main"><p style={{ padding: 40, color: 'var(--muted)' }}>Loading…</p></div>
+      </div>
+    }>
+      <NewBriefInner />
+    </Suspense>
   );
 }

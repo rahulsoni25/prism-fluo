@@ -82,6 +82,33 @@ function ProcessingInner() {
 
       <div className="main">
         <div className="container">
+
+          {/* When the brief is waiting for data, surface an explicit CTA so
+              the user can attach files. The /upload page picks up briefId
+              from the URL and links every uploaded file + analysis back. */}
+          {brief?.status === 'waiting_for_data' && (
+            <div style={{
+              background: 'linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%)',
+              border: '1.5px solid #C7D2FE',
+              borderRadius: 14, padding: '20px 22px', marginBottom: 22,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+            }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>📤 Add data files to start mining insights</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  Upload Excel, CSV, or PDF files. Every file you add is automatically attached to this brief — no manual mapping.
+                </div>
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={() => router.push(`/upload?briefId=${briefId}`)}
+                style={{ flexShrink: 0 }}
+              >
+                Upload Data →
+              </button>
+            </div>
+          )}
+
           <div style={{ marginBottom: '20px' }}>
             <div style={{ fontSize: '15px', fontWeight: 700, marginBottom: '3px' }}>Platform Data Sources</div>
             <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Connecting to {PLATFORMS_DATA.length} platforms to gather audience, competitive, and cultural intelligence</div>

@@ -1,6 +1,6 @@
 'use client';
-import { useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { UploadCloud, AlertTriangle, CheckCircle, Loader2, X } from 'lucide-react';
 import {
@@ -200,8 +200,13 @@ const BUCKET_LABELS: Record<string, string> = {
 };
 
 // ─── Main page ────────────────────────────────────────────────
-export default function UploadData() {
-  const router = useRouter();
+function UploadDataInner() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  // When the upload page is opened from a specific brief
+  // (/upload?briefId=<id>), every uploaded file is attached to that brief
+  // and the brief auto-transitions waiting_for_data → processing → ready.
+  const briefId      = searchParams.get('briefId');
 
   const [fileEntries, setFileEntries]   = useState<FileEntry[]>([]);
   const [processing,  setProcessing]    = useState(false);
@@ -223,6 +228,7 @@ export default function UploadData() {
 
     const formData = new FormData();
     formData.append('file', file);
+    if (briefId) formData.append('briefId', briefId);
     const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
     const summary = await upRes.json();
     if (!upRes.ok) throw new Error(summary.message ?? `Upload failed (${upRes.status})`);
@@ -422,6 +428,7 @@ export default function UploadData() {
           uploadId:  firstUploadId,
           sheetName: combinedName,
           filename:  entries.map(e => e.file.name).join(' + '),
+          briefId,                  // when set, auto-flips brief to 'ready' + stamps actual_completed_at
           results: {
             charts:         finalCharts,
             scorecards:     [],
@@ -633,5 +640,19 @@ export default function UploadData() {
 
       </main>
     </div>
+  );
+}
+
+// useSearchParams must be wrapped in <Suspense> for Next.js App Router.
+export default function UploadData() {
+  return (
+    <Suspense fallback={
+      <div className="screen">
+        <Navbar />
+        <div className="main"><p style={{ padding: 40, color: 'var(--muted)' }}>Loading…</p></div>
+      </div>
+    }>
+      <UploadDataInner />
+    </Suspense>
   );
 }
