@@ -2,6 +2,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
+import Copilot from '@/components/Copilot';
 import {
   ChartBar, ChartLine, ChartPie, ChartScatter, ChartHBar,
   Heatmap, Scorecard,
@@ -411,6 +412,12 @@ function AnalysisDetail({ id }) {
           </div>
         )}
       </div>
+
+      {/* Floating PRISM Copilot — grounded in this analysis */}
+      <Copilot
+        analysisId={id}
+        analysisTitle={analysis.sheet_name || analysis.filename}
+      />
     </div>
   );
 }

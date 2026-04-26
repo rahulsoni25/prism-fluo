@@ -15,6 +15,7 @@ export function GET() {
     deployedAt: new Date().toISOString(), // wall-clock time of this request
     nodeEnv:    process.env.NODE_ENV ?? 'development',
     geminiKey:  process.env.GEMINI_API_KEY ? '✅ set' : '❌ missing',
+    ollamaKey:  process.env.OLLAMA_API_KEY ? '✅ set' : '❌ missing',
     dbUrl:      process.env.DATABASE_URL   ? '✅ set' : '❌ missing',
   });
 }

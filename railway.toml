@@ -26,5 +26,8 @@ name = "prism-fluo"
 NODE_ENV = "production"
 PORT     = "3000"
 HOSTNAME = "0.0.0.0"
-# DATABASE_URL  — set in Railway dashboard → Variables (do not hard-code here)
-# GEMINI_API_KEY — set in Railway dashboard → Variables
+# DATABASE_URL    — set in Railway dashboard → Variables (do not hard-code here)
+# GEMINI_API_KEY  — set in Railway dashboard → Variables
+# OLLAMA_API_KEY  — set in Railway dashboard → Variables (powers /api/copilot)
+# OLLAMA_BASE_URL — optional, defaults to https://ollama.com (Ollama Cloud)
+# OLLAMA_MODEL    — optional, defaults to gpt-oss:120b
