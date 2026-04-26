@@ -11,6 +11,14 @@ startCommand = "node scripts/start.mjs"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
+# Railway polls this URL after the container starts. The deploy is only
+# promoted to Active when /api/health returns 200. If health never passes,
+# Railway shows the deploy as FAILED (not the misleading "Completed") and
+# the restartPolicy above kicks in. /api/health verifies a live DB ping,
+# so a missing DATABASE_URL or unreachable Postgres will surface here.
+healthcheckPath    = "/api/health"
+healthcheckTimeout = 60
+
 [[services]]
 name = "prism-fluo"
 

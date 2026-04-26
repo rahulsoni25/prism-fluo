@@ -1,0 +1,85 @@
+# .github/workflows/preflight.yml
+#
+# Pre-deploy gate. Runs on every push and PR to main. The job:
+#   1. Builds the production Dockerfile exactly as Railway will
+#   2. Boots Postgres in a service container
+#   3. Runs the image with DATABASE_URL pointing at that Postgres
+#   4. Polls /api/health until it returns 200 (or fails after 90s)
+#
+# If this job fails, the push/PR is marked failed in GitHub. Configure
+# branch protection on `main` to require this check before merging — that
+# turns "deploy broken in prod" into "PR can't merge", which is the only
+# permanent fix for the class of bugs we just hit (missing schema.sql,
+# shell `&&` not running, init script hangs, etc).
+
+name: preflight
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: prism
+          POSTGRES_USER: prism
+          POSTGRES_PASSWORD: prism
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U prism"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production Docker image
+        run: docker build -t prism-fluo:ci .
+
+      - name: Run container
+        run: |
+          docker run -d --name prism-ci \
+            --network host \
+            -e NODE_ENV=production \
+            -e PORT=3000 \
+            -e HOSTNAME=0.0.0.0 \
+            -e DATABASE_URL="postgres://prism:prism@localhost:5432/prism" \
+            -e GEMINI_API_KEY="ci-placeholder" \
+            prism-fluo:ci
+
+      - name: Wait for /api/health to return 200
+        run: |
+          set -e
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /tmp/health.json -w "%{http_code}" http://localhost:3000/api/health || echo 000)
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "✅ healthy"
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "❌ /api/health never returned 200"
+          echo "--- container logs ---"
+          docker logs prism-ci || true
+          echo "--- last health response ---"
+          cat /tmp/health.json || true
+          exit 1
+
+      - name: Container logs (always)
+        if: always()
+        run: docker logs prism-ci || true
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f prism-ci || true
