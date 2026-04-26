@@ -113,6 +113,67 @@ function ToolsUsedPanel({ charts }) {
   );
 }
 
+/**
+ * Source-files panel — lists every upload attached to the linked brief.
+ * Loads its own data via /api/briefs/[id]/files. Renders nothing while
+ * loading or when the analysis has no brief link.
+ */
+function SourceFilesPanel({ briefId }) {
+  const [files, setFiles] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!briefId) return;
+    let cancelled = false;
+    fetch(`/api/briefs/${briefId}/files`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => { if (!cancelled) setFiles(Array.isArray(d) ? d : []); })
+      .catch(err => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
+  }, [briefId]);
+
+  if (!briefId || error || !Array.isArray(files) || files.length === 0) return null;
+
+  const fmtTs = (ts) => new Date(ts).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+
+  return (
+    <div style={{
+      marginTop: 22, background: '#fff', borderRadius: 14,
+      padding: '20px 22px', boxShadow: 'var(--shadow)',
+    }}>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>📂 Source Files ({files.length})</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+          Files uploaded against this brief and used to generate the insights above.
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {files.map(f => (
+          <div key={f.id} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 12px',
+            border: '1px solid #E5E7EB', borderRadius: 10,
+            background: '#F9FAFB',
+          }}>
+            <div style={{ fontSize: 18 }}>📄</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {f.filename || '(unnamed file)'}
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 1 }}>
+                {f.sheet_count ? `${f.sheet_count} sheet${f.sheet_count !== 1 ? 's' : ''} · ` : ''}
+                Uploaded {fmtTs(f.created_at)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function timeAgo(ts) {
   const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
   if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
@@ -347,6 +408,7 @@ function AnalysisDetail({ id }) {
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(null);
   const [activeBucket, setActiveBucket] = useState(null); // set after load
+  const [printing,     setPrinting]     = useState(false);
 
   useEffect(() => {
     fetch(`/api/analyses/${id}`)
@@ -366,6 +428,24 @@ function AnalysisDetail({ id }) {
       })
       .catch(err => { setError(err.message); setLoading(false); });
   }, [id]);
+
+  // PDF export = expand all buckets, print, restore. The print stylesheet
+  // (globals.css) hides nav/copilot/buttons during the print pass.
+  function handleExportPdf() {
+    setPrinting(true);
+    // Wait for layout to flush before opening the print dialog. Two RAFs
+    // guarantee the new render has painted.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const restore = () => { setPrinting(false); window.removeEventListener('afterprint', restore); };
+      window.addEventListener('afterprint', restore);
+      // Fallback: some browsers don't fire afterprint reliably
+      setTimeout(restore, 60_000);
+      window.print();
+    }));
+  }
+  function handleExportExcel() {
+    window.location.href = `/api/analyses/${id}/export?format=xlsx`;
+  }
 
   if (loading) return (
     <div className="screen fade-in">
@@ -399,8 +479,6 @@ function AnalysisDetail({ id }) {
 
   const bucketedCharts = assignChartsToBuckets(charts, primaryBucket);
   const currentBucket  = activeBucket || primaryBucket;
-  const activeCharts   = bucketedCharts[currentBucket] || [];
-  const activeMeta     = BUCKET_META[currentBucket];
 
   const chartTypes    = [...new Set(charts.map(c => c.type).filter(Boolean))];
   const totalInsights = charts.length;
@@ -422,7 +500,13 @@ function AnalysisDetail({ id }) {
               <SlaStrip brief={analysis.brief} />
             )}
           </div>
-          <div className="ins-actions">
+          <div className="ins-actions no-print">
+            <button className="btn-glass" onClick={handleExportExcel} title="Download all insights as an Excel workbook">
+              ⬇ Excel
+            </button>
+            <button className="btn-glass" onClick={handleExportPdf} title="Open the browser print dialog — choose 'Save as PDF'">
+              ⬇ PDF
+            </button>
             {analysis.brief?.id && (
               <button
                 className="btn-glass"
@@ -454,78 +538,84 @@ function AnalysisDetail({ id }) {
         </div>
       </div>
 
-      {/* ── Body ── */}
-      <div className="insights-body">
-        {/* Section header row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <div>
-            <div style={{ fontSize: '16px', fontWeight: 700 }}>{activeMeta.label}</div>
-            <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-              {activeCharts.length} insight{activeCharts.length !== 1 ? 's' : ''} · sourced from {sourceBadge}
-            </div>
-          </div>
-          <div style={{ fontSize: '11px', color: 'var(--muted)', background: '#fff', padding: '5px 12px', borderRadius: '20px', boxShadow: 'var(--shadow)' }}>
-            Sorted by confidence score
-          </div>
-        </div>
-
-        {/* Empty state */}
-        {activeCharts.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
-            <div style={{ fontSize: 14 }}>No insights in this category for this dataset.</div>
-            <div style={{ fontSize: 12, marginTop: 6 }}>
-              Switch to another tab or upload a richer dataset to populate this section.
-            </div>
-          </div>
-        ) : (
-          <div className="insights-grid">
-            {activeCharts.map((chart, i) => {
-              const confidence  = chart.conviction ?? (78 + (i * 3) % 15);
-              const cardSource  = chart.toolLabel || sourceBadge;
-              return (
-                <div
-                  key={i}
-                  className={`insight-card ${activeMeta.cls} fade-in`}
-                  style={{ animationDelay: `${i * 0.08}s` }}
-                >
-                  {/* Card header */}
-                  <div className="ic-header">
-                    <span className="ic-source">{cardSource}</span>
-                    <span className="ic-confidence">● {confidence}% confidence</span>
-                  </div>
-
-                  {/* Title */}
-                  <div className="ic-title">{chart.title}</div>
-
-                  {/* Chart — only render wrapper when there is real data */}
-                  {chartHasContent(chart.computedChartData) && (
-                    <div className="chart-wrap">
-                      <ApiChartRenderer chart={chart} />
-                    </div>
-                  )}
-
-                  {/* Observation */}
-                  {chart.obs && (
-                    <div className="ic-section">
-                      <div className="ic-label obs">📊 Observation</div>
-                      <div className="ic-text">{chart.obs}</div>
-                      {chart.stat && <div className="ic-stat">{chart.stat}</div>}
-                    </div>
-                  )}
-
-                  {/* Recommendation */}
-                  {chart.rec && (
-                    <div className="ic-section">
-                      <div className="ic-label rec">💡 Recommendation</div>
-                      <div className="ic-text">{chart.rec}</div>
-                    </div>
-                  )}
+      {/* ── Body ──
+          When printing, render every non-empty bucket stacked so the print
+          dialog produces a complete report. When not printing, render only
+          the active bucket (the regular tabbed UX). */}
+      {(printing
+          ? BUCKET_TABS.map(t => t.key).filter(k => (bucketedCharts[k] || []).length > 0)
+          : [currentBucket]
+      ).map((bucketKey) => {
+        const sectionMeta   = BUCKET_META[bucketKey];
+        const sectionCharts = bucketedCharts[bucketKey] || [];
+        return (
+          <div key={bucketKey} className="insights-body">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: 700 }}>{sectionMeta.label}</div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+                  {sectionCharts.length} insight{sectionCharts.length !== 1 ? 's' : ''} · sourced from {sourceBadge}
                 </div>
-              );
-            })}
+              </div>
+              <div className="no-print" style={{ fontSize: '11px', color: 'var(--muted)', background: '#fff', padding: '5px 12px', borderRadius: '20px', boxShadow: 'var(--shadow)' }}>
+                Sorted by confidence score
+              </div>
+            </div>
+
+            {sectionCharts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+                <div style={{ fontSize: 14 }}>No insights in this category for this dataset.</div>
+                <div style={{ fontSize: 12, marginTop: 6 }}>
+                  Switch to another tab or upload a richer dataset to populate this section.
+                </div>
+              </div>
+            ) : (
+              <div className="insights-grid">
+                {sectionCharts.map((chart, i) => {
+                  const confidence = chart.conviction ?? (78 + (i * 3) % 15);
+                  const cardSource = chart.toolLabel || sourceBadge;
+                  return (
+                    <div
+                      key={i}
+                      className={`insight-card ${sectionMeta.cls} fade-in`}
+                      style={{ animationDelay: `${i * 0.08}s` }}
+                    >
+                      <div className="ic-header">
+                        <span className="ic-source">{cardSource}</span>
+                        <span className="ic-confidence">● {confidence}% confidence</span>
+                      </div>
+                      <div className="ic-title">{chart.title}</div>
+                      {chartHasContent(chart.computedChartData) && (
+                        <div className="chart-wrap">
+                          <ApiChartRenderer chart={chart} />
+                        </div>
+                      )}
+                      {chart.obs && (
+                        <div className="ic-section">
+                          <div className="ic-label obs">📊 Observation</div>
+                          <div className="ic-text">{chart.obs}</div>
+                          {chart.stat && <div className="ic-stat">{chart.stat}</div>}
+                        </div>
+                      )}
+                      {chart.rec && (
+                        <div className="ic-section">
+                          <div className="ic-label rec">💡 Recommendation</div>
+                          <div className="ic-text">{chart.rec}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
+        );
+      })}
+
+      {/* Source files attached to this brief (loads its own data; renders nothing if none) */}
+      <div className="insights-body" style={{ paddingTop: 0 }}>
+        <SourceFilesPanel briefId={analysis.brief?.id} />
       </div>
 
       {/* Tools-used panel — shows the contributing platforms */}
@@ -533,11 +623,14 @@ function AnalysisDetail({ id }) {
         <ToolsUsedPanel charts={charts} />
       </div>
 
-      {/* Floating PRISM Copilot — grounded in this analysis */}
-      <Copilot
-        analysisId={id}
-        analysisTitle={analysis.sheet_name || analysis.filename}
-      />
+      {/* Floating PRISM Copilot — grounded in this analysis. Wrapped so
+          the print stylesheet can hide it cleanly during PDF export. */}
+      <div className="no-print">
+        <Copilot
+          analysisId={id}
+          analysisTitle={analysis.sheet_name || analysis.filename}
+        />
+      </div>
     </div>
   );
 }

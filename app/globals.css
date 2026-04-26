@@ -389,3 +389,49 @@ textarea {resize:vertical;min-height:80px}
 
 /* Google Fonts for Antigravity */
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700;800&display=swap');
+
+/* ============================================================
+   Print stylesheet — used by the "⬇ PDF" export on the insights page.
+   The page sets printing=true, expands every bucket, then calls
+   window.print(). These rules clean up the chrome for the PDF.
+   ============================================================ */
+@media print {
+  /* Hide app chrome */
+  .nav,
+  .no-print,
+  .filter-bar,
+  .ins-actions,
+  .bucket-tabs-bar { display: none !important; }
+
+  /* Light hero so titles read on white paper */
+  .insights-hero {
+    background: #fff !important;
+    color: #111 !important;
+    padding: 16px 24px 8px !important;
+    border-bottom: 1px solid #E5E7EB !important;
+  }
+  .insights-hero .ins-eyebrow,
+  .insights-hero .ins-sub { color: #6B7280 !important; }
+  .insights-hero .ins-title { color: #111 !important; }
+
+  /* Body */
+  .insights-body { background: #fff !important; padding: 14px 24px !important; }
+
+  /* Cards: ensure they don't break across pages mid-block */
+  .insight-card {
+    box-shadow: none !important;
+    border: 1px solid #E5E7EB !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 14px !important;
+  }
+  .insights-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Avoid wasting ink on background gradients */
+  body { background: #fff !important; }
+
+  @page { margin: 14mm; size: A4; }
+}

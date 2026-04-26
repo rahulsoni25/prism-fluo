@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
+import { getSession, uploadBelongsToUser } from '@/lib/auth/server';
 
 export const GET = async (
   req: NextRequest,
@@ -8,6 +9,11 @@ export const GET = async (
   const { uploadId, sheetName } = await params;
 
   try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+    if (!(await uploadBelongsToUser(uploadId, session.userId))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     // 1. Try GWI data — only analytics columns (no internal id/upload_id/sheet_name)
     const gwiRes = await db.query(
       `SELECT time_bucket, audience, audience_pct, data_point_pct, universe, index_score, responses

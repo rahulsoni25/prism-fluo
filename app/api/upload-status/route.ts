@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { logger } from '@/lib/logger';
+import { getSession } from '@/lib/auth/server';
 
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id');
@@ -23,11 +24,19 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+
+    // Owner check via the upload row — never reveal jobs for other users'
+    // uploads. Legacy rows with NULL user_id (predate multi-tenant
+    // migration) are visible to any signed-in user.
     const { rows } = await logger.query('upload_status:get', () =>
       db.query(
-        `SELECT id, upload_id, status, error_msg, sheet_count, created_at, updated_at
-         FROM upload_jobs
-         WHERE id = $1`,
+        `SELECT j.id, j.upload_id, j.status, j.error_msg, j.sheet_count,
+                j.created_at, j.updated_at, u.user_id
+           FROM upload_jobs j
+           LEFT JOIN uploads u ON u.id = j.upload_id
+          WHERE j.id = $1`,
         [id]
       )
     );
@@ -36,7 +45,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'NOT_FOUND', message: `Job ${id} not found` }, { status: 404 });
     }
 
-    return NextResponse.json(rows[0]);
+    const row = rows[0];
+    if (row.user_id && row.user_id !== session.userId) {
+      // Indistinguishable from "not found" — never reveal cross-tenant rows.
+      return NextResponse.json({ error: 'NOT_FOUND', message: `Job ${id} not found` }, { status: 404 });
+    }
+
+    // Strip the owner column from the response payload.
+    const { user_id, ...payload } = row;
+    return NextResponse.json(payload);
 
   } catch (err: any) {
     logger.error('api:upload-status failed', { error: err.message });

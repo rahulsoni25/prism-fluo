@@ -49,3 +49,20 @@ export async function upsertUser(input: {
   );
   return rows[0];
 }
+
+/**
+ * Returns true if `uploadId` is owned by `userId` (or is an unowned legacy
+ * row — those are visible to anyone signed in, since they predate the
+ * multi-tenant migration). Used to gate sheet-level data routes that key
+ * off uploadId without going through the briefs/analyses join.
+ */
+export async function uploadBelongsToUser(uploadId: string, userId: string): Promise<boolean> {
+  if (!uploadId || !userId) return false;
+  const { rows } = await db.query(
+    'SELECT user_id FROM uploads WHERE id = $1',
+    [uploadId],
+  );
+  if (rows.length === 0) return false;
+  const ownerId = rows[0].user_id;
+  return ownerId === null || ownerId === userId;
+}
