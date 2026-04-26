@@ -17,5 +17,8 @@ export function GET() {
     geminiKey:  process.env.GEMINI_API_KEY ? '✅ set' : '❌ missing',
     ollamaKey:  process.env.OLLAMA_API_KEY ? '✅ set' : '❌ missing',
     dbUrl:      process.env.DATABASE_URL   ? '✅ set' : '❌ missing',
+    authSecret: process.env.AUTH_SECRET    ? '✅ set' : '❌ missing — using insecure dev fallback',
+    googleAuth: process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET ? '✅ set' : '❌ missing',
+    linkedinAuth: process.env.AUTH_LINKEDIN_ID && process.env.AUTH_LINKEDIN_SECRET ? '✅ set' : '❌ missing',
   });
 }

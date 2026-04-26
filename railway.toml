@@ -31,3 +31,12 @@ HOSTNAME = "0.0.0.0"
 # OLLAMA_API_KEY  — set in Railway dashboard → Variables (powers /api/copilot)
 # OLLAMA_BASE_URL — optional, defaults to https://ollama.com (Ollama Cloud)
 # OLLAMA_MODEL    — optional, defaults to gpt-oss:120b
+#
+# ── Auth ──
+# AUTH_SECRET           — REQUIRED in production; sign sessions. Generate via `openssl rand -base64 32`.
+# AUTH_GOOGLE_ID        — optional; enables Google OAuth on /login
+# AUTH_GOOGLE_SECRET    — optional; pair with AUTH_GOOGLE_ID
+# AUTH_LINKEDIN_ID      — optional; enables LinkedIn OAuth
+# AUTH_LINKEDIN_SECRET  — optional; pair with AUTH_LINKEDIN_ID
+# AUTH_DEMO_OPEN        — optional 'false' to disable demo email/password login
+#                          once OAuth is wired (default 'true' so the demo keeps working)

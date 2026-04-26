@@ -308,10 +308,19 @@ async function main() {
 
     console.log('[seed] inserting prototype demo data…');
 
+    // 0) Demo user — owns all seeded briefs so multi-tenant filtering works
+    const userRes = await c.query(
+      `INSERT INTO users (email, name, provider, last_login)
+       VALUES ('sarah@wunderman.com', 'Sarah Chen', 'demo', NOW())
+       ON CONFLICT (email) DO UPDATE SET last_login = NOW()
+       RETURNING id`,
+    );
+    const demoUserId = userRes.rows[0].id;
+
     // 1) Upload + Nike analysis
     const upRes = await c.query(
-      `INSERT INTO uploads (id, filename) VALUES (gen_random_uuid(), $1) RETURNING id`,
-      ['prism-demo-nike-india.json'],
+      `INSERT INTO uploads (id, filename, user_id) VALUES (gen_random_uuid(), $1, $2) RETURNING id`,
+      ['prism-demo-nike-india.json', demoUserId],
     );
     const uploadId = upRes.rows[0].id;
 
@@ -325,11 +334,12 @@ async function main() {
     };
 
     const anRes = await c.query(
-      `INSERT INTO analyses (upload_id, sheet_name, filename, results_json)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
+      `INSERT INTO analyses (upload_id, sheet_name, filename, results_json, user_id)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [uploadId, 'PRISM Combined — Nike India',
        'prism-demo-nike-india.json',
-       JSON.stringify(analysisResults)],
+       JSON.stringify(analysisResults),
+       demoUserId],
     );
     const analysisId = anRes.rows[0].id;
 
@@ -349,15 +359,16 @@ async function main() {
            (brand, category, objective, age_ranges, gender, sec, market, geography,
             competitors, background, insight_buckets, status,
             sla_hours, sla_due_at, actual_completed_at,
-            analysis_id, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+            analysis_id, created_at, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          RETURNING id`,
         [b.brand, b.category, b.objective, b.age_ranges, b.gender, b.sec,
          b.market, b.geography, b.competitors, b.background, b.insight_buckets,
          b.status,
          b.sla_hours, slaDue, actual,
          isNike ? analysisId : null,
-         created],
+         created,
+         demoUserId],
       );
       if (isNike) nikeBriefId = ins.rows[0].id;
     }
