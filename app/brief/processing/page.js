@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense } from 'react';
 import Navbar from '@/components/Navbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PLATFORMS_DATA } from '@/lib/data';
+import { formatSlaBadge } from '@/lib/sla';
 
 const SL = { complete: '✓ Complete', fetching: '⟳ Fetching', connecting: '⟳ Connecting', queued: '○ Queued' };
 const SC = { complete: 's-complete', fetching: 's-fetching', connecting: 's-connecting', queued: 's-queued' };
@@ -65,7 +66,17 @@ function ProcessingInner() {
         <div className="proc-title">Mining Insights for {brandLabel}</div>
         {subLabel && <div className="proc-sub">{subLabel}</div>}
         <div className="eta-pill">
-          ⏳ Estimated ready in <strong>&nbsp;~16 hours</strong>&nbsp;·&nbsp;{completedSources} of {PLATFORMS_DATA.length} sources complete
+          ⏳ Estimated ready in <strong>
+            &nbsp;{brief?.sla_due_at
+              ? (formatSlaBadge(brief.sla_due_at, brief.actual_completed_at, brief.created_at).replace(/^Due in /, '~') || '~6 hours')
+              : '~6 hours'}
+          </strong>
+          {brief?.sla_due_at && (
+            <span style={{ marginLeft: 6, opacity: 0.85 }}>
+              · ETA {new Date(brief.sla_due_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            </span>
+          )}
+          &nbsp;·&nbsp;{completedSources} of {PLATFORMS_DATA.length} sources complete
         </div>
       </div>
 

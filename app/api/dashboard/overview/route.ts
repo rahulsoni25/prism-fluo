@@ -37,21 +37,23 @@ export async function GET() {
     const statsPromise = logger.query('dashboard:stats', () =>
       db.query(`
         SELECT
-          COUNT(*)                                            AS total,
-          COUNT(*) FILTER (WHERE status = 'ready')           AS ready,
-          COUNT(*) FILTER (WHERE status = 'processing')      AS processing,
-          COUNT(*) FILTER (WHERE status = 'draft')           AS draft
+          COUNT(*)                                                 AS total,
+          COUNT(*) FILTER (WHERE status = 'ready')                AS ready,
+          COUNT(*) FILTER (WHERE status = 'processing')           AS processing,
+          COUNT(*) FILTER (WHERE status = 'waiting_for_data')     AS waiting,
+          COUNT(*) FILTER (WHERE status = 'draft')                AS draft
         FROM briefs
       `)
     );
 
-    // ── 2. Most recent 50 briefs — only the columns we actually render ──
+    // ── 2. Most recent 50 briefs — include SLA fields ──────────
     const briefsPromise = logger.query('dashboard:briefs', () =>
       db.query(`
         SELECT
           id, brand, category, objective, status,
           age_ranges, gender, market,
-          analysis_id, created_at
+          analysis_id, created_at,
+          sla_hours, sla_due_at, actual_completed_at
         FROM briefs
         ORDER BY created_at DESC
         LIMIT 50
@@ -84,6 +86,7 @@ export async function GET() {
       total:      parseInt(raw.total,      10),
       ready:      parseInt(raw.ready,      10),
       processing: parseInt(raw.processing, 10),
+      waiting:    parseInt(raw.waiting,    10),
       draft:      parseInt(raw.draft,      10),
     };
 

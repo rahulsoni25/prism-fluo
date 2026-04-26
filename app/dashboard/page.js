@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import BriefCard from '@/components/BriefCard';
 import { useRouter } from 'next/navigation';
+import { formatSlaBadge } from '@/lib/sla';
 
 const CATEGORY_ICONS = {
   'FMCG — Food & Beverages':  '☕',
@@ -15,9 +16,10 @@ const CATEGORY_ICONS = {
 };
 
 const STATUS_BADGE = {
-  ready:      { text: '✓ Ready',       cls: 'badge-ready' },
-  processing: { text: '⟳ Processing',  cls: 'badge-processing', extra: 'pulsing' },
-  draft:      { text: 'Draft',         cls: 'badge-draft' },
+  ready:            { text: '✓ Ready',       cls: 'badge-ready' },
+  processing:       { text: '⟳ Processing',  cls: 'badge-processing', extra: 'pulsing' },
+  waiting_for_data: { text: '⏳ Waiting',     cls: 'badge-processing' },
+  draft:            { text: 'Draft',          cls: 'badge-draft' },
 };
 
 function formatMeta(brief) {
@@ -43,7 +45,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [filter, setFilter]   = useState('All Briefs');
   const [briefs, setBriefs]   = useState([]);
-  const [stats, setStats]     = useState({ total: 0, ready: 0, processing: 0, draft: 0 });
+  const [stats, setStats]     = useState({ total: 0, ready: 0, processing: 0, waiting: 0, draft: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
@@ -68,11 +70,17 @@ export default function Dashboard() {
       });
   }, []);
 
-  const FILTERS = ['All Briefs', 'Ready', 'Processing', 'Draft'];
+  const FILTERS = ['All Briefs', 'Ready', 'Processing', 'Waiting', 'Draft'];
+  const FILTER_TO_STATUS = {
+    'Ready':      'ready',
+    'Processing': 'processing',
+    'Waiting':    'waiting_for_data',
+    'Draft':      'draft',
+  };
 
   const filtered = briefs.filter(b => {
     if (filter === 'All Briefs') return true;
-    return b.status === filter.toLowerCase();
+    return b.status === FILTER_TO_STATUS[filter];
   });
 
   return (
@@ -104,8 +112,10 @@ export default function Dashboard() {
             </div>
             <div className="stat-card">
               <div className="stat-label">In Progress</div>
-              <div className="stat-val" style={{ color: '#D97706' }}>{stats.processing}</div>
-              <div className="stat-note" style={{ color: 'var(--muted)' }}>Avg 18 hr delivery</div>
+              <div className="stat-val" style={{ color: '#D97706' }}>{stats.processing + (stats.waiting || 0)}</div>
+              <div className="stat-note" style={{ color: 'var(--muted)' }}>
+                {stats.waiting ? `${stats.waiting} waiting · ${stats.processing} processing` : 'Typical delivery 4–6 hrs'}
+              </div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Data Sources</div>
@@ -178,13 +188,16 @@ export default function Dashboard() {
             {/* Real briefs */}
             {!loading && !error && filtered.map(brief => {
               const badge = STATUS_BADGE[brief.status] || STATUS_BADGE.draft;
+              const slaText = formatSlaBadge(brief.sla_due_at, brief.actual_completed_at, brief.created_at);
+              const footer  = ['📡 7 sources'];
+              if (slaText) footer.push(`⏱ ${slaText}`);
               return (
                 <BriefCard
                   key={brief.id}
                   href={
                     brief.status === 'ready'
                       ? (brief.analysis_id ? `/insights?id=${brief.analysis_id}` : '/insights')
-                      : brief.status === 'processing'
+                      : brief.status === 'processing' || brief.status === 'waiting_for_data'
                       ? `/brief/processing?id=${brief.id}`
                       : '/brief/new'
                   }
@@ -195,7 +208,7 @@ export default function Dashboard() {
                   brand={brief.brand}
                   meta={formatMeta(brief)}
                   tags={buildTags(brief)}
-                  footerItems={brief.status !== 'draft' ? ['📡 7 sources'] : undefined}
+                  footerItems={brief.status !== 'draft' ? footer : undefined}
                   isDraft={brief.status === 'draft'}
                 />
               );

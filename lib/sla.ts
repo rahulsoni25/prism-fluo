@@ -49,3 +49,33 @@ export async function calculateSla(now: Date = new Date()): Promise<SlaResult> {
   const activeBriefs = await countActiveBriefs();
   return computeSla(activeBriefs, now);
 }
+
+/**
+ * Human-friendly SLA badge text. Safe to call on the client.
+ *   "Due in 4h"   when 1+ hours remain
+ *   "Due in 35m"  when <1h remains
+ *   "Overdue"     when past due
+ *   "Done in 3h"  when actual_completed_at is set
+ *   ""            when no SLA data
+ */
+export function formatSlaBadge(
+  slaDueAt: string | Date | null | undefined,
+  actualCompletedAt: string | Date | null | undefined,
+  createdAt: string | Date | null | undefined,
+  now: Date = new Date(),
+): string {
+  if (actualCompletedAt && createdAt) {
+    const elapsed = (new Date(actualCompletedAt).getTime() - new Date(createdAt).getTime()) / 36e5;
+    if (elapsed < 1) return `Done in ${Math.max(1, Math.round(elapsed * 60))}m`;
+    return `Done in ${elapsed.toFixed(elapsed < 10 ? 1 : 0)}h`;
+  }
+  if (!slaDueAt) return '';
+
+  const diffMs = new Date(slaDueAt).getTime() - now.getTime();
+  if (diffMs <= 0) return 'Overdue';
+
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 60) return `Due in ${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  return `Due in ${hours}h`;
+}
