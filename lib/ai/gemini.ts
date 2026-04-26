@@ -19,6 +19,39 @@ async function getGenAI() {
   return _genAI;
 }
 
+/**
+ * Cascading model selection. `getGenerativeModel` doesn't validate the
+ * name — invalid models only fail on generateContent(). So we try one,
+ * run a tiny ping, and fall back if it fails. The result is cached so
+ * we only do this once per process.
+ *
+ * Order: stable 2.5 → 2.0 → 1.5. Skip preview tags (e.g.
+ * gemini-2.5-flash-preview-04-17) — those expire and silently break
+ * production.
+ */
+const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+let _resolvedModelName: string | null = null;
+
+async function getModel(genAI: any): Promise<{ name: string; model: any }> {
+  if (_resolvedModelName) {
+    return { name: _resolvedModelName, model: genAI.getGenerativeModel({ model: _resolvedModelName }) };
+  }
+  let lastErr: Error | null = null;
+  for (const name of MODEL_CANDIDATES) {
+    try {
+      const m = genAI.getGenerativeModel({ model: name });
+      // Tiny smoke ping — a single token request — to validate the name resolves.
+      await m.generateContent('ok');
+      _resolvedModelName = name;
+      return { name, model: m };
+    } catch (err) {
+      lastErr = err as Error;
+      console.warn(`[Gemini] model ${name} unavailable: ${(err as Error).message}`);
+    }
+  }
+  throw new Error(`No Gemini model available. Last error: ${lastErr?.message ?? 'unknown'}`);
+}
+
 // ── Types ──────────────────────────────────────────────────────
 
 export interface GeminiInsightCard {
@@ -62,14 +95,10 @@ export async function analyzeDataForPRISM(
   toolLabel: string = 'GWI',
 ): Promise<GeminiInsightCard[]> {
   const genAI = await getGenAI();
-  if (!genAI || slots.length === 0) return [];
+  if (!genAI) throw new Error('GEMINI_API_KEY is not set');
+  if (slots.length === 0) return [];
 
-  let model: any;
-  try {
-    model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' });
-  } catch {
-    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-  }
+  const { model } = await getModel(genAI);
 
   // Build structured slot block — exact numbers, clearly labelled
   const slotBlock = slots.map((slot, i) => {
@@ -189,8 +218,8 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     }));
 
   } catch (err) {
-    console.warn('[Gemini 2.5] analyzeDataForPRISM failed:', (err as Error).message);
-    return [];
+    console.error('[Gemini] analyzeDataForPRISM failed:', (err as Error).message);
+    throw err; // surface real reason to the API route
   }
 }
 
@@ -208,14 +237,10 @@ export async function analyzeGenericTabularForPRISM(
   toolLabel: string,
 ): Promise<GeminiInsightCard[]> {
   const genAI = await getGenAI();
-  if (!genAI || !Array.isArray(rows) || rows.length === 0) return [];
+  if (!genAI) throw new Error('GEMINI_API_KEY is not set');
+  if (!Array.isArray(rows) || rows.length === 0) return [];
 
-  let model: any;
-  try {
-    model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' });
-  } catch {
-    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-  }
+  const { model } = await getModel(genAI);
 
   // Sample to keep token use bounded — first 60 rows is plenty for pattern detection
   const sample = rows.slice(0, 60);
@@ -314,8 +339,8 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     }));
 
   } catch (err) {
-    console.warn('[Gemini 2.5] analyzeGenericTabularForPRISM failed:', (err as Error).message);
-    return [];
+    console.error('[Gemini] analyzeGenericTabularForPRISM failed:', (err as Error).message);
+    throw err;
   }
 }
 
@@ -421,14 +446,10 @@ export async function analyzeTextForPRISM(
   filename: string,
 ): Promise<GeminiInsightCard[]> {
   const genAI = await getGenAI();
-  if (!genAI || !text.trim()) return [];
+  if (!genAI) throw new Error('GEMINI_API_KEY is not set');
+  if (!text.trim()) return [];
 
-  let model: any;
-  try {
-    model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-04-17' });
-  } catch {
-    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-  }
+  const { model } = await getModel(genAI);
 
   // Truncate to ~12 000 chars to stay within token budget
   const excerpt = text.length > 12000 ? text.slice(0, 12000) + '\n…[truncated]' : text;
@@ -518,7 +539,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     }));
 
   } catch (err) {
-    console.warn('[Gemini] analyzeTextForPRISM failed:', (err as Error).message);
-    return [];
+    console.error('[Gemini] analyzeTextForPRISM failed:', (err as Error).message);
+    throw err;
   }
 }

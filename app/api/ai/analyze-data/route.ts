@@ -122,8 +122,21 @@ export async function POST(req: NextRequest) {
     if (slots.length > 0) {
       const gwiContext = `${context} — India 18–64 Gen Pop`;
       const toolLabel  = fileNames?.[0]?.toLowerCase().includes('household') ? 'GWI HOUSEHOLD' : 'GWI';
-      const insights   = await analyzeDataForPRISM(slots, gwiContext, toolLabel);
-      return NextResponse.json({ insights, slots, path: 'gwi-slots' });
+      try {
+        const insights = await analyzeDataForPRISM(slots, gwiContext, toolLabel);
+        if (insights.length === 0) {
+          return NextResponse.json(
+            { error: 'Gemini returned an empty insight array for the GWI slots. The model may be overloaded — try again.', path: 'gwi-slots', slotCount: slots.length },
+            { status: 422 },
+          );
+        }
+        return NextResponse.json({ insights, slots, path: 'gwi-slots' });
+      } catch (err: any) {
+        return NextResponse.json(
+          { error: `Gemini failed on GWI slots: ${err.message}`, path: 'gwi-slots', slotCount: slots.length },
+          { status: 502 },
+        );
+      }
     }
 
     // Non-GWI data (Amazon, Helium10, sales, marketing, etc.)
@@ -138,15 +151,21 @@ export async function POST(req: NextRequest) {
                      : lower.includes('meesho')   ? 'MEESHO'
                      : 'TABULAR';
 
-    const insights = await analyzeGenericTabularForPRISM(rows, context, toolLabel);
-
-    if (insights.length === 0) {
+    try {
+      const insights = await analyzeGenericTabularForPRISM(rows, context, toolLabel);
+      if (insights.length === 0) {
+        return NextResponse.json(
+          { error: 'Gemini returned no insights for this dataset (empty array). The dataset may be too small or the model is overloaded.', path: 'generic-tabular' },
+          { status: 422 },
+        );
+      }
+      return NextResponse.json({ insights, slots: [], path: 'generic-tabular' });
+    } catch (err: any) {
       return NextResponse.json(
-        { error: 'Gemini returned no insights for this dataset. Check GEMINI_API_KEY and try a smaller file.' },
-        { status: 422 },
+        { error: `Gemini call failed: ${err.message}`, path: 'generic-tabular' },
+        { status: 502 },
       );
     }
-    return NextResponse.json({ insights, slots: [], path: 'generic-tabular' });
 
   } catch (err: any) {
     console.error('[analyze-data]', err.message);
