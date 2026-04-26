@@ -41,8 +41,18 @@ async function init() {
     // Exit with non-zero code so Railway knows startup failed and retries
     process.exit(1);
   } finally {
-    await client.end();
+    try { await client.end(); } catch {}
   }
 }
 
-init();
+init()
+  .then(() => {
+    console.log('🚀 init_db complete — handing off to server.js');
+    // Force exit so a lingering pg socket can't keep the event loop alive
+    // and block the `&& node server.js` chain in Railway's startCommand.
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('❌ init_db unhandled error:', err);
+    process.exit(1);
+  });
