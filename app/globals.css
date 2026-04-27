@@ -1,6 +1,7 @@
-/* Tailwind CSS v4 — both @import rules must come before any other rules */
+/* Tailwind CSS v4 — @import must come first, then custom styles */
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700;800&display=swap');
 
 :root {
   --primary: #2563EB;
@@ -386,9 +387,6 @@ textarea {resize:vertical;min-height:80px}
 
 /* Toast */
 .ag-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(0); background: var(--accent); color: var(--void); font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .07em; padding: 8px 20px; border-radius: 2px; z-index: 2000; white-space: nowrap; }
-
-/* Google Fonts for Antigravity */
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700;800&display=swap');
 
 /* ============================================================
    Print stylesheet — used by the "⬇ PDF" export on the insights page.
