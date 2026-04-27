@@ -27,7 +27,10 @@ export const POST = async (req: NextRequest) => {
     const formData = await req.formData();
     const file = formData.get('file');
     const briefIdRaw = formData.get('briefId');
+    const slaHoursRaw = formData.get('slaHours');
+
     const briefId = typeof briefIdRaw === 'string' && briefIdRaw.trim() ? briefIdRaw.trim() : null;
+    const slaHours = slaHoursRaw ? parseInt(slaHoursRaw as string, 10) : null;
 
     if (!file || !(file instanceof Blob)) {
       return NextResponse.json(
@@ -58,9 +61,9 @@ export const POST = async (req: NextRequest) => {
     }
 
     const buffer = Buffer.from(await fileObj.arrayBuffer());
-    const summary = await handleUpload(buffer, fileObj.name, briefId, session.userId);
+    const summary = await handleUpload(buffer, fileObj.name, briefId, session.userId, slaHours);
 
-    logger.info('api:upload', { filename: fileObj.name, sizeMB: sizeMB.toFixed(2), briefId, userId: session.userId, ms: Date.now() - t0 });
+    logger.info('api:upload', { filename: fileObj.name, sizeMB: sizeMB.toFixed(2), briefId, slaHours, userId: session.userId, ms: Date.now() - t0 });
 
     if (summary.sheets.length === 0) {
       return NextResponse.json(

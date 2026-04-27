@@ -193,6 +193,11 @@ ALTER TABLE analyses ADD COLUMN IF NOT EXISTS brief_id UUID REFERENCES briefs(id
 CREATE INDEX IF NOT EXISTS idx_uploads_brief  ON uploads(brief_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_brief ON analyses(brief_id);
 
+-- SLA fields on uploads — allow custom SLA per upload
+ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_hours INTEGER;
+ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMP WITH TIME ZONE;
+CREATE INDEX IF NOT EXISTS idx_uploads_sla_due_at ON uploads(sla_due_at);
+
 -- SLA fields on briefs
 ALTER TABLE briefs ADD COLUMN IF NOT EXISTS sla_hours           INTEGER;
 ALTER TABLE briefs ADD COLUMN IF NOT EXISTS sla_due_at          TIMESTAMP WITH TIME ZONE;

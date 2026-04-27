@@ -309,6 +309,7 @@ export async function handleUpload(
   filename: string,
   briefId?: string | null,
   userId?: string | null,
+  slaHours?: number | null,
 ): Promise<UploadSummary> {
   const t0       = Date.now();
   const uploadId = crypto.randomUUID();
@@ -316,10 +317,16 @@ export async function handleUpload(
 
   const sheetsMeta: SheetMeta[] = [];
 
+  // Calculate SLA due time if slaHours is provided
+  let slaDueAt: Date | null = null;
+  if (slaHours && slaHours > 0) {
+    slaDueAt = new Date(Date.now() + slaHours * 3600000);
+  }
+
   await db.transaction(async (client) => {
     await client.query(
-      'INSERT INTO uploads (id, filename, brief_id, user_id) VALUES ($1, $2, $3, $4)',
-      [uploadId, filename, briefId ?? null, userId ?? null]
+      'INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at) VALUES ($1, $2, $3, $4, $5, $6)',
+      [uploadId, filename, briefId ?? null, userId ?? null, slaHours ?? null, slaDueAt ?? null]
     );
 
     // First file uploaded against this brief → flip status from

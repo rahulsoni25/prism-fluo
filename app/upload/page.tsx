@@ -3,6 +3,8 @@ import { useState, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { UploadCloud, AlertTriangle, CheckCircle, Loader2, X } from 'lucide-react';
+import BriefSelectModal from '@/components/BriefSelectModal';
+import SlaSelectModal from '@/components/SlaSelectModal';
 import {
   inferSchema, autoGenerateLayout, detectAnomalies, generateStrategicBrief,
 } from '@/lib/inference';
@@ -206,8 +208,15 @@ function UploadDataInner() {
   // When the upload page is opened from a specific brief
   // (/upload?briefId=<id>), every uploaded file is attached to that brief
   // and the brief auto-transitions waiting_for_data → processing → ready.
-  const briefId      = searchParams.get('briefId');
+  const urlBriefId   = searchParams.get('briefId');
 
+  // ── Brief & SLA Selection States ──
+  const [selectedBrief, setSelectedBrief] = useState<any>(null);
+  const [showBriefModal, setShowBriefModal] = useState(!urlBriefId);
+  const [showSlaModal, setShowSlaModal] = useState(false);
+  const [selectedSlaHours, setSelectedSlaHours] = useState<number | null>(null);
+
+  // ── Upload States ──
   const [fileEntries, setFileEntries]   = useState<FileEntry[]>([]);
   const [processing,  setProcessing]    = useState(false);
   const [agentLog,    setAgentLog]      = useState<string[]>([]);
@@ -216,6 +225,31 @@ function UploadDataInner() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addLog = (msg: string) => setAgentLog(prev => [...prev, msg]);
+
+  // Use URL briefId if provided, otherwise use selected brief
+  const briefId = urlBriefId || selectedBrief?.id || null;
+
+  // ── Brief Selection Handler ──
+  const handleBriefSelect = (brief: any) => {
+    setSelectedBrief(brief);
+    setShowBriefModal(false);
+    addLog(`✅ Selected brief: ${brief.brand}`);
+  };
+
+  // ── SLA Selection Handler ──
+  const handleSlaSelect = ({ slaHours }: { slaHours: number }) => {
+    setSelectedSlaHours(slaHours);
+    setShowSlaModal(false);
+    addLog(`✅ Selected SLA: ${slaHours} hours`);
+
+    // If there's a pending analysis, redirect to it
+    const pendingId = (window as any).__pendingAnalysisId;
+    if (pendingId) {
+      delete (window as any).__pendingAnalysisId;
+      addLog(`🚀 Redirecting to Intelligence Report…`);
+      router.push(`/insights?id=${pendingId}&sla=${slaHours}`);
+    }
+  };
 
   const updateEntry = (idx: number, patch: Partial<FileEntry>) =>
     setFileEntries(prev => prev.map((e, i) => i === idx ? { ...e, ...patch } : e));
@@ -229,6 +263,7 @@ function UploadDataInner() {
     const formData = new FormData();
     formData.append('file', file);
     if (briefId) formData.append('briefId', briefId);
+    if (selectedSlaHours) formData.append('slaHours', String(selectedSlaHours));
     const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
     const summary = await upRes.json();
     if (!upRes.ok) throw new Error(summary.message ?? `Upload failed (${upRes.status})`);
@@ -446,8 +481,16 @@ function UploadDataInner() {
       if (saveRes.ok) {
         const { id } = await saveRes.json();
         if (id) {
-          addLog(`🚀 Redirecting to Intelligence Report…`);
-          router.push(`/insights?id=${id}`);
+          addLog(`💾 Analysis saved. Now selecting SLA…`);
+          // Show SLA modal if not already selected
+          if (!selectedSlaHours) {
+            setShowSlaModal(true);
+            // Store the analysis ID so we can redirect after SLA is selected
+            (window as any).__pendingAnalysisId = id;
+          } else {
+            addLog(`🚀 Redirecting to Intelligence Report…`);
+            router.push(`/insights?id=${id}&sla=${selectedSlaHours}`);
+          }
           return;
         }
       }
@@ -502,6 +545,25 @@ function UploadDataInner() {
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <Navbar />
+
+      {/* Brief Selection Modal */}
+      <BriefSelectModal
+        isOpen={showBriefModal}
+        onSelect={handleBriefSelect}
+        onCancel={() => {
+          // Allow canceling only if not forced via URL
+          if (!urlBriefId) setShowBriefModal(false);
+        }}
+      />
+
+      {/* SLA Selection Modal */}
+      <SlaSelectModal
+        isOpen={showSlaModal}
+        onSelect={handleSlaSelect}
+        onBack={() => setShowSlaModal(false)}
+        briefName={selectedBrief?.brand || 'Your Brief'}
+      />
+
       <main className="max-w-4xl mx-auto px-6 py-12">
 
         {/* Header */}
@@ -509,6 +571,11 @@ function UploadDataInner() {
           <h1 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">
             PRISM Intelligence Hub
           </h1>
+          {selectedBrief && (
+            <p className="text-blue-600 font-semibold text-sm mb-2">
+              📌 Brief: {selectedBrief.brand}
+            </p>
+          )}
           <p className="text-slate-500 text-base max-w-xl">
             Upload one or more research files. PRISM will read the data, extract key insights,
             and automatically sort them across <strong>Content · Commerce · Communication · Culture</strong>.
@@ -524,8 +591,29 @@ function UploadDataInner() {
           </div>
         )}
 
-        {/* Drop zone — only shown when idle */}
-        {!hasFiles && (
+        {/* Brief Not Selected Prompt */}
+        {!selectedBrief && !urlBriefId && (
+          <div className="rounded-3xl border-2 border-amber-200 bg-amber-50 p-12 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <div className="rounded-2xl p-4 bg-amber-100 text-amber-700">
+                <UploadCloud size={32} />
+              </div>
+              <div>
+                <p className="text-lg font-bold text-slate-900">Select a brief to begin</p>
+                <p className="text-slate-600 text-sm mt-1">Choose which campaign this data belongs to before uploading</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowBriefModal(true)}
+              className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+            >
+              Select Brief
+            </button>
+          </div>
+        )}
+
+        {/* Drop zone — only shown when brief is selected and idle */}
+        {(selectedBrief || urlBriefId) && !hasFiles && (
           <div
             onClick={() => !processing && fileInputRef.current?.click()}
             className="group rounded-3xl border-2 border-dashed border-slate-200 bg-white p-20 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all"
