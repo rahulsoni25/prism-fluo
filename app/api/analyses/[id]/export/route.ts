@@ -78,7 +78,53 @@ export async function GET(
     if (rowNum > 1) row.alignment = { wrapText: true, vertical: 'top' };
   });
 
-  // Sheet 2 — meta
+  // Sheet 2 — Executive Summary (SMART Framework)
+  const summary = results?.executiveSummary;
+  if (summary) {
+    const sumSheet = wb.addWorksheet('Executive Summary');
+    sumSheet.columns = [
+      { header: 'Section', key: 'section', width: 20 },
+      { header: 'Content', key: 'content', width: 100 },
+    ];
+    sumSheet.getRow(1).font = { bold: true };
+    sumSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+
+    // Add summary rows
+    sumSheet.addRow({
+      section: 'HEADLINE',
+      content: summary.headline || '',
+    });
+    sumSheet.addRow({
+      section: 'OBJECTIVE',
+      content: summary.objective || '',
+    });
+
+    // Observations
+    if (Array.isArray(summary.observations) && summary.observations.length > 0) {
+      summary.observations.forEach((obs, i) => {
+        sumSheet.addRow({
+          section: i === 0 ? 'OBSERVATIONS' : '',
+          content: obs,
+        });
+      });
+    }
+
+    // Recommendations
+    if (Array.isArray(summary.recommendations) && summary.recommendations.length > 0) {
+      summary.recommendations.forEach((rec, i) => {
+        sumSheet.addRow({
+          section: i === 0 ? 'RECOMMENDATIONS' : '',
+          content: rec,
+        });
+      });
+    }
+
+    sumSheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
+      if (rowNum > 1) row.alignment = { wrapText: true, vertical: 'top' };
+    });
+  }
+
+  // Sheet 3 — meta
   const meta = wb.addWorksheet('Meta');
   meta.columns = [
     { header: 'Field', key: 'k', width: 20 },

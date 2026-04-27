@@ -68,6 +68,13 @@ export interface GeminiInsightCard {
   chartValues2?: number[]; // scatter Y-axis (Index scores)
 }
 
+export interface ExecutiveSummary {
+  headline:       string;
+  objective:      string;
+  observations:   string[];
+  recommendations: string[];
+}
+
 /** One pre-processed slot — exact numbers, no estimates */
 export interface DataSlot {
   bucket:          'content' | 'commerce' | 'communication' | 'culture';
@@ -341,6 +348,144 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
   } catch (err) {
     console.error('[Gemini] analyzeGenericTabularForPRISM failed:', (err as Error).message);
     throw err;
+  }
+}
+
+// ── Executive Summary Generation (SMART Framework) ────
+
+/**
+ * Generates a SMART-style executive summary from insight cards and raw data.
+ * Returns: HEADLINE, OBJECTIVE, OBSERVATIONS, RECOMMENDATIONS.
+ * This logic is frozen in Gemini's system prompt to ensure consistent output.
+ */
+export async function generateExecutiveSummary(
+  cards:    GeminiInsightCard[],
+  rows:     any[],
+  context:  string,
+  toolLabel: string,
+): Promise<ExecutiveSummary> {
+  const genAI = await getGenAI();
+  if (!genAI) throw new Error('GEMINI_API_KEY is not set');
+  if (cards.length === 0) {
+    return {
+      headline: 'No data available for analysis',
+      objective: 'Data analysis in progress',
+      observations: [],
+      recommendations: [],
+    };
+  }
+
+  const { model } = await getModel(genAI);
+
+  // Build a summary of the insight cards for context
+  const cardSummary = cards.map((c, i) =>
+    `Card ${i + 1} [${c.bucket}]: ${c.title} — ${c.obs} (Confidence: ${c.conviction}%)`
+  ).join('\n');
+
+  // Sample data rows for reference
+  const sample = rows.slice(0, 20);
+
+  const prompt = `You are a senior business strategist and analyst at PRISM, a top consumer intelligence firm in India.
+
+You have just received 8 detailed insight cards from a data analysis. Your job is to synthesize them into ONE executive summary using the SMART framework: Specific, Measurable, Achievable, Relevant, Time-bound.
+
+━━ INSIGHT CARDS (generated from the data) ━━
+${cardSummary}
+
+━━ DATA SOURCE ━━
+Source: ${context}
+Tool: ${toolLabel}
+Sample rows (context only):
+${JSON.stringify(sample.slice(0, 10), null, 2)}
+
+━━ EXECUTIVE SUMMARY FRAMEWORK (FROZEN LOGIC) ━━
+
+You MUST produce EXACTLY FOUR sections. Do not deviate.
+
+SECTION 1: HEADLINE (SMART-STYLE)
+• Output ONE single best headline summarizing the main strategic outcome/insight.
+• 8–12 words, catchy and PPT-title ready.
+• Must hint at a metric, shift, or business result.
+• Examples:
+  ✅ "Urban Shoppers Shift 35% Toward Online Convenience"
+  ✅ "Gen-Z Audiences Drive 2.5× Growth in Video Engagement"
+  ❌ "Insights from our data" (vague)
+
+SECTION 2: OBJECTIVE
+• State the main business goal/objective reflected by the data.
+• 1–2 sentences, sharp and business-focused.
+• If not explicit, infer from the cards' emphasis.
+• Example: "Understand where young Indian audiences spend their media time and how to reach them cost-effectively."
+
+SECTION 3: OBSERVATIONS (3–6 items, SMART-leaning)
+• Highlight 3–6 key patterns, trends, or anomalies from the cards.
+• Each observation:
+  - Insight-driven, not a raw restatement of numbers
+  - Includes a concrete metric (e.g., +15%, 2x, lower than Q1)
+  - Directly connects to the objective
+  - Is 1 sentence, clear and direct
+• Capture all major spikes, patterns, and critical insights.
+• Examples:
+  ✅ "Video content consumption among 18–25-year-olds is 3.2× higher than in 2024, driven by Reels and short-form content."
+  ✅ "Urban metros account for 68% of online purchases, but rural growth is outpacing urban by 2.1× year-over-year."
+  ❌ "Many people like video" (not specific or measurable)
+
+SECTION 4: RECOMMENDATIONS (3–5 items, SMART actions)
+• Output 3–5 actionable recommendations directly linked to the observations.
+• Each recommendation:
+  - What to do + where/how (specific)
+  - Include a target or directional goal (e.g., increase by 20%, reduce by 15%)
+  - Tied to one or more observations
+  - Realistic and implementable
+  - Time-bound when possible (within 30 days, next quarter, etc.)
+• Examples:
+  ✅ "Allocate 40% of video budget to Instagram Reels for 18–25-year-olds; target 2M impressions within 60 days."
+  ✅ "Launch rural-focused commerce campaigns on Meesho and Flipkart to capture 20% of rural growth opportunity by Q3."
+  ❌ "Optimize content" (too vague)
+
+━━ TONE ━━
+Plain English, short sentences, active voice. Write for a CMO or brand director — clear, data-backed, actionable.
+
+━━ OUTPUT FORMAT (JSON ONLY) ━━
+Return ONLY a valid JSON object with these four fields. No markdown, no extra text.
+{
+  "headline": "string (8–12 words)",
+  "objective": "string (1–2 sentences)",
+  "observations": ["observation 1", "observation 2", "observation 3", ...],
+  "recommendations": ["recommendation 1", "recommendation 2", "recommendation 3", ...]
+}`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const rawText = result.response.text().trim();
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('No JSON object in executive summary response');
+
+    const parsed: any = JSON.parse(match[0]);
+    if (!parsed.headline || !parsed.objective) {
+      throw new Error('Missing required fields: headline or objective');
+    }
+
+    return {
+      headline: String(parsed.headline || ''),
+      objective: String(parsed.objective || ''),
+      observations: Array.isArray(parsed.observations)
+        ? parsed.observations.map((o: any) => String(o || ''))
+        : [],
+      recommendations: Array.isArray(parsed.recommendations)
+        ? parsed.recommendations.map((r: any) => String(r || ''))
+        : [],
+    };
+  } catch (err) {
+    console.error('[Gemini] generateExecutiveSummary failed:', (err as Error).message);
+    // Return a fallback summary rather than throwing
+    return {
+      headline: 'Data analysis reveals key consumer insights',
+      objective: 'Identify strategic opportunities from consumer behaviour',
+      observations: cards.slice(0, 3).map(c => c.obs),
+      recommendations: cards.slice(0, 3).map(c => c.rec),
+    };
   }
 }
 

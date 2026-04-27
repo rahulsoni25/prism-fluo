@@ -114,6 +114,83 @@ function ToolsUsedPanel({ charts }) {
 }
 
 /**
+ * Executive Summary Panel — displays HEADLINE, OBJECTIVE, OBSERVATIONS, RECOMMENDATIONS
+ * in SMART format. Loads its own data via /api/analyses/[id]/summary.
+ */
+function ExecutiveSummaryPanel({ analysisId }) {
+  const [summary, setSummary] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!analysisId) return;
+    let cancelled = false;
+    fetch(`/api/analyses/${analysisId}/summary`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => { if (!cancelled) setSummary(d); })
+      .catch(err => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
+  }, [analysisId]);
+
+  if (error || !summary) return null;
+
+  return (
+    <div style={{
+      marginTop: 28, background: '#fff', borderRadius: 14,
+      padding: '22px 24px', boxShadow: 'var(--shadow)',
+    }}>
+      {/* Headline */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#1F2937', lineHeight: 1.4 }}>
+          {summary.headline}
+        </div>
+      </div>
+
+      {/* Objective */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
+          Objective
+        </div>
+        <div style={{ fontSize: 13, lineHeight: 1.6, color: '#374151' }}>
+          {summary.objective}
+        </div>
+      </div>
+
+      {/* Observations */}
+      {Array.isArray(summary.observations) && summary.observations.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+            Key Observations
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc' }}>
+            {summary.observations.map((obs, i) => (
+              <li key={i} style={{ fontSize: 12.5, lineHeight: 1.6, color: '#374151', marginBottom: 6 }}>
+                {obs}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Recommendations */}
+      {Array.isArray(summary.recommendations) && summary.recommendations.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+            Recommended Actions
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc' }}>
+            {summary.recommendations.map((rec, i) => (
+              <li key={i} style={{ fontSize: 12.5, lineHeight: 1.6, color: '#374151', marginBottom: 6 }}>
+                {rec}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Source-files panel — lists every upload attached to the linked brief.
  * Loads its own data via /api/briefs/[id]/files. Renders nothing while
  * loading or when the analysis has no brief link.
@@ -536,6 +613,11 @@ function AnalysisDetail({ id }) {
             ✅ {totalInsights} insights · {chartTypes.length || 1} chart type{chartTypes.length !== 1 ? 's' : ''} · {sourceBadge}
           </div>
         </div>
+      </div>
+
+      {/* ── Executive Summary (SMART Framework) ── */}
+      <div className="insights-body">
+        <ExecutiveSummaryPanel analysisId={id} />
       </div>
 
       {/* ── Body ──
