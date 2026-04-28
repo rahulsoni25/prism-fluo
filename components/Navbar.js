@@ -50,6 +50,13 @@ export default function Navbar() {
         >
           {pathname.includes('/processing') || pathname.includes('/insights') || pathname.includes('/brief/new') ? '← My Briefs' : 'My Briefs'}
         </Link>
+        <Link
+          href="/presentations"
+          className={`nav-link ${pathname === '/presentations' ? 'active' : ''}`}
+          style={{ textDecoration: 'none' }}
+        >
+          🎨 Presentations
+        </Link>
         {pathname === '/dashboard' && (
           <>
             <span className="nav-link">Templates</span>
