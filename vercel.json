@@ -2,13 +2,6 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm ci",
-     "NEXT_PUBLIC_SENTRY_DSN": {
-      "description": "Sentry error tracking DSN (optional)"
-    },
-    "NODE_ENV": {
-      "value": "production"
-    }
-  },
   "regions": ["sfo1"],
   "functions": {
     "app/**": {
