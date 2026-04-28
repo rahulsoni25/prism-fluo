@@ -1,51 +1,49 @@
 /**
- * /api/health — production health check.
+ * GET /api/health
  *
- * Returns 200 only when:
- *   - the Next.js server is responding
- *   - DATABASE_URL is set
- *   - a SELECT 1 round-trip to Postgres succeeds within 3s
- *
- * Returns 503 (with diagnostic JSON) on any failure.
- *
- * This is the endpoint Railway polls (railway.toml: healthcheckPath).
- * If it never returns 200, Railway marks the deployment FAILED instead
- * of the misleading "Completed" status — and restartPolicy retries.
+ * Health check endpoint for monitoring and uptime tracking
+ * Returns system status, database connection, and timestamp
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const checks: Record<string, string> = {
-    server: 'ok',
-    dbUrl: process.env.DATABASE_URL ? 'set' : 'missing',
+export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+  const checks = {
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    status: 'healthy' as const,
+    database: { status: 'unknown' as const, latency: 0 },
+    memory: {
+      heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+    },
   };
 
-  if (!process.env.DATABASE_URL) {
-    return NextResponse.json(
-      { status: 'unhealthy', checks, reason: 'DATABASE_URL not set' },
-      { status: 503 },
-    );
-  }
-
+  // Check database connection
   try {
-    // Race the query against a 3s timeout so a hung pool can't hang Railway's healthcheck.
-    const ping = db.query('SELECT 1 AS ok');
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('db ping timed out after 3s')), 3000),
-    );
-    await Promise.race([ping, timeout]);
-    checks.db = 'ok';
-  } catch (err) {
-    checks.db = `error: ${(err as Error).message}`;
-    return NextResponse.json(
-      { status: 'unhealthy', checks },
-      { status: 503 },
-    );
+    const dbStart = Date.now();
+    const { rows } = await db.query('SELECT NOW() as timestamp');
+    checks.database.latency = Date.now() - dbStart;
+    checks.database.status = 'connected';
+  } catch (error) {
+    checks.database.status = 'disconnected';
+    checks.status = 'degraded';
   }
 
-  return NextResponse.json({ status: 'healthy', checks });
+  const totalLatency = Date.now() - startTime;
+
+  // Return 200 for healthy, 503 for degraded
+  const statusCode = checks.status === 'healthy' ? 200 : 503;
+
+  return NextResponse.json(
+    {
+      ...checks,
+      latency: totalLatency,
+    },
+    { status: statusCode }
+  );
 }

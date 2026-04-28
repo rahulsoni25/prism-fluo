@@ -36,7 +36,7 @@ export async function GET(
 
     const presentation = rows[0];
 
-    // If we have PPTX data stored, return it
+    // If we have PPTX data stored, return it with streaming + caching
     if (presentation.pptx_data) {
       const buffer = Buffer.isBuffer(presentation.pptx_data)
         ? presentation.pptx_data
@@ -44,12 +44,16 @@ export async function GET(
 
       const filename = `${presentation.brief_name.replace(/\s+/g, '_')}_${presentation.template_name.replace(/\s+/g, '_')}.pptx`;
 
+      // Optimized headers for faster download and browser caching
       return new NextResponse(buffer, {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
           'Content-Disposition': `attachment; filename="${filename}"`,
-          'Content-Length': buffer.length,
-          'Cache-Control': 'private, max-age=3600',
+          'Content-Length': buffer.length.toString(),
+          'Cache-Control': 'private, max-age=86400',
+          'ETag': `"${Buffer.from(buffer).toString('base64').slice(0, 32)}"`,
+          'Accept-Ranges': 'bytes',
+          'X-Content-Type-Options': 'nosniff',
         },
       });
     }

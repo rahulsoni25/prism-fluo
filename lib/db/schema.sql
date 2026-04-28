@@ -220,3 +220,31 @@ CREATE TABLE IF NOT EXISTS tool_data (
 );
 CREATE INDEX IF NOT EXISTS idx_tool_data_upload_sheet ON tool_data(upload_id, sheet_name);
 CREATE INDEX IF NOT EXISTS idx_tool_data_tool_type    ON tool_data(tool_type);
+
+-- ── Presentations (Generated from Analyses) ─────────────────────
+CREATE TABLE IF NOT EXISTS presentations (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    analysis_id     UUID NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    template_id     TEXT NOT NULL,
+    template_name   TEXT NOT NULL,
+    brief_name      TEXT NOT NULL,
+    headline        TEXT,
+    pptx_data       BYTEA,                             -- Binary PPTX file
+    pdf_data        BYTEA,                             -- Binary PDF file
+    status          TEXT NOT NULL DEFAULT 'generated'
+                        CHECK (status IN ('pending', 'generating', 'generated', 'failed')),
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- ── Presentations (optimized for fast lookups) ──
+CREATE INDEX IF NOT EXISTS idx_presentations_analysis ON presentations(analysis_id);
+CREATE INDEX IF NOT EXISTS idx_presentations_user     ON presentations(user_id);
+CREATE INDEX IF NOT EXISTS idx_presentations_created  ON presentations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_presentations_status   ON presentations(status);
+
+-- ── Performance-critical composite indexes ──
+CREATE INDEX IF NOT EXISTS idx_presentations_user_created ON presentations(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_presentations_user_status ON presentations(user_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analyses_user_brief ON analyses(user_id, brief_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_briefs_user_status ON briefs(user_id, status, created_at DESC);
