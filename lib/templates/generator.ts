@@ -147,10 +147,10 @@ export function validateDeckRequest(req: DeckGenerationRequest): {
   if (!req.briefName) errors.push('Brief name required');
   if (!req.headline) errors.push('Headline required');
   if (!req.objective) errors.push('Objective required');
-  if (!Array.isArray(req.observations) || req.observations.length === 0)
-    errors.push('At least one observation required');
-  if (!Array.isArray(req.recommendations) || req.recommendations.length === 0)
-    errors.push('At least one recommendation required');
+
+  // Observations and recommendations can be empty - will use fallback data
+  if (!Array.isArray(req.observations)) errors.push('Observations must be an array');
+  if (!Array.isArray(req.recommendations)) errors.push('Recommendations must be an array');
 
   // Validate template exists
   if (req.templateId && !getTemplate(req.templateId)) {

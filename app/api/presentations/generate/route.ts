@@ -49,15 +49,32 @@ export async function POST(req: NextRequest) {
     const charts = Array.isArray(results.charts) ? results.charts : [];
     const summary = results.executiveSummary || {};
 
+    // Generate fallback observations from charts if summary is missing
+    const fallbackObservations = charts.length > 0
+      ? charts.slice(0, 5).map((c: any, i: number) =>
+          `${i + 1}. ${c.title || 'Insight'}: ${c.obs || 'Key finding from analysis'}`)
+      : ['Data-driven insight from analysis'];
+
+    // Generate fallback recommendations
+    const fallbackRecommendations = [
+      'Review the key findings above',
+      'Take action on identified opportunities',
+      'Monitor metrics going forward'
+    ];
+
     // Extract summary data
     const deckRequest = {
       templateId,
       analysisId,
       briefName: analysis.sheet_name || 'Analysis Report',
-      headline: summary.headline || 'Key Insights',
-      objective: summary.objective || 'Strategic analysis of findings',
-      observations: (summary.observations || []).filter((o: string) => o.trim()),
-      recommendations: (summary.recommendations || []).filter((r: string) => r.trim()),
+      headline: summary.headline || 'Strategic Insights from Analysis',
+      objective: summary.objective || 'Comprehensive analysis of key findings and recommendations',
+      observations: (summary.observations && summary.observations.length > 0)
+        ? summary.observations.filter((o: string) => o.trim())
+        : fallbackObservations,
+      recommendations: (summary.recommendations && summary.recommendations.length > 0)
+        ? summary.recommendations.filter((r: string) => r.trim())
+        : fallbackRecommendations,
     };
 
     // Validate request data
