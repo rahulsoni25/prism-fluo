@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { cache } from '@/lib/cache';
 import { logger } from '@/lib/logger';
-import { calculateSla } from '@/lib/sla';
+import { calculateSla } from '@/lib/sla.server';
 import { getSession } from '@/lib/auth/server';
 
 const VALID_STATUSES = ['draft', 'waiting_for_data', 'processing', 'ready'];
