@@ -566,8 +566,8 @@ function AnalysisDetail({ id }) {
     <div className="screen fade-in">
       <Navbar />
 
-      {/* ── Hero header — HIDDEN ── */}
-      <div className="insights-hero" style={{ display: 'none' }}>
+      {/* ── Hero header (identical structure to NikeInsights) ── */}
+      <div className="insights-hero">
         <div className="insights-top">
           <div>
             <div className="ins-eyebrow">Intelligence Report — Ready</div>
@@ -625,8 +625,8 @@ function AnalysisDetail({ id }) {
         </div>
       </div>
 
-      {/* ── Executive Summary (SMART Framework) — HIDDEN ── */}
-      <div className="insights-body" style={{ display: 'none' }}>
+      {/* ── Executive Summary (SMART Framework) ── */}
+      <div className="insights-body">
         <ExecutiveSummaryPanel analysisId={id} />
       </div>
 
@@ -705,13 +705,13 @@ function AnalysisDetail({ id }) {
         );
       })}
 
-      {/* Source files attached to this brief — HIDDEN */}
-      <div className="insights-body" style={{ paddingTop: 0, display: 'none' }}>
+      {/* Source files attached to this brief (loads its own data; renders nothing if none) */}
+      <div className="insights-body" style={{ paddingTop: 0 }}>
         <SourceFilesPanel briefId={analysis.brief?.id} />
       </div>
 
-      {/* Tools-used panel — HIDDEN */}
-      <div className="insights-body" style={{ paddingTop: 0, display: 'none' }}>
+      {/* Tools-used panel — shows the contributing platforms */}
+      <div className="insights-body" style={{ paddingTop: 0 }}>
         <ToolsUsedPanel charts={charts} />
       </div>
 
