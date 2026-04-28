@@ -50,13 +50,14 @@ export default function PresentationsPage() {
       {/* Header */}
       <div className="bg-white border-b border-slate-200">
         <nav className="nav">
-          <Link href="/dashboard" className="nav-brand">
+          <Link href="/dashboard" className="nav-brand" style={{ textDecoration: 'none' }}>
             <div className="nav-prism-icon">P</div>
             <span className="nav-prism-text">PRISM</span>
           </Link>
           <div className="nav-links">
-            <Link href="/dashboard" className="nav-link">My Briefs</Link>
-            <Link href="/culture" className="nav-link">Culture</Link>
+            <Link href="/dashboard" className="nav-link" style={{ textDecoration: 'none' }}>My Briefs</Link>
+            <Link href="/insights" className="nav-link" style={{ textDecoration: 'none' }}>📊 My Analyses</Link>
+            <Link href="/culture" className="nav-link" style={{ textDecoration: 'none' }}>Culture</Link>
           </div>
         </nav>
       </div>
@@ -132,10 +133,18 @@ export default function PresentationsPage() {
                   </div>
 
                   {/* Footer CTA */}
-                  <div className="px-6 py-4 border-t border-slate-200 bg-slate-50">
-                    <button className="w-full text-blue-600 hover:text-blue-700 font-semibold text-sm transition-colors">
-                      View Presentation →
+                  <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex gap-2">
+                    <button className="flex-1 text-blue-600 hover:text-blue-700 font-semibold text-sm transition-colors">
+                      View →
                     </button>
+                    <a
+                      href={`/api/presentations/${pres.id}/download`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex-1 text-green-600 hover:text-green-700 font-semibold text-sm transition-colors"
+                      title="Download PowerPoint file"
+                    >
+                      ⬇ PPT
+                    </a>
                   </div>
                 </div>
               </Link>

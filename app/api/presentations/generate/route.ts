@@ -12,6 +12,7 @@ import { getSession } from '@/lib/auth/server';
 import { getTemplate } from '@/lib/templates/definitions';
 import { generateDeckContent, buildGammaPrompt, validateDeckRequest } from '@/lib/templates/generator';
 import { generateWithGemini } from '@/lib/ai/gemini';
+import { generatePresentationWithGamma } from '@/lib/ai/gamma';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,22 +106,14 @@ export async function POST(req: NextRequest) {
       recommendations: deckRequest.recommendations,
     });
 
-    // Generate presentation using Gamma
-    // For now, we'll return a placeholder response and store the data
-    // In production, you'd call the actual Gamma API here
-    const presentationData = {
-      templateId,
-      templateName: template.name,
-      analysisId,
-      briefName: deckRequest.briefName,
-      headline: deckRequest.headline,
-      gammaUrl: null, // Will be populated when Gamma API integration is complete
-      status: 'pending',
-      generatedAt: new Date(),
-    };
+    // Generate presentation using Gamma API
+    const gammaPresentation = await generatePresentationWithGamma(
+      gammaPrompt,
+      deckRequest.briefName,
+    );
 
-    // Store presentation reference in database
     const presentationId = `pres_${Date.now()}`;
+    const downloadUrl = `/api/presentations/${presentationId}/download`;
 
     try {
       // Try to insert, but don't fail if table doesn't exist
@@ -128,8 +121,8 @@ export async function POST(req: NextRequest) {
         await db.query(
           `INSERT INTO presentations (
             id, analysis_id, user_id, template_id, template_name,
-            brief_name, headline, status, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            brief_name, headline, gamma_url, download_url, status, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
             presentationId,
             analysisId,
@@ -138,6 +131,8 @@ export async function POST(req: NextRequest) {
             template.name,
             deckRequest.briefName,
             deckRequest.headline,
+            gammaPresentation.url,
+            downloadUrl,
             'generated',
             new Date(),
           ],
@@ -157,8 +152,11 @@ export async function POST(req: NextRequest) {
         presentationId,
         templateName: template.name,
         briefName: deckRequest.briefName,
+        headline: deckRequest.headline,
+        gammaUrl: gammaPresentation.url,
+        downloadUrl: downloadUrl,
         status: 'generated',
-        message: 'Presentation deck created successfully! You can now share or export it.',
+        message: '✨ Your presentation is ready! Download it now or view it online.',
       }, { status: 201 });
     } catch (dbError) {
       console.error('Database error:', dbError);
