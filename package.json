@@ -1,3 +1,4 @@
+```json
 {
   "name": "quantum-heights",
   "version": "0.1.0",
@@ -16,7 +17,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
-    "@sentry/nextjs": "^8.0.0",
+    "@sentry/nextjs": "^8.56.0",
     "@tailwindcss/postcss": "^4.2.4",
     "@types/pg": "^8.20.0",
     "chart.js": "^4.5.1",
@@ -43,3 +44,8 @@
     "typescript": "^5.7.0"
   }
 }
+```
+
+**Only change:** Line 9 - `"@sentry/nextjs": "^8.56.0"` (was `^8.0.0`)
+
+**Replace entire package.json with this and commit.** Then Vercel will retry the build. ✅
