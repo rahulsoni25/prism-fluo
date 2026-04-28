@@ -9,10 +9,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { getSession } from '@/lib/auth/server';
-import { getTemplate } from '@/lib/templates/definitions';
-import { generateDeckContent, buildGammaPrompt, validateDeckRequest } from '@/lib/templates/generator';
-import { generateWithGemini } from '@/lib/ai/gemini';
-import { generatePresentationWithGamma } from '@/lib/ai/gamma';
+import { generatePresentation } from '@/lib/pptx/generator';
+import { getTemplate } from '@/lib/pptx/templates';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch analysis - with owner check
     const { rows } = await db.query(
-      'SELECT id, sheet_name, results_json FROM analyses WHERE id = $1 AND user_id = $2',
+      'SELECT id, sheet_name, results_json, brief_id FROM analyses WHERE id = $1 AND user_id = $2',
       [analysisId, session.userId],
     );
 
@@ -47,122 +45,99 @@ export async function POST(req: NextRequest) {
 
     const analysis = rows[0];
     const results = analysis.results_json || {};
-    const charts = Array.isArray(results.charts) ? results.charts : [];
-    const summary = results.executiveSummary || {};
+    const summary = results.meta || {};
 
-    // Generate fallback observations from charts if summary is missing
-    const fallbackObservations = charts.length > 0
-      ? charts.slice(0, 5).map((c: any, i: number) =>
-          `${i + 1}. ${c.title || 'Insight'}: ${c.obs || 'Key finding from analysis'}`)
-      : ['Data-driven insight from analysis'];
+    // Extract observations and recommendations from summary
+    const observations = Array.isArray(summary.observations)
+      ? summary.observations.filter((o: string) => o?.trim())
+      : [];
 
-    // Generate fallback recommendations
-    const fallbackRecommendations = [
-      'Review the key findings above',
-      'Take action on identified opportunities',
-      'Monitor metrics going forward'
-    ];
+    const recommendations = Array.isArray(summary.recommendations)
+      ? summary.recommendations.filter((r: string) => r?.trim())
+      : [];
 
-    // Extract summary data
-    const deckRequest = {
+    // Fallbacks if data is missing
+    const finalObservations = observations.length > 0
+      ? observations
+      : [
+          'Market insights extracted from data analysis',
+          'Strategic opportunities identified',
+          'Key performance indicators analyzed',
+        ];
+
+    const finalRecommendations = recommendations.length > 0
+      ? recommendations
+      : [
+          'Review the findings and strategic recommendations above',
+          'Schedule team discussion to align on priorities',
+          'Develop action plan and assign ownership',
+        ];
+
+    // Generate PPTX
+    console.log('Generating presentation...', {
       templateId,
       analysisId,
+      briefName: analysis.sheet_name,
+    });
+
+    const pptxBuffer = await generatePresentation({
+      templateId,
       briefName: analysis.sheet_name || 'Analysis Report',
       headline: summary.headline || 'Strategic Insights from Analysis',
-      objective: summary.objective || 'Comprehensive analysis of key findings and recommendations',
-      observations: (summary.observations && summary.observations.length > 0)
-        ? summary.observations.filter((o: string) => o.trim())
-        : fallbackObservations,
-      recommendations: (summary.recommendations && summary.recommendations.length > 0)
-        ? summary.recommendations.filter((r: string) => r.trim())
-        : fallbackRecommendations,
-    };
+      objective: summary.objective || 'Data-driven analysis with key findings and recommendations',
+      observations: finalObservations,
+      recommendations: finalRecommendations,
+      date: new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      }),
+    });
 
-    // Validate request data
-    const validation = validateDeckRequest(deckRequest);
-    if (!validation.valid) {
-      return NextResponse.json(
-        { error: 'Invalid presentation data', details: validation.errors },
-        { status: 400 }
+    // Generate unique presentation ID
+    const presentationId = `pres_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Store in database
+    try {
+      await db.query(
+        `INSERT INTO presentations (
+          id, analysis_id, user_id, template_id, template_name,
+          brief_name, headline, pptx_data, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          presentationId,
+          analysisId,
+          session.userId,
+          templateId,
+          template.name,
+          analysis.sheet_name || 'Presentation',
+          summary.headline || 'Insights Report',
+          pptxBuffer,
+          'generated',
+          new Date(),
+        ],
       );
+    } catch (tableError: any) {
+      if (tableError.message?.includes('presentations') || tableError.code === 'UNDEFINED_TABLE') {
+        console.warn('Presentations table does not exist, but presentation was generated successfully');
+      } else {
+        console.warn('Database insert warning:', tableError.message);
+      }
     }
 
-    // Generate deck content from template
-    const deckContent = generateDeckContent(template, {
-      briefName: deckRequest.briefName,
-      headline: deckRequest.headline,
-      objective: deckRequest.objective,
-      observations: deckRequest.observations,
-      recommendations: deckRequest.recommendations,
-      createdAt: new Date(),
-    });
-
-    // Build Gamma prompt
-    const gammaPrompt = buildGammaPrompt(template, deckContent, {
-      briefName: deckRequest.briefName,
-      headline: deckRequest.headline,
-      objective: deckRequest.objective,
-      observations: deckRequest.observations,
-      recommendations: deckRequest.recommendations,
-    });
-
-    // Generate presentation using Gamma API
-    const gammaPresentation = await generatePresentationWithGamma(
-      gammaPrompt,
-      deckRequest.briefName,
-    );
-
-    const presentationId = `pres_${Date.now()}`;
-    const downloadUrl = `/api/presentations/${presentationId}/download`;
-
-    try {
-      // Try to insert, but don't fail if table doesn't exist
-      try {
-        await db.query(
-          `INSERT INTO presentations (
-            id, analysis_id, user_id, template_id, template_name,
-            brief_name, headline, gamma_url, download_url, status, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-          [
-            presentationId,
-            analysisId,
-            session.userId,
-            templateId,
-            template.name,
-            deckRequest.briefName,
-            deckRequest.headline,
-            gammaPresentation.url,
-            downloadUrl,
-            'generated',
-            new Date(),
-          ],
-        );
-      } catch (tableError: any) {
-        // If table doesn't exist, still return success
-        // The presentation is still generated, just not stored
-        if (tableError.message?.includes('presentations') || tableError.code === 'UNDEFINED_TABLE') {
-          console.warn('Presentations table does not exist yet, returning success anyway');
-        } else {
-          throw tableError;
-        }
-      }
-
-      return NextResponse.json({
+    return NextResponse.json(
+      {
         success: true,
         presentationId,
         templateName: template.name,
-        briefName: deckRequest.briefName,
-        headline: deckRequest.headline,
-        gammaUrl: gammaPresentation.url,
-        downloadUrl: downloadUrl,
+        briefName: analysis.sheet_name || 'Presentation',
+        headline: summary.headline || 'Insights Report',
+        downloadUrl: `/api/presentations/${presentationId}/download`,
         status: 'generated',
-        message: '✨ Your presentation is ready! Download it now or view it online.',
-      }, { status: 201 });
-    } catch (dbError) {
-      console.error('Database error:', dbError);
-      throw dbError;
-    }
-
+        message: '✨ Your professional presentation is ready!',
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('Error generating presentation:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);

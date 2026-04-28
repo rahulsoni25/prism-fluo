@@ -23,7 +23,7 @@ export async function GET(
 
     // Fetch presentation with ownership check
     const { rows } = await db.query(
-      'SELECT id, brief_name, gamma_url, template_name FROM presentations WHERE id = $1 AND user_id = $2',
+      'SELECT id, brief_name, template_name, pptx_data FROM presentations WHERE id = $1 AND user_id = $2',
       [presentationId, session.userId],
     );
 
@@ -36,41 +36,36 @@ export async function GET(
 
     const presentation = rows[0];
 
-    // If we have a Gamma URL, try to download from there
-    if (presentation.gamma_url && presentation.gamma_url !== '#') {
-      try {
-        const response = await fetch(presentation.gamma_url);
-        if (response.ok) {
-          const buffer = await response.arrayBuffer();
-          const filename = `${presentation.brief_name.replace(/\s+/g, '_')}_${presentation.template_name.replace(/\s+/g, '_')}.pptx`;
+    // If we have PPTX data stored, return it
+    if (presentation.pptx_data) {
+      const buffer = Buffer.isBuffer(presentation.pptx_data)
+        ? presentation.pptx_data
+        : Buffer.from(presentation.pptx_data);
 
-          return new NextResponse(buffer, {
-            headers: {
-              'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-              'Content-Disposition': `attachment; filename="${filename}"`,
-              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-            },
-          });
-        }
-      } catch (error) {
-        console.error('Error downloading from Gamma URL:', error);
-      }
+      const filename = `${presentation.brief_name.replace(/\s+/g, '_')}_${presentation.template_name.replace(/\s+/g, '_')}.pptx`;
+
+      return new NextResponse(buffer, {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Length': buffer.length,
+          'Cache-Control': 'private, max-age=3600',
+        },
+      });
     }
 
-    // Fallback: Generate a simple presentation file
-    // For now, return a JSON response with instructions
+    // If no PPTX data found
     return NextResponse.json(
       {
-        message: 'Presentation download not yet available. Please use the online viewer.',
-        viewerUrl: presentation.gamma_url || '#',
+        error: 'Presentation file not available',
+        message: 'The presentation data was not stored. Please regenerate it.',
       },
-      { status: 200 }
+      { status: 404 }
     );
-
   } catch (error) {
     console.error('Error downloading presentation:', error);
     return NextResponse.json(
-      { error: 'Failed to download presentation' },
+      { error: 'Failed to download presentation', details: String(error) },
       { status: 500 }
     );
   }
