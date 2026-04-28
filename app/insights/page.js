@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import GenerateDeckModal from '@/app/components/GenerateDeckModal';
 import Navbar from '@/components/Navbar';
 import Copilot from '@/components/Copilot';
 import {
@@ -486,6 +487,7 @@ function AnalysisDetail({ id }) {
   const [error,        setError]        = useState(null);
   const [activeBucket, setActiveBucket] = useState(null); // set after load
   const [printing,     setPrinting]     = useState(false);
+  const [showDeckModal, setShowDeckModal] = useState(false);
 
   useEffect(() => {
     fetch(`/api/analyses/${id}`)
@@ -578,6 +580,14 @@ function AnalysisDetail({ id }) {
             )}
           </div>
           <div className="ins-actions no-print">
+            <button
+              className="btn-glass"
+              style={{ background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)', color: 'white' }}
+              onClick={() => setShowDeckModal(true)}
+              title="Generate a presentation deck from this analysis"
+            >
+              🎨 Generate Presentation
+            </button>
             <button className="btn-glass" onClick={handleExportExcel} title="Download all insights as an Excel workbook">
               ⬇ Excel
             </button>
@@ -713,6 +723,18 @@ function AnalysisDetail({ id }) {
           analysisTitle={analysis.sheet_name || analysis.filename}
         />
       </div>
+
+      {/* Generate Presentation Modal */}
+      {showDeckModal && (
+        <GenerateDeckModal
+          analysisId={id}
+          onClose={() => setShowDeckModal(false)}
+          onSuccess={(deck) => {
+            setShowDeckModal(false);
+            alert(`✓ Presentation created! You can view it in the Presentations library.`);
+          }}
+        />
+      )}
     </div>
   );
 }
