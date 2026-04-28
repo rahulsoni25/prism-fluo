@@ -13,14 +13,14 @@ import { getSession } from '@/lib/auth/server';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const t0 = Date.now();
   try {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
-    const briefId = params.id;
+    const { id: briefId } = await params;
     if (!briefId) {
       return NextResponse.json(
         { error: 'VALIDATION_ERROR', message: 'briefId is required' },
