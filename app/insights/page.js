@@ -116,7 +116,7 @@ function ToolsUsedPanel({ charts }) {
 
 /**
  * Executive Summary Panel — displays HEADLINE, OBJECTIVE, OBSERVATIONS, RECOMMENDATIONS
- * in SMART format. Loads its own data via /api/analyses/[id]/summary.
+ * in SMART format with modern card design. Loads its own data via /api/analyses/[id]/summary.
  */
 function ExecutiveSummaryPanel({ analysisId }) {
   const [summary, setSummary] = useState(null);
@@ -135,58 +135,133 @@ function ExecutiveSummaryPanel({ analysisId }) {
   if (error || !summary) return null;
 
   return (
-    <div style={{
-      marginTop: 28, background: '#fff', borderRadius: 14,
-      padding: '22px 24px', boxShadow: 'var(--shadow)',
-    }}>
-      {/* Headline */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#1F2937', lineHeight: 1.4 }}>
+    <div style={{ marginTop: 28 }}>
+      {/* Headline Card */}
+      <div style={{
+        background: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
+        borderRadius: 16,
+        padding: '28px 32px',
+        marginBottom: 20,
+        boxShadow: '0 4px 6px rgba(59, 130, 246, 0.1)',
+      }}>
+        <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', lineHeight: 1.3 }}>
           {summary.headline}
         </div>
       </div>
 
-      {/* Objective */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
-          Objective
+      {/* 3-Column Grid for Objective, Observations, Recommendations */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+        gap: 20,
+      }}>
+        {/* Objective Card */}
+        <div style={{
+          background: '#fff',
+          borderRadius: 14,
+          padding: '24px',
+          boxShadow: 'var(--shadow)',
+          border: '1px solid #E5E7EB',
+        }}>
+          <div style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: '#3B82F6',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            marginBottom: 12,
+          }}>
+            🎯 Objective
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.7, color: '#374151', fontWeight: 500 }}>
+            {summary.objective}
+          </div>
         </div>
-        <div style={{ fontSize: 13, lineHeight: 1.6, color: '#374151' }}>
-          {summary.objective}
-        </div>
+
+        {/* Observations Card */}
+        {Array.isArray(summary.observations) && summary.observations.length > 0 && (
+          <div style={{
+            background: '#fff',
+            borderRadius: 14,
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+            border: '1px solid #E5E7EB',
+          }}>
+            <div style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: '#059669',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              marginBottom: 12,
+            }}>
+              📊 Key Findings
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 0, listStyleType: 'none' }}>
+              {summary.observations.slice(0, 3).map((obs, i) => (
+                <li key={i} style={{
+                  fontSize: 12.5,
+                  lineHeight: 1.6,
+                  color: '#374151',
+                  marginBottom: i < summary.observations.slice(0, 3).length - 1 ? 10 : 0,
+                  paddingLeft: 20,
+                  position: 'relative',
+                }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 2,
+                    fontSize: 16,
+                  }}>✓</span>
+                  {obs}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Recommendations Card */}
+        {Array.isArray(summary.recommendations) && summary.recommendations.length > 0 && (
+          <div style={{
+            background: '#fff',
+            borderRadius: 14,
+            padding: '24px',
+            boxShadow: 'var(--shadow)',
+            border: '1px solid #E5E7EB',
+          }}>
+            <div style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: '#D97706',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              marginBottom: 12,
+            }}>
+              💡 Actions
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 0, listStyleType: 'none' }}>
+              {summary.recommendations.slice(0, 3).map((rec, i) => (
+                <li key={i} style={{
+                  fontSize: 12.5,
+                  lineHeight: 1.6,
+                  color: '#374151',
+                  marginBottom: i < summary.recommendations.slice(0, 3).length - 1 ? 10 : 0,
+                  paddingLeft: 20,
+                  position: 'relative',
+                }}>
+                  <span style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 2,
+                    fontSize: 16,
+                  }}>→</span>
+                  {rec}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
-
-      {/* Observations */}
-      {Array.isArray(summary.observations) && summary.observations.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
-            Key Observations
-          </div>
-          <ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc' }}>
-            {summary.observations.map((obs, i) => (
-              <li key={i} style={{ fontSize: 12.5, lineHeight: 1.6, color: '#374151', marginBottom: 6 }}>
-                {obs}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Recommendations */}
-      {Array.isArray(summary.recommendations) && summary.recommendations.length > 0 && (
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
-            Recommended Actions
-          </div>
-          <ul style={{ margin: 0, paddingLeft: 18, listStyleType: 'disc' }}>
-            {summary.recommendations.map((rec, i) => (
-              <li key={i} style={{ fontSize: 12.5, lineHeight: 1.6, color: '#374151', marginBottom: 6 }}>
-                {rec}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
