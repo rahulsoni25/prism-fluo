@@ -31,10 +31,7 @@
       "main": true
     }
   },
-  "buildCache": {
-    "nodejs": true,
-    "npm": true
-  },
+
   "headers": [
     {
       "source": "/api/(.*)",
