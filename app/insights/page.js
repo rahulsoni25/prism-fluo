@@ -385,6 +385,124 @@ function InsightChart({ ins }) {
   }
 }
 
+/* ─── Analyses List View ─── */
+function AnalysesList() {
+  const router = useRouter();
+  const [analyses, setAnalyses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/analyses')
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        setAnalyses(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  return (
+    <div className="screen fade-in">
+      <Navbar />
+      <div className="main">
+        <div style={{ padding: '32px 24px', maxWidth: 1200, margin: '0 auto' }}>
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>📊 My Analyses</div>
+            <div style={{ fontSize: 14, color: 'var(--muted)' }}>
+              Select an analysis to view insights and generate presentations
+            </div>
+          </div>
+
+          {loading && (
+            <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted)' }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+              <p>Loading analyses...</p>
+            </div>
+          )}
+
+          {error && (
+            <div style={{
+              padding: '20px', background: '#FEF2F2', border: '1px solid #FECACA',
+              borderRadius: 12, color: '#991B1B', marginBottom: 20
+            }}>
+              <strong>⚠ Could not load analyses</strong>
+              <p style={{ margin: '8px 0 0', fontSize: 13 }}>{error}</p>
+            </div>
+          )}
+
+          {!loading && analyses.length === 0 && (
+            <div style={{
+              padding: '48px 24px', textAlign: 'center',
+              background: '#fff', borderRadius: 16, border: '2px dashed #E5E7EB'
+            }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: '#111827' }}>
+                No analyses yet
+              </div>
+              <p style={{ color: 'var(--muted)', marginBottom: 24 }}>
+                Upload data linked to a brief to generate insights and analyses.
+              </p>
+              <button
+                className="btn btn-primary"
+                onClick={() => router.push('/upload')}
+              >
+                Upload Data
+              </button>
+            </div>
+          )}
+
+          {!loading && !error && analyses.length > 0 && (
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+              gap: 16
+            }}>
+              {analyses.map(a => (
+                <div
+                  key={a.id}
+                  onClick={() => router.push(`/insights?id=${a.id}`)}
+                  style={{
+                    padding: 20, background: '#fff', border: '1px solid #E5E7EB',
+                    borderRadius: 12, cursor: 'pointer', transition: 'all 0.2s',
+                    boxShadow: 'var(--shadow)',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--primary)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(59,130,246,0.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#E5E7EB';
+                    e.currentTarget.style.boxShadow = 'var(--shadow)';
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+                    {a.filename || 'Analysis'}
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+                    {a.brief?.brand || 'Brief'}
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+                    {a.brief?.status === 'ready' ? '✓ Ready' : '⟳ Processing'} · {a.sheet_name || 'Sheet'}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                    Created {new Date(a.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Nike India 4-bucket demo view ─── */
 function NikeInsights() {
   const router = useRouter();
@@ -818,7 +936,7 @@ function AnalysisDetail({ id }) {
 function InsightsInner() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
-  return id ? <AnalysisDetail id={id} /> : <NikeInsights />;
+  return id ? <AnalysisDetail id={id} /> : <AnalysesList />;
 }
 
 export default function Insights() {

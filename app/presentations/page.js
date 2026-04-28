@@ -148,14 +148,44 @@ export default function PresentationsPage() {
           <div className="text-center py-20 bg-white rounded-2xl border-2 border-dashed border-slate-300">
             <div className="text-6xl mb-4">🎨</div>
             <h2 className="text-2xl font-bold text-slate-900 mb-2">No Presentations Yet</h2>
-            <p className="text-slate-600 mb-8">
-              Generate your first presentation from an analysis to get started
+            <p className="text-slate-600 mb-8 text-lg">
+              Generate your first presentation from an analysis
             </p>
+
+            {/* Step-by-step guide */}
+            <div className="max-w-2xl mx-auto mb-10 text-left">
+              <div className="space-y-4">
+                <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold flex-shrink-0">1</div>
+                  <div className="text-left">
+                    <p className="font-semibold text-slate-900">Click "View Analyses" below</p>
+                    <p className="text-sm text-slate-600 mt-1">Go to your analyses page</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-600 text-white font-bold flex-shrink-0">2</div>
+                  <div className="text-left">
+                    <p className="font-semibold text-slate-900">Find the <span className="inline-block px-2 py-1 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded text-sm">🎨 Generate Presentation</span> button</p>
+                    <p className="text-sm text-slate-600 mt-1">It's in the top-right corner of any analysis, next to the Export buttons</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-600 text-white font-bold flex-shrink-0">3</div>
+                  <div className="text-left">
+                    <p className="font-semibold text-slate-900">Select a template and generate</p>
+                    <p className="text-sm text-slate-600 mt-1">Pick from 7 templates: Executive Briefing, Client Pitch, Deep Dive, Board Presentation, Team Update, Investor Update, or Quick Overview</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <Link
               href="/insights"
               className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-colors"
             >
-              View Analyses
+              View Analyses →
             </Link>
           </div>
         )}
