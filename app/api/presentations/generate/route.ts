@@ -121,37 +121,49 @@ export async function POST(req: NextRequest) {
 
     // Store presentation reference in database
     const presentationId = `pres_${Date.now()}`;
-    await db.query(
-      `INSERT INTO presentations (
-        id, analysis_id, user_id, template_id, template_name,
-        brief_name, headline, status, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        presentationId,
-        analysisId,
-        session.userId,
-        templateId,
-        template.name,
-        deckRequest.briefName,
-        deckRequest.headline,
-        'generated',
-        new Date(),
-      ],
-    );
 
-    return NextResponse.json({
-      success: true,
-      presentationId,
-      templateName: template.name,
-      briefName: deckRequest.briefName,
-      status: 'generated',
-      message: 'Presentation deck created successfully! You can now share or export it.',
-    }, { status: 201 });
+    try {
+      const insertResult = await db.query(
+        `INSERT INTO presentations (
+          id, analysis_id, user_id, template_id, template_name,
+          brief_name, headline, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id`,
+        [
+          presentationId,
+          analysisId,
+          session.userId,
+          templateId,
+          template.name,
+          deckRequest.briefName,
+          deckRequest.headline,
+          'generated',
+          new Date(),
+        ],
+      );
+
+      if (!insertResult.rows || insertResult.rows.length === 0) {
+        throw new Error('Failed to insert presentation into database');
+      }
+
+      return NextResponse.json({
+        success: true,
+        presentationId,
+        templateName: template.name,
+        briefName: deckRequest.briefName,
+        status: 'generated',
+        message: 'Presentation deck created successfully! You can now share or export it.',
+      }, { status: 201 });
+    } catch (dbError) {
+      console.error('Database error storing presentation:', dbError);
+      throw dbError;
+    }
 
   } catch (error) {
     console.error('Error generating presentation:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Failed to generate presentation', details: String(error) },
+      { error: 'Failed to generate presentation', details: errorMessage },
       { status: 500 }
     );
   }

@@ -15,11 +15,19 @@ CREATE TABLE IF NOT EXISTS presentations (
 );
 
 -- Indexes for fast lookups
-CREATE INDEX idx_presentations_user_id ON presentations(user_id);
-CREATE INDEX idx_presentations_analysis_id ON presentations(analysis_id);
-CREATE INDEX idx_presentations_created_at ON presentations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_presentations_user_id ON presentations(user_id);
+CREATE INDEX IF NOT EXISTS idx_presentations_analysis_id ON presentations(analysis_id);
+CREATE INDEX IF NOT EXISTS idx_presentations_created_at ON presentations(created_at DESC);
 
 -- Add constraint to ensure user can only access their own presentations
-ALTER TABLE presentations
-  ADD CONSTRAINT presentations_user_analysis_user_fk
-  FOREIGN KEY (user_id, analysis_id) REFERENCES analyses(user_id, id);
+-- Only add if not already exists
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT constraint_name FROM information_schema.table_constraints
+    WHERE table_name = 'presentations' AND constraint_name = 'presentations_user_analysis_user_fk'
+  ) THEN
+    ALTER TABLE presentations
+      ADD CONSTRAINT presentations_user_analysis_user_fk
+      FOREIGN KEY (user_id, analysis_id) REFERENCES analyses(user_id, id);
+  END IF;
+END $$;
