@@ -19,12 +19,21 @@ export async function GET() {
 
     const { rows } = await logger.query('analyses:list', () =>
       db.query(`
-        SELECT id, upload_id, sheet_name, filename,
-               results_json->'meta' AS meta,
-               created_at
-        FROM analyses
-        WHERE user_id = $1
-        ORDER BY created_at DESC
+        SELECT a.id, a.upload_id, a.sheet_name, a.filename,
+               a.results_json->'meta' AS meta,
+               a.created_at, a.brief_id,
+               json_build_object(
+                 'id', b.id,
+                 'brand', b.brand,
+                 'status', b.status,
+                 'sla_hours', b.sla_hours,
+                 'sla_due_at', b.sla_due_at,
+                 'actual_completed_at', b.actual_completed_at
+               ) AS brief
+        FROM analyses a
+        LEFT JOIN briefs b ON a.brief_id = b.id
+        WHERE a.user_id = $1
+        ORDER BY a.created_at DESC
         LIMIT 100
       `, [session.userId])
     );
