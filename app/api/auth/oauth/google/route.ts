@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { config } from '@/lib/config';
 
 export async function GET(req: NextRequest) {
   const clientId = process.env.AUTH_GOOGLE_ID;
@@ -7,9 +6,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Google OAuth not configured' }, { status: 500 });
   }
 
-  // Construct callback URL using the app origin (works across local and Vercel)
-  const baseUrl = config.API_BASE_URL.replace(/\/$/, '');
-  const redirectUri = `${baseUrl}/api/auth/oauth/google/callback`;
+  // Use the actual request origin — always accurate on Vercel
+  const origin = req.nextUrl.origin;
+  const redirectUri = `${origin}/api/auth/oauth/google/callback`;
 
   const searchParams = new URLSearchParams({
     client_id: clientId,

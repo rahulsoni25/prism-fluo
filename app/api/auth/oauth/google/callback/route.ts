@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { config } from '@/lib/config';
 import { signSession, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth/session';
 import { upsertUser } from '@/lib/auth/server';
 
@@ -8,19 +7,20 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get('code');
   const error = searchParams.get('error');
 
-  const baseUrl = config.API_BASE_URL.replace(/\/$/, '');
-  const fallbackRedirect = `${baseUrl}/login`;
+  // Use the actual request origin — this is always accurate on Vercel
+  const origin = req.nextUrl.origin;
+  const fallbackRedirect = `${origin}/login`;
 
   if (error || !code) {
-    return NextResponse.redirect(`${fallbackRedirect}?error=oauth_failed`);
+    return NextResponse.redirect(`${fallbackRedirect}?error=oauth_denied&detail=${encodeURIComponent(error || 'no_code')}`);
   }
 
   const clientId = process.env.AUTH_GOOGLE_ID;
   const clientSecret = process.env.AUTH_GOOGLE_SECRET;
-  const redirectUri = `${baseUrl}/api/auth/oauth/google/callback`;
+  const redirectUri = `${origin}/api/auth/oauth/google/callback`;
 
   if (!clientId || !clientSecret) {
-    return NextResponse.json({ error: 'Google OAuth not configured' }, { status: 500 });
+    return NextResponse.redirect(`${fallbackRedirect}?error=oauth_not_configured`);
   }
 
   try {
@@ -38,7 +38,11 @@ export async function GET(req: NextRequest) {
     });
 
     const tokenData = await tokenRes.json();
-    if (!tokenRes.ok) throw new Error(tokenData.error_description || 'Failed to get token');
+    if (!tokenRes.ok) {
+      const msg = tokenData.error_description || tokenData.error || 'token_exchange_failed';
+      console.error('Google token error:', tokenData);
+      return NextResponse.redirect(`${fallbackRedirect}?error=token_failed&detail=${encodeURIComponent(msg)}`);
+    }
 
     // 2. Fetch user profile from Google
     const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -46,7 +50,9 @@ export async function GET(req: NextRequest) {
     });
     
     const profileData = await profileRes.json();
-    if (!profileRes.ok) throw new Error('Failed to get user profile');
+    if (!profileRes.ok) {
+      return NextResponse.redirect(`${fallbackRedirect}?error=profile_failed`);
+    }
 
     // 3. Upsert user in the database
     const user = await upsertUser({
@@ -67,13 +73,13 @@ export async function GET(req: NextRequest) {
     });
 
     // 5. Redirect back to the dashboard with the session cookie attached
-    const res = NextResponse.redirect(`${baseUrl}/dashboard`);
+    const res = NextResponse.redirect(`${origin}/dashboard`);
     res.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS);
     
     return res;
 
-  } catch (err) {
+  } catch (err: any) {
     console.error('Google OAuth error:', err);
-    return NextResponse.redirect(`${fallbackRedirect}?error=oauth_failed`);
+    return NextResponse.redirect(`${fallbackRedirect}?error=oauth_exception&detail=${encodeURIComponent(err?.message || 'unknown')}`);
   }
 }
