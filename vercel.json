@@ -2,23 +2,6 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm ci",
-  "env": {
-    "DATABASE_URL": {
-      "description": "Supabase PostgreSQL connection string with pooler"
-    },
-    "NEXT_PUBLIC_APP_URL": {
-      "description": "Application URL for redirects and CORS"
-    },
-    "GEMINI_API_KEY": {
-      "description": "Google Gemini API key for AI analysis"
-    },
-    "NEXT_PUBLIC_SENTRY_DSN": {
-      "description": "Sentry error tracking DSN (optional)"
-    },
-    "NODE_ENV": {
-      "value": "production"
-    }
-  },
   "regions": ["sfo1"],
   "functions": {
     "app/**": {
@@ -30,10 +13,6 @@
     "deploymentEnabled": {
       "main": true
     }
-  },
-  "buildCache": {
-    "nodejs": true,
-    "npm": true
   },
   "headers": [
     {
