@@ -108,10 +108,28 @@ export default function Login() {
               padding: '8px 12px', borderRadius: 8, fontSize: 12, marginBottom: 10,
             }}>{error}</div>
           )}
-          <button className="btn btn-primary btn-full" type="submit" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign In to PRISM →'}
-          </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-primary" style={{ flex: 2 }} type="submit" disabled={busy}>
+              {busy ? 'Signing in…' : 'Sign In →'}
+            </button>
+            <button 
+              type="button"
+              className="btn" 
+              style={{ flex: 1, background: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB' }}
+              onClick={() => {
+                setEmail('tester@fluo.ai');
+                setPassword('debug');
+                setTimeout(() => handleEmailLogin(), 50);
+              }}
+            >
+              Dummy 🛠️
+            </button>
+          </div>
         </form>
+
+        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: '#6B7280' }}>
+          Don't have an account? <a href="/signup" style={{ color: '#2563EB', fontWeight: 600, textDecoration: 'none' }}>Sign Up</a>
+        </div>
 
         <div className="demo-hint">
           🔑 <strong>Demo credentials</strong><br />

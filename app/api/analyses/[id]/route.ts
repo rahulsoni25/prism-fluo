@@ -32,7 +32,39 @@ export async function GET(
         WHERE a.id = $1 AND a.user_id = $2`,
       [id, session.userId]
     );
+
     if (rows.length === 0) {
+      // FALLBACK: If DB is down in dev, return a mock Nike analysis for dummy IDs
+      if (id.startsWith('dummy-') && process.env.NODE_ENV !== 'production') {
+        const { ID: MOCK_INSIGHTS } = require('@/lib/data');
+        return NextResponse.json({
+          id,
+          upload_id: 'dummy-upload-1',
+          sheet_name: 'Strategic Brand Audit',
+          filename: 'nike_india_audit.xlsx',
+          created_at: new Date(Date.now() - 3600000).toISOString(),
+          results_json: {
+            meta: { domain: 'Commerce', title: 'Nike India Strategic Insights' },
+            charts: [
+              ...MOCK_INSIGHTS.content.map((c: any) => ({ ...c, bucket: 'content' })),
+              ...MOCK_INSIGHTS.commerce.map((c: any) => ({ ...c, bucket: 'commerce' })),
+              ...MOCK_INSIGHTS.communication.map((c: any) => ({ ...c, bucket: 'communication' })),
+              ...MOCK_INSIGHTS.culture.map((c: any) => ({ ...c, bucket: 'culture' })),
+            ].map((c: any, i: number) => ({
+              ...c,
+              type: c.chartType || (c.isHeatmap ? 'heatmap' : 'bar'),
+              computedChartData: c.chartData,
+            }))
+          },
+          brief: {
+            id: 'dummy-brief-1',
+            brand: 'Nike India',
+            status: 'ready',
+            sla_hours: 6,
+            sla_due_at: new Date(Date.now() + 14400000).toISOString(),
+          }
+        });
+      }
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     return NextResponse.json(rows[0]);

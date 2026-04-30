@@ -32,6 +32,23 @@ export async function GET(
     );
 
     if (rows.length === 0) {
+      // FALLBACK: If DB is down in dev, return a mock summary for dummy IDs
+      if (id.startsWith('dummy-') && process.env.NODE_ENV !== 'production') {
+        return NextResponse.json({
+          headline: 'Nike India: Capturing the Gen Z Fitness Movement',
+          objective: 'Analyze strategic growth opportunities within the 18–34 Indian fitness segment across commerce and content channels.',
+          observations: [
+            'Short-form video engagement is 4.2× higher than static imagery for Gen Z consumers.',
+            'DTC conversion rate lags category peers by 7 points despite high brand consideration.',
+            'Tier 2/3 markets show high aspiration but 3× lower conversion due to price-to-value gaps.'
+          ],
+          recommendations: [
+            'Shift 70% of social budget to vertical short-form video (Reels/Shorts).',
+            'Launch an "Accessible Premium" SKU line targeting the ₹2,000–₹4,000 price band.',
+            'Hyper-target Bangalore and Mumbai pin code clusters with high purchase intent signals.'
+          ]
+        });
+      }
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 

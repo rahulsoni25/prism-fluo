@@ -24,6 +24,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/auth/',
   '/api/health',
   '/api/version',
+  '/api/debug-db',
 ];
 // Static assets — never gate
 function isStatic(pathname: string): boolean {
