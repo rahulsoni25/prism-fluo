@@ -44,8 +44,3 @@
     "typescript": "^5.7.0"
   }
 }
-```
-
-**Only change:** Line 9 - `"@sentry/nextjs": "^8.56.0"` (was `^8.0.0`)
-
-**Replace entire package.json with this and commit.** Then Vercel will retry the build. ✅
