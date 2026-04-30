@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
-    "@sentry/nextjs": "^8.56.0",
+    "@sentry/nextjs": "^8.28.0",
     "@tailwindcss/postcss": "^4.2.4",
     "@types/pg": "^8.20.0",
     "chart.js": "^4.5.1",
