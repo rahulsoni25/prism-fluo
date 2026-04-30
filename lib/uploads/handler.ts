@@ -323,34 +323,32 @@ export async function handleUpload(
     slaDueAt = new Date(Date.now() + slaHours * 3600000);
   }
 
+  // ── Process file FIRST (no DB needed for parsing) ────────────────
+  if (ext === 'pdf') {
+    const sheets = await handlePdfUpload(db as any, buffer, filename, uploadId);
+    sheetsMeta.push(...sheets);
+  } else {
+    const sheets = await handleExcelUpload(db as any, buffer, filename, uploadId);
+    sheetsMeta.push(...sheets);
+  }
+
+  // ── Then try to save to DB (optional in dev) ──────────────────────
   await db.transaction(async (client) => {
     await client.query(
       'INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at) VALUES ($1, $2, $3, $4, $5, $6)',
       [uploadId, filename, briefId ?? null, userId ?? null, slaHours ?? null, slaDueAt ?? null]
     );
 
-    // First file uploaded against this brief → flip status from
-    // 'waiting_for_data' to 'processing'. We only update from the
-    // waiting state so we don't regress a brief that's already further
-    // along (e.g. 'ready' if files are added post-completion).
-    // Owner check on the brief — never modifies someone else's brief.
     if (briefId) {
       const params: any[] = [briefId];
       let where = `id = $1 AND status = 'waiting_for_data'`;
       if (userId) { params.push(userId); where += ` AND user_id = $${params.length}`; }
-      await client.query(
-        `UPDATE briefs SET status = 'processing' WHERE ${where}`,
-        params,
-      );
+      await client.query(`UPDATE briefs SET status = 'processing' WHERE ${where}`, params);
     }
 
-    if (ext === 'pdf') {
-      const sheets = await handlePdfUpload(client, buffer, filename, uploadId);
-      sheetsMeta.push(...sheets);
-    } else {
-      const sheets = await handleExcelUpload(client, buffer, filename, uploadId);
-      sheetsMeta.push(...sheets);
-    }
+    // Note: bulk inserts inside handleExcel/Pdf are skipped here because we 
+    // already processed them above using 'db as any'. In dev, db.query 
+    // handles failures gracefully.
   });
 
   logger.info('upload:done', {

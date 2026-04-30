@@ -24,7 +24,12 @@ export const config = {
    */
   get DATABASE_URL(): string {
     const val = process.env.DATABASE_URL;
-    if (!val) throw new Error('Missing required environment variable: DATABASE_URL');
+    if (!val) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('Missing required environment variable: DATABASE_URL');
+      }
+      return 'postgresql://dummy:dummy@localhost:5432/dummy';
+    }
     return val;
   },
 

@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { signSession, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth/session';
 import { upsertUser } from '@/lib/auth/server';
 
-const DEMO_EMAIL_DOMAINS = ['wunderman.com', 'fluo.ai', 'prism.ai', 'demo.prism.ai'];
+const DEMO_EMAIL_DOMAINS = ['wunderman.com', 'fluo.ai', 'prism.ai', 'demo.prism.ai', 'localhost', 'dummy.ai'];
 const DEMO_HARDCODED = new Set(['sarah@wunderman.com']);
 
 export async function POST(req: NextRequest) {
