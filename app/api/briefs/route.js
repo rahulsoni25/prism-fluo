@@ -121,7 +121,17 @@ export async function POST(request) {
     }
 
     // Deterministic SLA — under-promise, over-deliver
-    const { slaHours, slaDueAt } = await calculateSla();
+    let slaHours = 24, slaDueAt = new Date(Date.now() + 24 * 3600000).toISOString();
+    try {
+      const slaResult = await calculateSla();
+      if (slaResult?.slaHours) {
+        slaHours = slaResult.slaHours;
+        slaDueAt = slaResult.slaDueAt;
+      }
+    } catch (slaErr) {
+      console.warn('⚠️ SLA calculation failed, using defaults', { error: slaErr.message });
+      // Keep defaults
+    }
 
     const { rows } = await logger.query('briefs:create', () =>
       db.query(
