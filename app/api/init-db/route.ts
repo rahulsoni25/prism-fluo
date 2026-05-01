@@ -3,7 +3,8 @@
  * This endpoint initializes the database schema.
  * Remove after successful initialization.
  *
- * Usage: POST /api/init-db
+ * SECURITY: Requires INIT_DB_SECRET header to prevent accidental/malicious use
+ * Usage: POST /api/init-db with header X-Init-Secret: <secret>
  * Response: { success: true, message: "..." }
  */
 
@@ -14,6 +15,17 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
+    // Check for initialization secret (prevents accidental/malicious use)
+    const initSecret = req.headers.get('X-Init-Secret');
+    const expectedSecret = process.env.INIT_DB_SECRET || 'temporary-init-secret';
+
+    if (initSecret !== expectedSecret) {
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Invalid or missing X-Init-Secret header' },
+        { status: 403 }
+      );
+    }
+
     const databaseUrl = process.env.DATABASE_URL;
 
     if (!databaseUrl) {
