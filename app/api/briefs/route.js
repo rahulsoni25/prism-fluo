@@ -133,6 +133,10 @@ export async function POST(request) {
       // Keep defaults
     }
 
+    // Validate userId is a proper UUID before inserting (demo fallback users get dummy IDs)
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validUserId = UUID_REGEX.test(session.userId) ? session.userId : null;
+
     const { rows } = await logger.query('briefs:create', () =>
       db.query(
         `INSERT INTO briefs
@@ -141,7 +145,7 @@ export async function POST(request) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          RETURNING *`,
         [brand, category, objective, age_ranges, gender, sec, market, geography,
-         competitors, background, insight_buckets, status, slaHours, slaDueAt, session.userId]
+         competitors, background, insight_buckets, status, slaHours, slaDueAt, validUserId]
       )
     );
 
