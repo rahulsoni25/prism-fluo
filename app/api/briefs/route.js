@@ -42,15 +42,69 @@ async function insertBriefViaRest(payload) {
   }
 }
 
-async function listBriefsViaRest(userId) {
+async function listBriefsViaRest(userIds) {
   try {
-    const filter = UUID_REGEX.test(userId) ? `user_id=eq.${userId}` : 'user_id=is.null';
+    // userIds is an array; build an IN filter for PostgREST
+    const validIds = userIds.filter(id => UUID_REGEX.test(id));
+    let filter;
+    if (validIds.length === 0) {
+      filter = 'user_id=is.null';
+    } else if (validIds.length === 1) {
+      filter = `user_id=eq.${validIds[0]}`;
+    } else {
+      filter = `user_id=in.(${validIds.join(',')})`;
+    }
     const res = await fetch(`${SUPA_URL}/rest/v1/briefs?${filter}&order=created_at.desc&limit=200`, {
       headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` },
     });
     if (!res.ok) return null;
     return await res.json();
   } catch { return null; }
+}
+
+/**
+ * Resolve all known user IDs for a session.
+ * Returns a deduplicated array of UUIDs ordered with the most canonical first:
+ * 1. Email-resolved UUID from pg (authoritative DB row)
+ * 2. Email-resolved UUID from PostgREST (fallback)
+ * 3. Session userId (last resort — may be an email-hash fallback UUID)
+ *
+ * This ensures POST uses the real DB UUID for inserts and GET finds briefs
+ * regardless of which UUID was used when they were created.
+ */
+async function resolveUserIds(session) {
+  const ordered = [];   // canonical first
+  const seen   = new Set();
+
+  const push = (id) => {
+    if (id && UUID_REGEX.test(id) && !seen.has(id)) { seen.add(id); ordered.push(id); }
+  };
+
+  // 1. Email lookup via pg — gives the "real" DB UUID
+  if (session.email) {
+    try {
+      const { rows } = await db.query(
+        'SELECT id FROM users WHERE email = $1 LIMIT 5', [session.email]
+      );
+      rows.forEach(r => push(r.id));
+    } catch { /* pg failed */ }
+  }
+
+  // 2. Email lookup via PostgREST if pg gave nothing
+  if (ordered.length === 0 && session.email) {
+    try {
+      const restUsers = await fetch(
+        `${SUPA_URL}/rest/v1/users?email=eq.${encodeURIComponent(session.email)}&select=id&limit=5`,
+        { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
+      ).then(r => r.ok ? r.json() : []).catch(() => []);
+      if (Array.isArray(restUsers)) restUsers.forEach(u => push(u.id));
+    } catch { /* ignore */ }
+  }
+
+  // 3. Session userId as additional (may differ from DB UUID if fallback was generated)
+  push(session.userId);
+
+  return ordered;
 }
 
 /**
@@ -67,13 +121,23 @@ export async function GET(request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
-    const url   = new URL(request.url);
-    // Owner scope — always filter by the current user.
-    // If session.userId is not a valid UUID (e.g. demo fallback), cast-safe
-    // comparison uses IS NULL so the query doesn't error on the UUID column.
-    const validUid = UUID_REGEX.test(session.userId) ? session.userId : null;
-    const where = [validUid ? 'user_id = $1' : '(user_id IS NULL OR user_id = $1)'];
-    const args  = [validUid];
+    const url = new URL(request.url);
+
+    // Resolve ALL known UUIDs for this user so briefs stored under any of them
+    // (session fallback UUID or real UUID) are all returned.
+    const userIds = await resolveUserIds(session);
+
+    let where, args;
+    if (userIds.length === 0) {
+      where = ['(user_id IS NULL)'];
+      args  = [];
+    } else if (userIds.length === 1) {
+      where = ['user_id = $1'];
+      args  = [userIds[0]];
+    } else {
+      where = [`user_id = ANY($1::uuid[])`];
+      args  = [userIds];
+    }
 
     const status = url.searchParams.get('status');
     if (status) {
@@ -111,11 +175,11 @@ export async function GET(request) {
     // If pg returned nothing (could be DB unreachable, not just empty table),
     // try PostgREST as a fallback so the UI always shows real data.
     if (rows.length === 0) {
-      const restRows = await listBriefsViaRest(validUid);
+      const restRows = await listBriefsViaRest(userIds);
       if (restRows && restRows.length > 0) rows = restRows;
     }
 
-    logger.info('api:GET /api/briefs', { ms: Date.now() - t0, count: rows.length, filters: where.length });
+    logger.info('api:GET /api/briefs', { ms: Date.now() - t0, count: rows.length, resolvedIds: userIds.length });
     return NextResponse.json(rows);
   } catch (err) {
     logger.error('api:GET /api/briefs failed', { error: err.message });
@@ -166,34 +230,11 @@ export async function POST(request) {
       // Keep defaults
     }
 
-    // Resolve the real user_id for this session.
-    // Strategy: try pg first (fast, same transaction boundary); fall back to
-    // PostgREST if pg.Pool is unreachable (wrong password / IP allowlist).
-    let validUserId = null;
-    if (UUID_REGEX.test(session.userId)) {
-      // Fast path: pg — verify the UUID actually lives in users
-      const { rows: userRows } = await db.query(
-        'SELECT id FROM users WHERE id = $1 LIMIT 1', [session.userId]
-      );
-      if (userRows.length > 0) {
-        validUserId = session.userId;
-      } else {
-        // UUID not found by ID — look up by email (handles fallback UUIDs)
-        const { rows: emailRows } = await db.query(
-          'SELECT id FROM users WHERE email = $1 LIMIT 1', [session.email]
-        );
-        if (emailRows.length > 0) {
-          validUserId = emailRows[0].id;
-        } else {
-          // pg returned nothing — try PostgREST
-          const restUser = await fetch(
-            `${SUPA_URL}/rest/v1/users?email=eq.${encodeURIComponent(session.email)}&select=id&limit=1`,
-            { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
-          ).then(r => r.ok ? r.json() : []).catch(() => []);
-          if (Array.isArray(restUser) && restUser[0]?.id) validUserId = restUser[0].id;
-        }
-      }
-    }
+    // Resolve the canonical user_id for this session.
+    // Use the shared resolveUserIds helper (email-based lookup via pg then PostgREST).
+    // Prefer the first resolved UUID, falling back to session.userId if none found.
+    const resolvedIds = await resolveUserIds(session);
+    const validUserId = resolvedIds.length > 0 ? resolvedIds[0] : null;
 
     // Try pg INSERT first, fall back to PostgREST if pg.Pool is broken
     const pgResult = await logger.query('briefs:create', () =>
