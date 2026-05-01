@@ -15,6 +15,7 @@ import { calculateSla } from '@/lib/sla.server';
 import { getSession } from '@/lib/auth/server';
 
 const VALID_STATUSES = ['draft', 'waiting_for_data', 'processing', 'ready'];
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * GET /api/briefs
@@ -31,9 +32,12 @@ export async function GET(request) {
     if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
     const url   = new URL(request.url);
-    // Owner scope — every list always filters by the current user.
-    const where = ['user_id = $1'];
-    const args  = [session.userId];
+    // Owner scope — always filter by the current user.
+    // If session.userId is not a valid UUID (e.g. demo fallback), cast-safe
+    // comparison uses IS NULL so the query doesn't error on the UUID column.
+    const validUid = UUID_REGEX.test(session.userId) ? session.userId : null;
+    const where = [validUid ? 'user_id = $1' : '(user_id IS NULL OR user_id = $1)'];
+    const args  = [validUid];
 
     const status = url.searchParams.get('status');
     if (status) {
@@ -134,7 +138,6 @@ export async function POST(request) {
     }
 
     // Validate userId is a proper UUID before inserting (demo fallback users get dummy IDs)
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const validUserId = UUID_REGEX.test(session.userId) ? session.userId : null;
 
     const { rows } = await logger.query('briefs:create', () =>
