@@ -17,6 +17,42 @@ import { getSession } from '@/lib/auth/server';
 const VALID_STATUSES = ['draft', 'waiting_for_data', 'processing', 'ready'];
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// PostgREST fallback — used when pg.Pool cannot reach the DB directly
+const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+async function insertBriefViaRest(payload) {
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/briefs`, {
+      method: 'POST',
+      headers: {
+        'apikey':        SUPA_KEY,
+        'Authorization': `Bearer ${SUPA_KEY}`,
+        'Content-Type':  'application/json',
+        'Prefer':        'return=representation',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) { const e = await res.text(); console.error('PostgREST brief insert failed:', e); return null; }
+    const rows = await res.json();
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch (e) {
+    console.error('PostgREST fetch error:', e.message);
+    return null;
+  }
+}
+
+async function listBriefsViaRest(userId) {
+  try {
+    const filter = UUID_REGEX.test(userId) ? `user_id=eq.${userId}` : 'user_id=is.null';
+    const res = await fetch(`${SUPA_URL}/rest/v1/briefs?${filter}&order=created_at.desc&limit=200`, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
 /**
  * GET /api/briefs
  * Optional filters via query string:
@@ -69,21 +105,14 @@ export async function GET(request) {
         ORDER BY created_at DESC
         LIMIT 200`;
 
-    const { rows } = await logger.query('briefs:list', () => db.query(sql, args));
-    
-    // FALLBACK: If DB is down or empty in dev, return a mock brief
-    if (rows.length === 0 && process.env.NODE_ENV !== 'production') {
-      return NextResponse.json([{
-        id: 'dummy-brief-1',
-        brand: 'Nike India',
-        category: 'Sportswear & Footwear',
-        objective: 'Strategic Brand Audit',
-        status: 'ready',
-        analysis_id: 'dummy-analysis-1',
-        created_at: new Date(Date.now() - 7200000).toISOString(),
-        sla_hours: 6,
-        sla_due_at: new Date(Date.now() + 14400000).toISOString(),
-      }]);
+    const pgList = await logger.query('briefs:list', () => db.query(sql, args));
+    let rows = pgList.rows;
+
+    // If pg returned nothing (could be DB unreachable, not just empty table),
+    // try PostgREST as a fallback so the UI always shows real data.
+    if (rows.length === 0) {
+      const restRows = await listBriefsViaRest(validUid);
+      if (restRows && restRows.length > 0) rows = restRows;
     }
 
     logger.info('api:GET /api/briefs', { ms: Date.now() - t0, count: rows.length, filters: where.length });
@@ -137,10 +166,37 @@ export async function POST(request) {
       // Keep defaults
     }
 
-    // Validate userId is a proper UUID before inserting (demo fallback users get dummy IDs)
-    const validUserId = UUID_REGEX.test(session.userId) ? session.userId : null;
+    // Resolve the real user_id for this session.
+    // Strategy: try pg first (fast, same transaction boundary); fall back to
+    // PostgREST if pg.Pool is unreachable (wrong password / IP allowlist).
+    let validUserId = null;
+    if (UUID_REGEX.test(session.userId)) {
+      // Fast path: pg — verify the UUID actually lives in users
+      const { rows: userRows } = await db.query(
+        'SELECT id FROM users WHERE id = $1 LIMIT 1', [session.userId]
+      );
+      if (userRows.length > 0) {
+        validUserId = session.userId;
+      } else {
+        // UUID not found by ID — look up by email (handles fallback UUIDs)
+        const { rows: emailRows } = await db.query(
+          'SELECT id FROM users WHERE email = $1 LIMIT 1', [session.email]
+        );
+        if (emailRows.length > 0) {
+          validUserId = emailRows[0].id;
+        } else {
+          // pg returned nothing — try PostgREST
+          const restUser = await fetch(
+            `${SUPA_URL}/rest/v1/users?email=eq.${encodeURIComponent(session.email)}&select=id&limit=1`,
+            { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
+          ).then(r => r.ok ? r.json() : []).catch(() => []);
+          if (Array.isArray(restUser) && restUser[0]?.id) validUserId = restUser[0].id;
+        }
+      }
+    }
 
-    const { rows } = await logger.query('briefs:create', () =>
+    // Try pg INSERT first, fall back to PostgREST if pg.Pool is broken
+    const pgResult = await logger.query('briefs:create', () =>
       db.query(
         `INSERT INTO briefs
            (brand, category, objective, age_ranges, gender, sec, market, geography,
@@ -152,21 +208,19 @@ export async function POST(request) {
       )
     );
 
-    let brief = rows[0];
+    let brief = pgResult.rows[0];
 
-    // FALLBACK: If DB is down in dev, create a dummy brief to allow UI flow to continue
-    if (!brief && process.env.NODE_ENV !== 'production') {
-      brief = {
-        id: `dummy-brief-${crypto.randomUUID().slice(0,8)}`,
-        brand, category, objective, status,
-        sla_hours: slaHours,
-        sla_due_at: slaDueAt,
-        created_at: new Date().toISOString(),
-      };
-      logger.warn('api:POST /api/briefs - using dummy brief fallback', { brand });
+    // If pg failed or returned nothing, try PostgREST (works even when pg is unreachable)
+    if (!brief) {
+      logger.warn('api:POST /api/briefs - pg returned no data, trying PostgREST', { brand });
+      brief = await insertBriefViaRest({
+        brand, category, objective, age_ranges, gender, sec, market, geography,
+        competitors, background, insight_buckets, status,
+        sla_hours: slaHours, sla_due_at: slaDueAt, user_id: validUserId,
+      });
     }
 
-    if (!brief) throw new Error('Failed to create brief (DB returned no data)');
+    if (!brief) throw new Error('Failed to create brief (both pg and PostgREST failed)');
 
     // Bust the per-user dashboard cache so the new brief appears immediately
     cache.del(`dashboard:overview:${session.userId}`);

@@ -7,6 +7,40 @@ import { cookies } from 'next/headers';
 import { verifySession, SESSION_COOKIE_NAME, type SessionPayload } from './session';
 import { db } from '@/lib/db/client';
 
+// Supabase PostgREST endpoint — used as fallback when pg.Pool cannot reach the DB
+// (e.g. wrong DATABASE_URL password or IP allowlist blocking direct TCP connections).
+const SUPA_URL  = process.env.NEXT_PUBLIC_SUPABASE_URL  ?? '';
+const SUPA_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+async function upsertUserViaRest(input: {
+  email: string; name?: string | null; image?: string | null;
+  provider: string; providerId?: string | null;
+}): Promise<{ id: string; email: string; name: string | null; image: string | null } | null> {
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/users`, {
+      method: 'POST',
+      headers: {
+        'apikey':        SUPA_KEY,
+        'Authorization': `Bearer ${SUPA_KEY}`,
+        'Content-Type':  'application/json',
+        'Prefer':        'resolution=merge-duplicates,return=representation',
+      },
+      body: JSON.stringify({
+        email:       input.email.toLowerCase().trim(),
+        name:        input.name ?? null,
+        image:       input.image ?? null,
+        provider:    input.provider,
+        provider_id: input.providerId ?? null,
+      }),
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Read the current session payload from the request cookie. Returns null
  * if no cookie / invalid signature / expired.
@@ -52,11 +86,15 @@ export async function upsertUser(input: {
       throw new Error('DATABASE_UNREACHABLE');
     }
     return rows[0];
-  } catch (err) {
-    console.error('❌ upsertUser database error:', err.message);
-    // FALLBACK: Return a mock user if the database is down to allow dummy sign-in for debugging
-    // This generates a stable UUID-like string from the email for consistent local debugging
-    // Generate a stable valid UUID from the email so session userId is always UUID-compatible
+  } catch (err: any) {
+    console.error('❌ upsertUser pg error — trying PostgREST fallback:', err.message);
+    // pg.Pool failed (wrong password, IP allowlist, etc.) — try Supabase HTTP API instead
+    const restUser = await upsertUserViaRest(input);
+    if (restUser) {
+      console.log('✅ upsertUser recovered via PostgREST, userId:', restUser.id);
+      return restUser;
+    }
+    // Both pg and REST failed — generate a stable UUID so the session is at least valid
     const emailHash = Buffer.from(input.email.toLowerCase()).toString('hex').padEnd(32, '0').slice(0, 32);
     const fallbackUUID = `${emailHash.slice(0,8)}-${emailHash.slice(8,12)}-4${emailHash.slice(13,16)}-a${emailHash.slice(17,20)}-${emailHash.slice(20,32)}`;
     return {
