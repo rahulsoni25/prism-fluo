@@ -79,8 +79,15 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const databaseUrl = process.env.DATABASE_URL;
+  const maskedUrl = databaseUrl
+    ? databaseUrl.replace(/:[^:@]+@/, ':***@')
+    : 'NOT_SET';
+
   return NextResponse.json({
     message: 'This is the database initialization endpoint. Use POST to initialize.',
-    usage: 'POST /api/init-db'
+    usage: 'POST /api/init-db',
+    databaseUrl_masked: maskedUrl,
+    nodeEnv: process.env.NODE_ENV
   });
 }
