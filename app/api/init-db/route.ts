@@ -35,6 +35,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Log the connection string for debugging (masked password)
+    const maskedUrl = databaseUrl.replace(/:[^:@]+@/, ':***@');
+    console.log('🔌 Database URL:', maskedUrl);
+
     const sslConfig = process.env.NODE_ENV === 'production'
       ? { ssl: { rejectUnauthorized: false } }
       : {};
