@@ -69,10 +69,16 @@ async function listBriefsViaRest(userIds) {
  * 2. Email-resolved UUID from PostgREST (fallback)
  * 3. Session userId (last resort — may be an email-hash fallback UUID)
  *
- * This ensures POST uses the real DB UUID for inserts and GET finds briefs
- * regardless of which UUID was used when they were created.
+ * pg and PostgREST lookups run CONCURRENTLY to minimise latency.
+ * Results are cached for 5 minutes so repeated requests within a session
+ * hit the in-memory cache instead of making DB round-trips every time.
  */
 async function resolveUserIds(session) {
+  // ── Cache check ──────────────────────────────────────────────────────────
+  const cacheKey = `resolve_user:${session.email ?? session.userId}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
   const ordered = [];   // canonical first
   const seen   = new Set();
 
@@ -80,29 +86,33 @@ async function resolveUserIds(session) {
     if (id && UUID_REGEX.test(id) && !seen.has(id)) { seen.add(id); ordered.push(id); }
   };
 
-  // 1. Email lookup via pg — gives the "real" DB UUID
-  if (session.email) {
-    try {
-      const { rows } = await db.query(
-        'SELECT id FROM users WHERE email = $1 LIMIT 5', [session.email]
-      );
-      rows.forEach(r => push(r.id));
-    } catch { /* pg failed */ }
+  // ── Run pg + PostgREST lookups in PARALLEL ───────────────────────────────
+  const [pgResult, restResult] = await Promise.allSettled([
+    session.email
+      ? db.query('SELECT id FROM users WHERE email = $1 LIMIT 5', [session.email])
+      : Promise.resolve({ rows: [] }),
+    session.email
+      ? fetch(
+          `${SUPA_URL}/rest/v1/users?email=eq.${encodeURIComponent(session.email)}&select=id&limit=5`,
+          { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
+        ).then(r => r.ok ? r.json() : []).catch(() => [])
+      : Promise.resolve([]),
+  ]);
+
+  // pg result wins on ordering (most canonical)
+  if (pgResult.status === 'fulfilled') {
+    pgResult.value?.rows?.forEach(r => push(r.id));
+  }
+  // PostgREST fills any gaps
+  if (restResult.status === 'fulfilled' && Array.isArray(restResult.value)) {
+    restResult.value.forEach(u => push(u.id));
   }
 
-  // 2. Email lookup via PostgREST if pg gave nothing
-  if (ordered.length === 0 && session.email) {
-    try {
-      const restUsers = await fetch(
-        `${SUPA_URL}/rest/v1/users?email=eq.${encodeURIComponent(session.email)}&select=id&limit=5`,
-        { headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` } }
-      ).then(r => r.ok ? r.json() : []).catch(() => []);
-      if (Array.isArray(restUsers)) restUsers.forEach(u => push(u.id));
-    } catch { /* ignore */ }
-  }
-
-  // 3. Session userId as additional (may differ from DB UUID if fallback was generated)
+  // Session userId as final fallback (may be email-hash UUID)
   push(session.userId);
+
+  // ── Cache for 5 minutes ──────────────────────────────────────────────────
+  if (ordered.length > 0) cache.set(cacheKey, ordered, 300);
 
   return ordered;
 }
@@ -180,7 +190,9 @@ export async function GET(request) {
     }
 
     logger.info('api:GET /api/briefs', { ms: Date.now() - t0, count: rows.length, resolvedIds: userIds.length });
-    return NextResponse.json(rows);
+    return NextResponse.json(rows, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
+    });
   } catch (err) {
     logger.error('api:GET /api/briefs failed', { error: err.message });
     return NextResponse.json({ error: 'FETCH_FAILED', message: 'Failed to fetch briefs' }, { status: 500 });

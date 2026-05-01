@@ -17,6 +17,16 @@ export async function GET() {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
+    // Check short-lived cache first to avoid a DB round-trip on every page visit
+    const cacheKey = `analyses:list:${session.userId}`;
+    const cached = cache.get(cacheKey) as any[] | undefined;
+    if (cached) {
+      logger.info('api:GET /api/analyses (cache hit)', { ms: Date.now() - t0, count: cached.length });
+      return NextResponse.json(cached, {
+        headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
+      });
+    }
+
     const { rows } = await logger.query('analyses:list', () =>
       db.query(`
         SELECT a.id, a.upload_id, a.sheet_name, a.filename,
@@ -50,6 +60,14 @@ export async function GET() {
       }
       return NextResponse.json([]);
     }
+
+    // Cache the result for 30 s — short enough to show new analyses quickly
+    cache.set(cacheKey, rows, 30);
+
+    logger.info('api:GET /api/analyses', { ms: Date.now() - t0, count: rows.length });
+    return NextResponse.json(rows, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
+    });
   } catch (err: any) {
     logger.error('api:GET /api/analyses failed', { error: err.message });
     return NextResponse.json({ error: 'FETCH_FAILED', message: err.message }, { status: 500 });
@@ -111,6 +129,7 @@ export async function POST(req: NextRequest) {
         logger.warn('analyses:brief_link_failed', { briefId, error: err.message });
       });
       cache.del(`dashboard:overview:${session.userId}`);
+      cache.del(`analyses:list:${session.userId}`);
     }
 
     logger.info('api:POST /api/analyses', { ms: Date.now() - t0, id });
