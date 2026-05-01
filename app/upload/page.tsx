@@ -542,18 +542,31 @@ function UploadDataInner() {
 
   const hasFiles = fileEntries.length > 0;
 
+  // ── Bucket display config ────────────────────────────────────
+  const BUCKET_CFG = {
+    content:       { label:'📝 Content',       color:'#2563EB', bg:'#EFF6FF', border:'#BFDBFE' },
+    commerce:      { label:'🛒 Commerce',      color:'#059669', bg:'#ECFDF5', border:'#A7F3D0' },
+    communication: { label:'📢 Comms',         color:'#7C3AED', bg:'#F5F3FF', border:'#DDD6FE' },
+    culture:       { label:'🌍 Culture',       color:'#D97706', bg:'#FFFBEB', border:'#FDE68A' },
+  } as const;
+
+  const FILE_STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
+    pending:   { label:'Queued',    color:'#94A3B8', bg:'#F1F5F9' },
+    uploading: { label:'Uploading', color:'#2563EB', bg:'#EFF6FF' },
+    analyzing: { label:'Analysing', color:'#7C3AED', bg:'#F5F3FF' },
+    done:      { label:'Done',      color:'#059669', bg:'#ECFDF5' },
+    error:     { label:'Error',     color:'#DC2626', bg:'#FEF2F2' },
+  };
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
+    <div style={{ minHeight:'100vh', background:'#F0F4FF' }}>
       <Navbar />
 
       {/* Brief Selection Modal */}
       <BriefSelectModal
         isOpen={showBriefModal}
         onSelect={handleBriefSelect}
-        onCancel={() => {
-          // Allow canceling only if not forced via URL
-          if (!urlBriefId) setShowBriefModal(false);
-        }}
+        onCancel={() => { if (!urlBriefId) setShowBriefModal(false); }}
       />
 
       {/* SLA Selection Modal */}
@@ -564,162 +577,283 @@ function UploadDataInner() {
         briefName={selectedBrief?.brand || 'Your Brief'}
       />
 
-      <main className="max-w-4xl mx-auto px-6 py-12">
-
-        {/* Header */}
-        <div className="mb-10">
-          <h1 className="text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">
+      {/* Hero bar */}
+      <div style={{
+        background:'linear-gradient(135deg,#0F172A 0%,#1E1B4B 60%,#1E3A8A 100%)',
+        padding:'36px 24px 32px',
+      }}>
+        <div style={{ maxWidth:760, margin:'0 auto' }}>
+          <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.14em',
+            color:'#818CF8', marginBottom:10 }}>DATA MAPPER</p>
+          <h1 style={{ fontSize:30, fontWeight:900, color:'#fff', letterSpacing:'-.5px', marginBottom:10, lineHeight:1.2 }}>
             PRISM Intelligence Hub
           </h1>
-          {selectedBrief && (
-            <p className="text-blue-600 font-semibold text-sm mb-2">
-              📌 Brief: {selectedBrief.brand}
+          {selectedBrief ? (
+            <div style={{ display:'inline-flex', alignItems:'center', gap:8,
+              padding:'6px 14px', borderRadius:20, background:'rgba(99,102,241,.18)',
+              border:'1px solid rgba(99,102,241,.35)' }}>
+              <span style={{ fontSize:14 }}>📌</span>
+              <span style={{ fontSize:13, fontWeight:700, color:'#C7D2FE' }}>{selectedBrief.brand}</span>
+              {!urlBriefId && (
+                <button onClick={() => setShowBriefModal(true)} style={{
+                  marginLeft:4, fontSize:11, color:'#818CF8', fontWeight:600,
+                  background:'none', border:'none', cursor:'pointer', padding:0,
+                }}>Change</button>
+              )}
+            </div>
+          ) : (
+            <p style={{ fontSize:14, color:'rgba(255,255,255,.55)', lineHeight:1.6, maxWidth:520 }}>
+              Upload research files — PRISM AI extracts insights across{' '}
+              <span style={{ color:'#93C5FD' }}>Content · Commerce · Communication · Culture</span>
             </p>
           )}
-          <p className="text-slate-500 text-base max-w-xl">
-            Upload one or more research files. PRISM will read the data, extract key insights,
-            and automatically sort them across <strong>Content · Commerce · Communication · Culture</strong>.
-          </p>
         </div>
+      </div>
 
-        {/* Error */}
+      <main style={{ maxWidth:760, margin:'0 auto', padding:'32px 24px' }}>
+
+        {/* Error banner */}
         {errorMsg && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3">
-            <AlertTriangle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
-            <pre className="text-red-700 text-sm whitespace-pre-wrap flex-1">{errorMsg}</pre>
-            <button onClick={() => setErrorMsg(null)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
-          </div>
-        )}
-
-        {/* Brief Not Selected Prompt */}
-        {!selectedBrief && !urlBriefId && (
-          <div className="rounded-3xl border-2 border-amber-200 bg-amber-50 p-12 text-center">
-            <div className="flex flex-col items-center gap-4">
-              <div className="rounded-2xl p-4 bg-amber-100 text-amber-700">
-                <UploadCloud size={32} />
-              </div>
-              <div>
-                <p className="text-lg font-bold text-slate-900">Select a brief to begin</p>
-                <p className="text-slate-600 text-sm mt-1">Choose which campaign this data belongs to before uploading</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowBriefModal(true)}
-              className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-            >
-              Select Brief
+          <div style={{ marginBottom:20, padding:'14px 16px', borderRadius:14,
+            background:'#FEF2F2', border:'1.5px solid #FCA5A5',
+            display:'flex', alignItems:'flex-start', gap:10 }}>
+            <AlertTriangle size={16} style={{ color:'#DC2626', flexShrink:0, marginTop:1 }} />
+            <pre style={{ flex:1, fontSize:12, color:'#991B1B', whiteSpace:'pre-wrap', margin:0, fontFamily:'inherit' }}>{errorMsg}</pre>
+            <button onClick={() => setErrorMsg(null)} style={{ color:'#FCA5A5', background:'none', border:'none', cursor:'pointer', padding:0 }}>
+              <X size={14} />
             </button>
           </div>
         )}
 
-        {/* Drop zone — only shown when brief is selected and idle */}
-        {(selectedBrief || urlBriefId) && !hasFiles && (
-          <div
-            onClick={() => !processing && fileInputRef.current?.click()}
-            className="group rounded-3xl border-2 border-dashed border-slate-200 bg-white p-20 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all"
-          >
-            <div className="flex flex-col items-center gap-4">
-              <div className="rounded-2xl p-4 bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                <UploadCloud size={32} />
-              </div>
-              <div>
-                <p className="text-lg font-bold text-slate-900">Drop files here or click to browse</p>
-                <p className="text-slate-500 text-sm mt-1">Excel · CSV · PDF &nbsp;·&nbsp; Multiple files supported &nbsp;·&nbsp; Max 10 MB (PDF: 15 MB)</p>
-                <p className="text-slate-400 text-xs mt-2">Works with GWI · Google Keywords · Helium10 · Google Trends · Konnect Insights</p>
-              </div>
+        {/* ── Step 1: Select brief prompt ── */}
+        {!selectedBrief && !urlBriefId && (
+          <div style={{
+            borderRadius:24, border:'2px dashed #C7D2FE',
+            background:'linear-gradient(135deg,#EFF6FF,#F5F3FF)',
+            padding:'56px 40px', textAlign:'center',
+          }}>
+            <div style={{ width:72, height:72, borderRadius:20, margin:'0 auto 20px',
+              background:'linear-gradient(135deg,#2563EB,#7C3AED)',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              boxShadow:'0 12px 32px rgba(99,102,241,.35)' }}>
+              <UploadCloud size={32} color="#fff" />
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              accept=".xlsx,.xls,.csv,.pdf"
-              onChange={handleFileChange}
-            />
+            <h2 style={{ fontSize:22, fontWeight:900, color:'#0F172A', marginBottom:8, letterSpacing:'-.3px' }}>
+              Select a brief to begin
+            </h2>
+            <p style={{ color:'#64748B', fontSize:14, marginBottom:28, lineHeight:1.6 }}>
+              Link this upload to a campaign brief before mapping your data
+            </p>
+            <button onClick={() => setShowBriefModal(true)} style={{
+              padding:'13px 32px', borderRadius:12, border:'none', cursor:'pointer',
+              background:'linear-gradient(135deg,#2563EB,#7C3AED)',
+              color:'#fff', fontSize:14, fontWeight:800,
+              boxShadow:'0 8px 24px rgba(37,99,235,.35)',
+            }}>
+              Select Brief →
+            </button>
           </div>
         )}
 
-        {/* File list + status */}
+        {/* ── Step 2: Drop zone ── */}
+        {(selectedBrief || urlBriefId) && !hasFiles && (
+          <div
+            onClick={() => !processing && fileInputRef.current?.click()}
+            style={{
+              borderRadius:24, border:'2px dashed #C7D2FE',
+              background:'#fff', padding:'64px 40px', textAlign:'center',
+              cursor: processing ? 'not-allowed' : 'pointer',
+              transition:'all .2s',
+            }}
+            onMouseEnter={e => {
+              if (!processing) {
+                (e.currentTarget as HTMLDivElement).style.borderColor = '#6366F1';
+                (e.currentTarget as HTMLDivElement).style.background  = '#F8FAFF';
+              }
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLDivElement).style.borderColor = '#C7D2FE';
+              (e.currentTarget as HTMLDivElement).style.background  = '#fff';
+            }}
+          >
+            <div style={{ width:76, height:76, borderRadius:20, margin:'0 auto 20px',
+              background:'linear-gradient(135deg,#6366F1,#7C3AED)',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              boxShadow:'0 12px 32px rgba(99,102,241,.3)' }}>
+              <UploadCloud size={34} color="#fff" />
+            </div>
+            <p style={{ fontSize:18, fontWeight:800, color:'#0F172A', marginBottom:8, letterSpacing:'-.2px' }}>
+              Drop files here or click to browse
+            </p>
+            <p style={{ fontSize:13, color:'#64748B', marginBottom:6 }}>
+              Excel · CSV · PDF &nbsp;·&nbsp; Multiple files supported &nbsp;·&nbsp; Max 10 MB
+            </p>
+            <p style={{ fontSize:12, color:'#94A3B8' }}>
+              GWI · Google Keywords · Helium10 · Google Trends · Konnect Insights
+            </p>
+            {/* Format chips */}
+            <div style={{ display:'flex', gap:8, justifyContent:'center', marginTop:20 }}>
+              {['.xlsx','.xls','.csv','.pdf'].map(ext => (
+                <span key={ext} style={{ padding:'4px 10px', borderRadius:8,
+                  background:'#F1F5F9', color:'#475569', fontSize:11, fontWeight:700 }}>{ext}</span>
+              ))}
+            </div>
+            <input ref={fileInputRef} type="file" multiple className="hidden"
+              accept=".xlsx,.xls,.csv,.pdf" onChange={handleFileChange} />
+          </div>
+        )}
+
+        {/* ── File list ── */}
         {hasFiles && (
-          <div className="space-y-3 mb-6">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-sm font-bold text-slate-700 uppercase tracking-widest">Files</p>
+          <div style={{ marginBottom:20 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+              <p style={{ fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'.12em', color:'#475569' }}>
+                Files ({fileEntries.length})
+              </p>
               {!processing && (
-                <button
-                  onClick={() => { setFileEntries([]); setAgentLog([]); setBucketPreview({}); }}
-                  className="text-xs text-slate-400 hover:text-slate-600"
-                >
+                <button onClick={() => { setFileEntries([]); setAgentLog([]); setBucketPreview({}); }}
+                  style={{ fontSize:12, color:'#94A3B8', background:'none', border:'none', cursor:'pointer',
+                    fontWeight:600, fontFamily:'inherit' }}>
                   Clear all
                 </button>
               )}
             </div>
-            {fileEntries.map((e, i) => (
-              <div key={i} className="flex items-center gap-3 bg-white rounded-2xl px-4 py-3 border border-slate-100 shadow-sm">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-800 truncate">{e.file.name}</p>
-                  <p className="text-xs text-slate-400">{(e.file.size / 1024 / 1024).toFixed(1)} MB</p>
-                </div>
-                {e.status === 'pending'   && <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Pending</span>}
-                {e.status === 'uploading' && <Loader2 size={14} className="text-blue-500 animate-spin" />}
-                {e.status === 'analyzing' && <Loader2 size={14} className="text-purple-500 animate-spin" />}
-                {e.status === 'done'      && (
-                  <span className="flex items-center gap-1 text-xs text-green-600 font-semibold">
-                    <CheckCircle size={13} /> {e.chartsFound} insights
-                  </span>
-                )}
-                {e.status === 'error'     && <span className="text-xs text-red-500 font-semibold">Error</span>}
-                {!processing && e.status !== 'done' && (
-                  <button onClick={() => removeFile(i)} className="text-slate-300 hover:text-slate-500 ml-1"><X size={13} /></button>
-                )}
-              </div>
-            ))}
 
-            {/* Add more files button */}
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {fileEntries.map((e, i) => {
+                const cfg = FILE_STATUS_CFG[e.status] || FILE_STATUS_CFG.pending;
+                return (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:12,
+                    background:'#fff', borderRadius:16, padding:'12px 16px',
+                    border:'1.5px solid #F1F5F9',
+                    boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+                    {/* File icon */}
+                    <div style={{ width:36, height:36, borderRadius:10, flexShrink:0,
+                      background: e.file.name.endsWith('.pdf') ? '#FEF2F2' : '#EFF6FF',
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      fontSize:16 }}>
+                      {e.file.name.endsWith('.pdf') ? '📄' : '📊'}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <p style={{ fontSize:13, fontWeight:700, color:'#0F172A',
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:2 }}>
+                        {e.file.name}
+                      </p>
+                      <p style={{ fontSize:11, color:'#94A3B8' }}>
+                        {(e.file.size / 1024 / 1024).toFixed(1)} MB
+                      </p>
+                    </div>
+                    {/* Status */}
+                    <div style={{ display:'flex', alignItems:'center', gap:7, flexShrink:0 }}>
+                      {(e.status === 'uploading' || e.status === 'analyzing') && (
+                        <Loader2 size={13} style={{ color: cfg.color, animation:'upspin .7s linear infinite' }} />
+                      )}
+                      {e.status === 'done' && <CheckCircle size={13} style={{ color:'#059669' }} />}
+                      <span style={{ fontSize:11, fontWeight:700,
+                        color: cfg.color, background: cfg.bg,
+                        padding:'3px 9px', borderRadius:20 }}>
+                        {e.status === 'done' ? `${e.chartsFound} insights` : cfg.label}
+                      </span>
+                    </div>
+                    {!processing && e.status !== 'done' && (
+                      <button onClick={() => removeFile(i)} style={{
+                        color:'#CBD5E1', background:'none', border:'none', cursor:'pointer', padding:0,
+                        flexShrink:0,
+                      }}>
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
             {!processing && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 text-sm hover:border-blue-300 hover:text-blue-500 transition-all"
-              >
+              <button onClick={() => fileInputRef.current?.click()} style={{
+                width:'100%', marginTop:8, padding:'11px 0', borderRadius:14,
+                border:'2px dashed #E2E8F0', background:'transparent',
+                fontSize:13, fontWeight:600, color:'#94A3B8', cursor:'pointer',
+                fontFamily:'inherit', transition:'all .15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor='#6366F1'; (e.currentTarget as HTMLButtonElement).style.color='#6366F1'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor='#E2E8F0'; (e.currentTarget as HTMLButtonElement).style.color='#94A3B8'; }}>
                 + Add more files
               </button>
             )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              accept=".xlsx,.xls,.csv,.pdf"
-              onChange={handleFileChange}
-            />
+            <input ref={fileInputRef} type="file" multiple className="hidden"
+              accept=".xlsx,.xls,.csv,.pdf" onChange={handleFileChange} />
           </div>
         )}
 
-        {/* PRISM bucket preview */}
+        {/* ── PRISM Bucket distribution ── */}
         {Object.keys(bucketPreview).length > 0 && (
-          <div className="grid grid-cols-4 gap-3 mb-6">
-            {(['content','commerce','communication','culture'] as const).map(b => (
-              <div key={b} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm text-center">
-                <div className="text-xl font-extrabold" style={{ color: BUCKET_COLORS[b] }}>{bucketPreview[b] ?? 0}</div>
-                <div className="text-[11px] text-slate-500 mt-0.5 font-semibold">{BUCKET_LABELS[b]}</div>
-              </div>
-            ))}
+          <div style={{ marginBottom:20 }}>
+            <p style={{ fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'.12em',
+              color:'#475569', marginBottom:12 }}>PRISM Distribution</p>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
+              {(['content','commerce','communication','culture'] as const).map(b => {
+                const cfg = BUCKET_CFG[b];
+                const count = bucketPreview[b] ?? 0;
+                const maxCount = Math.max(...Object.values(bucketPreview), 1);
+                return (
+                  <div key={b} style={{ background:cfg.bg, borderRadius:16, padding:'16px 14px',
+                    border:`1.5px solid ${cfg.border}`, textAlign:'center' }}>
+                    <div style={{ fontSize:22, fontWeight:900, color:cfg.color, marginBottom:4 }}>{count}</div>
+                    {/* Mini bar */}
+                    <div style={{ height:3, background:`${cfg.color}20`, borderRadius:2, marginBottom:6, overflow:'hidden' }}>
+                      <div style={{ height:'100%', borderRadius:2, background:cfg.color,
+                        width:`${maxCount > 0 ? (count/maxCount)*100 : 0}%`, transition:'width .5s ease' }} />
+                    </div>
+                    <div style={{ fontSize:10, fontWeight:700, color:cfg.color }}>{cfg.label}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {/* Agent log */}
+        {/* ── AI Agent log ── */}
         {agentLog.length > 0 && (
-          <div className="p-5 bg-slate-900 rounded-3xl text-slate-300 font-mono text-xs shadow-2xl">
-            <div className="flex items-center gap-2 mb-3 border-b border-slate-800 pb-2">
-              {processing
-                ? <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-                : <CheckCircle size={12} className="text-green-400" />}
-              <span className="text-blue-400 font-bold uppercase tracking-widest text-[10px]">PRISM AI Sequence</span>
+          <div style={{ borderRadius:20, overflow:'hidden',
+            boxShadow:'0 16px 48px rgba(0,0,0,.2)', marginBottom:8 }}>
+            {/* Terminal header */}
+            <div style={{ background:'#0D1117', padding:'12px 18px',
+              display:'flex', alignItems:'center', gap:10, borderBottom:'1px solid rgba(255,255,255,.06)' }}>
+              {/* Traffic lights */}
+              <div style={{ display:'flex', gap:6 }}>
+                {['#FF5F57','#FEBC2E','#28C840'].map(c => (
+                  <div key={c} style={{ width:10, height:10, borderRadius:'50%', background:c }} />
+                ))}
+              </div>
+              <div style={{ flex:1, display:'flex', alignItems:'center', gap:8, justifyContent:'center' }}>
+                {processing ? (
+                  <div style={{ width:7, height:7, borderRadius:'50%', background:'#60A5FA',
+                    animation:'upblink 1.2s ease-in-out infinite' }} />
+                ) : (
+                  <CheckCircle size={11} style={{ color:'#34D399' }} />
+                )}
+                <span style={{ fontSize:10, fontWeight:700, textTransform:'uppercase',
+                  letterSpacing:'.14em', color:'#60A5FA' }}>
+                  {processing ? 'PRISM AI · Processing…' : 'PRISM AI · Complete'}
+                </span>
+              </div>
             </div>
-            <div className="space-y-1 overflow-y-auto max-h-44">
+            {/* Log body */}
+            <div style={{ background:'#0D1117', padding:'16px 18px',
+              fontFamily:"'DM Mono','Fira Mono','Courier New',monospace",
+              fontSize:12, lineHeight:1.7, maxHeight:200, overflowY:'auto' }}>
               {agentLog.map((log, i) => (
-                <div key={i} className="flex">
-                  <span className="opacity-30 mr-3">[{String(i).padStart(2,'0')}]</span>
-                  <span>{log}</span>
+                <div key={i} style={{ display:'flex', gap:12, color:'#CBD5E1' }}>
+                  <span style={{ color:'rgba(255,255,255,.2)', userSelect:'none', flexShrink:0 }}>
+                    {String(i).padStart(2,'0')}
+                  </span>
+                  <span style={{ color: log.startsWith('❌') ? '#F87171'
+                    : log.startsWith('✅') || log.startsWith('✨') ? '#34D399'
+                    : log.startsWith('🤖') ? '#A78BFA'
+                    : log.startsWith('⚠') ? '#FBBF24'
+                    : '#CBD5E1' }}>
+                    {log}
+                  </span>
                 </div>
               ))}
             </div>
@@ -727,6 +861,11 @@ function UploadDataInner() {
         )}
 
       </main>
+
+      <style>{`
+        @keyframes upspin  { to { transform: rotate(360deg) } }
+        @keyframes upblink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(.7)} }
+      `}</style>
     </div>
   );
 }

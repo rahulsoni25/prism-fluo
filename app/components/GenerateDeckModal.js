@@ -4,171 +4,167 @@ import React, { useState } from 'react';
 import TemplateGallery from './TemplateGallery';
 
 export default function GenerateDeckModal({ analysisId, onClose, onSuccess }) {
-  const [step, setStep] = useState('gallery'); // 'gallery', 'generating', or 'success'
-  const [generatedDeck, setGeneratedDeck] = useState(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [step, setStep]             = useState('gallery');
+  const [deck, setDeck]             = useState(null);
+  const [downloading, setDownloading] = useState(false);
 
-  const handleSelectTemplate = (deckData) => {
-    setGeneratedDeck(deckData);
-    setStep('success');
-  };
-
-  const handleClose = () => {
-    onClose?.();
-  };
-
-  const handleStartOver = () => {
-    setStep('gallery');
-    setGeneratedDeck(null);
-  };
+  const handleSelectTemplate = (deckData) => { setDeck(deckData); setStep('success'); };
+  const handleStartOver      = () => { setStep('gallery'); setDeck(null); };
 
   const handleDownload = async () => {
-    if (!generatedDeck?.downloadUrl) return;
-
-    setIsDownloading(true);
+    if (!deck?.downloadUrl) return;
+    setDownloading(true);
     try {
-      const response = await fetch(generatedDeck.downloadUrl);
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${generatedDeck.briefName.replace(/\s+/g, '_')}_presentation.pptx`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
+      const res = await fetch(deck.downloadUrl);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `${(deck.briefName || 'presentation').replace(/\s+/g,'_')}.pptx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       }
-    } catch (error) {
-      console.error('Download failed:', error);
-      alert('Failed to download presentation. Try opening it in your browser instead.');
-    } finally {
-      setIsDownloading(false);
-    }
+    } catch { alert('Download failed. Try the direct link below.'); }
+    finally { setDownloading(false); }
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Close Button */}
-        <button
-          onClick={handleClose}
-          className="absolute top-4 right-4 text-slate-500 hover:text-slate-700 text-2xl z-10"
-        >
-          ✕
-        </button>
+    <div style={{
+      position:'fixed', inset:0, background:'rgba(15,23,42,.65)',
+      backdropFilter:'blur(6px)', display:'flex', alignItems:'center',
+      justifyContent:'center', zIndex:9999, padding:16,
+    }}
+    onClick={onClose}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:'#fff', borderRadius:28,
+          width:'100%', maxWidth: step==='gallery' ? 900 : 520,
+          maxHeight:'92vh', overflowY:'auto',
+          boxShadow:'0 40px 80px rgba(0,0,0,.28)',
+          position:'relative',
+          animation:'gdmIn .25s cubic-bezier(.34,1.56,.64,1) both',
+        }}
+      >
+        {/* Close */}
+        <button onClick={onClose} style={{
+          position:'sticky', top:16, float:'right', marginRight:16,
+          width:32, height:32, borderRadius:'50%', border:'none',
+          background:'#F1F5F9', color:'#64748B', fontSize:16, cursor:'pointer',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          zIndex:10, flexShrink:0,
+        }}>✕</button>
 
-        {/* Content */}
-        <div className="p-8">
+        <div style={{ padding: step==='gallery' ? '32px 32px 28px' : '40px 40px 36px', paddingTop:32 }}>
+
+          {/* ── Gallery step ── */}
           {step === 'gallery' && (
-            <>
-              <TemplateGallery
-                analysisId={analysisId}
-                onSelectTemplate={handleSelectTemplate}
-              />
-            </>
+            <TemplateGallery analysisId={analysisId} onSelectTemplate={handleSelectTemplate} />
           )}
 
-          {step === 'generating' && (
-            <div className="text-center py-16">
-              <div className="inline-block">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mb-6"></div>
-              </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">
-                Creating Your Presentation...
-              </h2>
-              <p className="text-slate-600">
-                Generating professional slides from your analysis insights
-              </p>
-            </div>
-          )}
+          {/* ── Success step ── */}
+          {step === 'success' && deck && (
+            <div style={{ textAlign:'center' }}>
+              {/* Animated checkmark */}
+              <div style={{
+                width:80, height:80, borderRadius:'50%', margin:'0 auto 20px',
+                background:'linear-gradient(135deg,#059669,#10B981)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:36, boxShadow:'0 12px 32px rgba(5,150,105,.35)',
+                animation:'gdmPop .4s cubic-bezier(.34,1.56,.64,1) both',
+              }}>✨</div>
 
-          {step === 'success' && generatedDeck && (
-            <div className="text-center py-12">
-              {/* Success Icon */}
-              <div className="text-6xl mb-6">✨</div>
-
-              <h2 className="text-3xl font-bold text-slate-900 mb-2">
+              <h2 style={{ fontSize:28, fontWeight:900, color:'#0F172A', marginBottom:8, letterSpacing:'-.5px' }}>
                 Presentation Ready!
               </h2>
-              <p className="text-slate-600 mb-8 text-lg">
-                Your presentation has been generated with all your insights
+              <p style={{ color:'#64748B', fontSize:15, marginBottom:32, lineHeight:1.6 }}>
+                Your deck has been generated with all insights auto-organised across slides
               </p>
 
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-8 mb-8">
-                <div className="text-left">
-                  <div className="mb-4">
-                    <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Template</p>
-                    <p className="text-xl font-bold text-slate-900">{generatedDeck.templateName}</p>
+              {/* Deck info card */}
+              <div style={{
+                background:'linear-gradient(135deg,#F8FAFF,#F5F3FF)',
+                border:'1.5px solid #E0E7FF', borderRadius:18,
+                padding:'24px 28px', marginBottom:24, textAlign:'left',
+              }}>
+                {[
+                  { label:'Template', value: deck.templateName },
+                  { label:'Title',    value: deck.briefName },
+                  deck.headline && { label:'Headline', value: deck.headline },
+                ].filter(Boolean).map(r => (
+                  <div key={r.label} style={{ marginBottom:16, lastChild:{ marginBottom:0 } }}>
+                    <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase',
+                      letterSpacing:'.1em', color:'#94A3B8', marginBottom:4 }}>{r.label}</p>
+                    <p style={{ fontSize:14, fontWeight:600, color:'#1E293B', lineHeight:1.4 }}>{r.value}</p>
                   </div>
-                  <div className="mb-4">
-                    <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Title</p>
-                    <p className="text-lg text-slate-900">{generatedDeck.briefName}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Headline</p>
-                    <p className="text-slate-700 line-clamp-2">{generatedDeck.headline}</p>
-                  </div>
-                </div>
+                ))}
               </div>
 
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-8 text-left">
-                <p className="text-green-900 font-medium">✓ Your presentation is ready to use!</p>
-                <ul className="text-sm text-green-800 mt-2 space-y-1 ml-4">
-                  <li>✓ All insights automatically organized</li>
-                  <li>✓ Professional design applied</li>
-                  <li>✓ Ready to share and present</li>
-                </ul>
+              {/* Checklist */}
+              <div style={{
+                background:'#ECFDF5', border:'1px solid #A7F3D0',
+                borderRadius:14, padding:'14px 18px', marginBottom:28, textAlign:'left',
+              }}>
+                {['All insights automatically organised','Professional design applied','Ready to download and present'].map(item => (
+                  <div key={item} style={{ display:'flex', alignItems:'center', gap:8,
+                    fontSize:13, color:'#065F46', fontWeight:600, padding:'4px 0' }}>
+                    <span style={{ color:'#059669', fontSize:15 }}>✓</span> {item}
+                  </div>
+                ))}
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-center mb-4">
-                <button
-                  onClick={handleDownload}
-                  disabled={isDownloading}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold py-3 px-8 rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  {isDownloading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Downloading...
-                    </>
-                  ) : (
-                    <>⬇ Download PPT</>
-                  )}
+              {/* Buttons */}
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                <button onClick={handleDownload} disabled={downloading} style={{
+                  padding:'14px 0', borderRadius:12, border:'none', cursor: downloading ? 'not-allowed' : 'pointer',
+                  background: downloading ? '#94A3B8' : 'linear-gradient(135deg,#2563EB,#7C3AED)',
+                  color:'#fff', fontSize:15, fontWeight:800,
+                  boxShadow: downloading ? 'none' : '0 8px 24px rgba(37,99,235,.35)',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                  transition:'all .15s',
+                }}>
+                  {downloading ? (
+                    <><span style={{ width:16, height:16, borderRadius:'50%',
+                      border:'2px solid rgba(255,255,255,.4)', borderTopColor:'#fff',
+                      animation:'gdmspin .7s linear infinite', display:'inline-block' }} /> Downloading…</>
+                  ) : '⬇ Download PowerPoint'}
                 </button>
 
-                {generatedDeck.gammaUrl && generatedDeck.gammaUrl !== '#' && (
-                  <a
-                    href={generatedDeck.gammaUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-lg transition-colors"
-                  >
-                    🌐 View Online
-                  </a>
+                {deck.gammaUrl && deck.gammaUrl !== '#' && (
+                  <a href={deck.gammaUrl} target="_blank" rel="noopener noreferrer" style={{
+                    padding:'13px 0', borderRadius:12, textDecoration:'none',
+                    background:'linear-gradient(135deg,#7C3AED,#EC4899)',
+                    color:'#fff', fontSize:14, fontWeight:700, textAlign:'center',
+                    display:'block',
+                  }}>🌐 View Online</a>
                 )}
 
-                <button
-                  onClick={() => {
-                    onSuccess?.(generatedDeck);
-                    handleClose();
-                  }}
-                  className="bg-slate-200 hover:bg-slate-300 text-slate-900 font-bold py-3 px-8 rounded-lg transition-colors"
-                >
-                  Go to Library
-                </button>
+                <div style={{ display:'flex', gap:10 }}>
+                  <button onClick={handleStartOver} style={{
+                    flex:1, padding:'11px 0', borderRadius:10,
+                    border:'1.5px solid #E2E8F0', background:'#fff',
+                    color:'#475569', fontSize:13, fontWeight:600, cursor:'pointer',
+                  }}>← Try Another</button>
+                  <button onClick={() => { onSuccess?.(deck); onClose?.(); }} style={{
+                    flex:1, padding:'11px 0', borderRadius:10,
+                    border:'none', background:'#F1F5F9',
+                    color:'#475569', fontSize:13, fontWeight:600, cursor:'pointer',
+                  }}>Go to Library</button>
+                </div>
               </div>
-
-              <button
-                onClick={handleStartOver}
-                className="text-slate-600 hover:text-slate-900 font-medium text-sm"
-              >
-                ← Try Another Template
-              </button>
             </div>
           )}
         </div>
       </div>
+
+      <style>{`
+        @keyframes gdmIn  { from { opacity:0; transform:scale(.94) translateY(10px) } to { opacity:1; transform:scale(1) translateY(0) } }
+        @keyframes gdmPop { from { opacity:0; transform:scale(.6) } to { opacity:1; transform:scale(1) } }
+        @keyframes gdmspin { to { transform:rotate(360deg) } }
+      `}</style>
     </div>
   );
 }

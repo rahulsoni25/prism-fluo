@@ -2,176 +2,189 @@
 
 import React, { useState, useEffect } from 'react';
 
-const TEMPLATE_ICONS = {
-  executive_briefing: '📊',
-  client_pitch: '🎯',
-  deep_dive: '🔍',
-  board_presentation: '🏛️',
-  team_update: '👥',
-  investor_update: '💰',
-  quick_overview: '⚡',
+const TEMPLATE_VISUAL = {
+  executive_briefing:   { icon:'📊', color:'#2563EB', bg:'#EFF6FF', border:'#BFDBFE' },
+  client_pitch:         { icon:'🎯', color:'#7C3AED', bg:'#F5F3FF', border:'#DDD6FE' },
+  deep_dive:            { icon:'🔍', color:'#4F46E5', bg:'#EEF2FF', border:'#C7D2FE' },
+  board_presentation:   { icon:'🏛️', color:'#334155', bg:'#F8FAFC', border:'#CBD5E1' },
+  team_update:          { icon:'👥', color:'#059669', bg:'#ECFDF5', border:'#A7F3D0' },
+  investor_update:      { icon:'💰', color:'#D97706', bg:'#FFFBEB', border:'#FDE68A' },
+  quick_overview:       { icon:'⚡', color:'#0891B2', bg:'#ECFEFF', border:'#A5F3FC' },
 };
+const DEFAULT_VIS = { icon:'📌', color:'#475569', bg:'#F8FAFC', border:'#E2E8F0' };
 
-const TEMPLATE_COLORS = {
-  Executive: 'from-blue-50 to-blue-100',
-  Sales: 'from-green-50 to-green-100',
-  Research: 'from-indigo-50 to-indigo-100',
-  Governance: 'from-slate-50 to-slate-100',
-  Internal: 'from-purple-50 to-purple-100',
-  Investor: 'from-red-50 to-red-100',
-  Quick: 'from-amber-50 to-amber-100',
+const CAT_COLORS = {
+  All:'#0F172A', Executive:'#2563EB', Sales:'#059669',
+  Research:'#4F46E5', Governance:'#334155', Internal:'#7C3AED',
+  Investor:'#D97706', Quick:'#0891B2',
 };
 
 export default function TemplateGallery({ onSelectTemplate, analysisId }) {
-  const [templates, setTemplates] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [generating, setGenerating] = useState(false);
+  const [templates, setTemplates]       = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [selectedCat, setSelectedCat]   = useState('All');
+  const [generating, setGenerating]     = useState(null); // template id being generated
+  const [hoveredId, setHoveredId]       = useState(null);
 
   useEffect(() => {
-    fetchTemplates();
+    fetch('/api/templates')
+      .then(r => r.json())
+      .then(d => setTemplates(d.templates || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const fetchTemplates = async () => {
-    try {
-      const res = await fetch('/api/templates');
-      const data = await res.json();
-      setTemplates(data.templates || []);
-    } catch (error) {
-      console.error('Error fetching templates:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSelectTemplate = async (template) => {
-    setGenerating(true);
+  const handleSelect = async (template) => {
+    if (generating) return;
+    setGenerating(template.id);
     try {
       const res = await fetch('/api/presentations/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId: template.id,
-          analysisId,
-        }),
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ templateId: template.id, analysisId }),
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        onSelectTemplate(data);
-      } else {
-        alert('Failed to generate presentation. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error generating presentation:', error);
-      alert('Error generating presentation');
-    } finally {
-      setGenerating(false);
-    }
+      if (res.ok) { onSelectTemplate(await res.json()); }
+      else        { alert('Failed to generate presentation. Please try again.'); }
+    } catch { alert('Error generating presentation'); }
+    finally { setGenerating(null); }
   };
 
-  const categories = ['All', ...new Set(templates.map((t) => t.category))];
-  const filteredTemplates =
-    selectedCategory === 'All'
-      ? templates
-      : templates.filter((t) => t.category === selectedCategory);
+  const cats       = ['All', ...new Set(templates.map(t => t.category))];
+  const filtered   = selectedCat === 'All' ? templates : templates.filter(t => t.category === selectedCat);
 
   return (
-    <div className="w-full max-w-6xl mx-auto">
+    <div style={{ width:'100%' }}>
       {/* Header */}
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-slate-900 mb-2">
+      <div style={{ marginBottom:28 }}>
+        <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.12em',
+          color:'#7C3AED', marginBottom:8 }}>STEP 1 OF 1</p>
+        <h2 style={{ fontSize:26, fontWeight:900, color:'#0F172A', letterSpacing:'-.5px', marginBottom:6 }}>
           Choose a Presentation Style
         </h2>
-        <p className="text-slate-600">
-          Select a template to auto-generate your presentation deck with all your analysis insights
+        <p style={{ color:'#64748B', fontSize:14, lineHeight:1.6 }}>
+          Select a template — PRISM will auto-populate every slide with your analysis insights
         </p>
       </div>
 
-      {/* Category Filter */}
-      <div className="flex flex-wrap gap-2 mb-8">
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`px-4 py-2 rounded-full font-medium transition-all ${
-              selectedCategory === cat
-                ? 'bg-blue-600 text-white shadow-lg'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
+      {/* Category pills */}
+      <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:28 }}>
+        {cats.map(cat => {
+          const active = selectedCat === cat;
+          const col    = CAT_COLORS[cat] || '#475569';
+          return (
+            <button key={cat} onClick={() => setSelectedCat(cat)} style={{
+              padding:'7px 16px', borderRadius:20, border:'none', cursor:'pointer',
+              fontSize:12, fontWeight:700, transition:'all .15s',
+              background: active ? col : '#F1F5F9',
+              color: active ? '#fff' : '#475569',
+              boxShadow: active ? `0 4px 12px ${col}30` : 'none',
+              transform: active ? 'scale(1.02)' : 'scale(1)',
+            }}>{cat}</button>
+          );
+        })}
       </div>
 
-      {/* Loading State */}
+      {/* Loading */}
       {loading && (
-        <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-slate-600">Loading templates...</p>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'60px 0', gap:14 }}>
+          <div style={{ width:36, height:36, borderRadius:'50%', border:'3px solid #E2E8F0',
+            borderTopColor:'#7C3AED', animation:'tgspin .8s linear infinite' }} />
+          <p style={{ color:'#64748B', fontSize:13 }}>Loading templates…</p>
         </div>
       )}
 
-      {/* Template Grid */}
+      {/* Grid */}
       {!loading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTemplates.map((template) => (
-            <div
-              key={template.id}
-              className={`group bg-gradient-to-br ${
-                TEMPLATE_COLORS[template.category] || TEMPLATE_COLORS.Quick
-              } rounded-2xl p-6 cursor-pointer transition-all hover:shadow-xl hover:scale-105 border-2 border-transparent hover:border-blue-400`}
-              onClick={() => handleSelectTemplate(template)}
-            >
-              {/* Icon */}
-              <div className="text-5xl mb-4">
-                {TEMPLATE_ICONS[template.id] || '📌'}
-              </div>
-
-              {/* Title */}
-              <h3 className="text-xl font-bold text-slate-900 mb-2">
-                {template.name}
-              </h3>
-
-              {/* Category Badge */}
-              <div className="inline-block bg-white bg-opacity-60 px-3 py-1 rounded-full text-xs font-semibold text-slate-700 mb-3">
-                {template.category}
-              </div>
-
-              {/* Description */}
-              <p className="text-slate-700 text-sm mb-4">
-                {template.description}
-              </p>
-
-              {/* Audience */}
-              <div className="flex items-center text-xs text-slate-600 mb-4">
-                <span className="inline-block">👥 {template.audience}</span>
-              </div>
-
-              {/* Preview Info */}
-              <div className="pt-4 border-t border-slate-300 border-opacity-50">
-                <p className="text-xs text-slate-600 italic">{template.previewText}</p>
-              </div>
-
-              {/* CTA */}
-              <button
-                disabled={generating}
-                className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition-colors disabled:opacity-50 group-hover:shadow-lg"
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:16 }}>
+          {filtered.map(t => {
+            const vis     = TEMPLATE_VISUAL[t.id] || DEFAULT_VIS;
+            const isHov   = hoveredId === t.id;
+            const isGen   = generating === t.id;
+            const anyGen  = !!generating;
+            return (
+              <div key={t.id}
+                onMouseEnter={() => !anyGen && setHoveredId(t.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                onClick={() => handleSelect(t)}
+                style={{
+                  borderRadius:18, overflow:'hidden', cursor: anyGen ? 'not-allowed' : 'pointer',
+                  border: isHov ? `2px solid ${vis.color}60` : `2px solid ${vis.border}`,
+                  background: vis.bg,
+                  boxShadow: isHov ? `0 16px 40px ${vis.color}18` : '0 2px 8px rgba(0,0,0,.04)',
+                  transform: isHov ? 'translateY(-4px) scale(1.01)' : 'translateY(0)',
+                  transition: 'all .22s cubic-bezier(.34,1.56,.64,1)',
+                  opacity: anyGen && !isGen ? .5 : 1,
+                }}
               >
-                {generating ? 'Generating...' : 'Use This Template'}
-              </button>
-            </div>
-          ))}
+                {/* Icon area */}
+                <div style={{ padding:'22px 20px 14px', position:'relative' }}>
+                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:12 }}>
+                    <span style={{ fontSize:36 }}>{vis.icon}</span>
+                    <span style={{
+                      fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.07em',
+                      padding:'3px 8px', borderRadius:6,
+                      background:`${vis.color}15`, color:vis.color,
+                    }}>{t.category}</span>
+                  </div>
+                  <h3 style={{ fontSize:15, fontWeight:800, color:'#0F172A', marginBottom:6, letterSpacing:'-.2px' }}>
+                    {t.name}
+                  </h3>
+                  <p style={{ fontSize:12, color:'#64748B', lineHeight:1.6, marginBottom:10 }}>
+                    {t.description}
+                  </p>
+                  {t.audience && (
+                    <p style={{ fontSize:11, color:vis.color, fontWeight:600, display:'flex', alignItems:'center', gap:5 }}>
+                      <span>👥</span> {t.audience}
+                    </p>
+                  )}
+                </div>
+
+                {/* Divider + preview */}
+                {t.previewText && (
+                  <div style={{ padding:'10px 20px', borderTop:`1px solid ${vis.border}` }}>
+                    <p style={{ fontSize:11, color:'#64748B', fontStyle:'italic', lineHeight:1.5 }}>
+                      {t.previewText}
+                    </p>
+                  </div>
+                )}
+
+                {/* CTA */}
+                <div style={{ padding:'12px 20px 16px' }}>
+                  <button
+                    disabled={anyGen}
+                    style={{
+                      width:'100%', padding:'10px 0', border:'none', borderRadius:10,
+                      fontSize:12, fontWeight:700, cursor: anyGen ? 'not-allowed' : 'pointer',
+                      background: isGen
+                        ? `${vis.color}20`
+                        : isHov ? vis.color : `${vis.color}15`,
+                      color: isGen || isHov ? (isHov && !isGen ? '#fff' : vis.color) : vis.color,
+                      transition:'all .15s',
+                      display:'flex', alignItems:'center', justifyContent:'center', gap:7,
+                    }}
+                  >
+                    {isGen ? (
+                      <>
+                        <span style={{ width:12, height:12, borderRadius:'50%', border:`2px solid ${vis.color}`,
+                          borderTopColor:'transparent', animation:'tgspin .7s linear infinite', display:'inline-block' }} />
+                        Generating…
+                      </>
+                    ) : 'Use This Template →'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Empty State */}
-      {!loading && filteredTemplates.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-slate-500 text-lg">No templates found in this category</p>
+      {!loading && filtered.length === 0 && (
+        <div style={{ textAlign:'center', padding:'48px 0', color:'#94A3B8', fontSize:14 }}>
+          No templates in this category
         </div>
       )}
+
+      <style>{`@keyframes tgspin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
