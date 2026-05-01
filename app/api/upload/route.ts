@@ -65,19 +65,14 @@ export const POST = async (req: NextRequest) => {
 
     logger.info('api:upload', { filename: fileObj.name, sizeMB: sizeMB.toFixed(2), briefId, slaHours, userId: session.userId, ms: Date.now() - t0 });
 
-    if (summary.sheets.length === 0) {
-      return NextResponse.json(
-        {
-          error: 'NO_RECOGNIZED_SHEETS',
-          message: 'No GWI or Keyword Plan sheets were detected in this file. Check that column headers match the expected format.',
-          uploadId: summary.uploadId,
-          sheets: [],
-        },
-        { status: 422 }
-      );
-    }
-
-    return NextResponse.json(summary);
+    // Return the summary even when sheets is empty — rawText lets the upload page
+    // route the file directly to Gemini text analysis as a final fallback.
+    // A hard 422 here would block all analysis for unrecognised file formats.
+    return NextResponse.json({
+      uploadId: summary.uploadId,
+      sheets:   summary.sheets,
+      rawText:  summary.rawText ?? null,
+    });
 
   } catch (err: any) {
     logger.error('api:upload_failed', { error: err.message, ms: Date.now() - t0 });

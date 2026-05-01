@@ -144,6 +144,50 @@ function toolLabel(toolType: string): string {
   return MAP[toolType] || 'Data';
 }
 
+// ── Raw CSV text parser (fallback when ExcelJS fails) ────────
+/**
+ * Parse a CSV buffer as plain text.
+ * Handles UTF-8 BOM, Windows line endings, and quoted commas.
+ * Returns an array of row objects keyed by header names.
+ */
+function parseRawCsv(buffer: Buffer): Array<Record<string, string>> {
+  // Strip UTF-8 BOM (﻿) and normalise line endings
+  const text  = buffer.toString('utf-8').replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = text.split('\n').filter(l => l.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  const splitLine = (line: string): string[] => {
+    const result: string[] = [];
+    let cur = '';
+    let inQ  = false;
+    for (let ci = 0; ci < line.length; ci++) {
+      const ch = line[ci];
+      if (ch === '"') {
+        // Handle escaped quotes ("")
+        if (inQ && line[ci + 1] === '"') { cur += '"'; ci++; }
+        else { inQ = !inQ; }
+      } else if (ch === ',' && !inQ) {
+        result.push(cur.trim());
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const headers = splitLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim());
+  if (headers.filter(Boolean).length < 2) return [];
+
+  return lines.slice(1).map(line => {
+    const vals = splitLine(line);
+    const obj: Record<string, string> = {};
+    headers.forEach((h, i) => { if (h) obj[h] = (vals[i] ?? '').replace(/^"|"$/g, '').trim(); });
+    return obj;
+  }).filter(obj => Object.values(obj).some(v => v !== ''));
+}
+
 // ── Excel/CSV handler ────────────────────────────────────────
 
 async function handleExcelUpload(
@@ -156,7 +200,16 @@ async function handleExcelUpload(
 
   const ext = filename.split('.').pop()?.toLowerCase();
   if (ext === 'csv') {
-    await workbook.csv.read(Readable.from(buffer));
+    // Strip BOM before handing to ExcelJS — BOM confuses the CSV reader
+    const cleanBuf = buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF
+      ? buffer.subarray(3)
+      : buffer;
+    try {
+      await workbook.csv.read(Readable.from(cleanBuf));
+    } catch (csvErr) {
+      logger.warn('upload:exceljs_csv_failed', { filename, error: (csvErr as Error).message });
+      // Fall through — workbook will have 0 worksheets → raw CSV fallback kicks in
+    }
   } else {
     await workbook.xlsx.load(buffer);
   }
@@ -268,8 +321,35 @@ async function handleExcelUpload(
       }
     }
 
-    if (meta.question || type !== 'generic_table') {
+    // Include sheet if it has a meaningful question label set by any of the
+    // parsers above, OR if it's still type 'generic_table' but had ≥1 row
+    // (meta.question is set by all branches when rows > 0).
+    if (meta.question) {
       sheetsMeta.push(meta as SheetMeta);
+    }
+  }
+
+  // ── Raw CSV fallback ─────────────────────────────────────────
+  // When ExcelJS returns 0 usable worksheets (BOM/encoding/delimiter issues),
+  // parse the CSV as plain text so Gemini can still analyse it.
+  if (sheetsMeta.length === 0 && ext === 'csv') {
+    logger.info('upload:raw_csv_fallback', { filename });
+    const rawRows = parseRawCsv(buffer);
+    if (rawRows.length > 0) {
+      const toolRows = rawRows.map(rowData => ({
+        uploadId,
+        sheetName: filename,
+        toolType:  'generic' as const,
+        rowData,
+      }));
+      try { await bulkInsertToolData(client, toolRows); } catch { /* best-effort */ }
+      sheetsMeta.push({
+        sheetName:   filename,
+        type:        'generic_table',
+        question:    filename.replace(/\.[^.]+$/, ''),
+        description: `${rawRows.length} rows from ${filename}`,
+      } as SheetMeta);
+      logger.info('upload:raw_csv_fallback_ok', { filename, rows: rawRows.length });
     }
   }
 
@@ -351,9 +431,36 @@ export async function handleUpload(
     // handles failures gracefully.
   });
 
+  // ── Last-resort raw text ─────────────────────────────────────
+  // If structured parsing still returned nothing, include the raw file text so
+  // the upload page can route it directly to Gemini text/PDF analysis.
+  let rawText: string | undefined;
+  if (sheetsMeta.length === 0) {
+    if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') {
+      // For CSV just decode; for Excel convert to CSV-like text via ExcelJS
+      if (ext === 'csv') {
+        rawText = buffer.toString('utf-8').replace(/^﻿/, '').slice(0, 40000);
+      } else {
+        // Best-effort: read all cells as tab-separated text
+        try {
+          const wb2 = new ExcelJS.Workbook();
+          await wb2.xlsx.load(buffer);
+          const lines: string[] = [];
+          wb2.worksheets.forEach(ws => {
+            ws.eachRow({ includeEmpty: false }, row => {
+              lines.push((row.values as any[]).slice(1).map(c => String(c ?? '')).join('\t'));
+            });
+          });
+          rawText = lines.slice(0, 2000).join('\n');
+        } catch { /* ignore */ }
+      }
+    }
+    logger.warn('upload:no_structured_sheets', { filename, hasRawText: !!rawText });
+  }
+
   logger.info('upload:done', {
     uploadId, filename, briefId: briefId ?? null, sheets: sheetsMeta.length, ms: Date.now() - t0,
   });
 
-  return { uploadId, sheets: sheetsMeta };
+  return { uploadId, sheets: sheetsMeta, rawText };
 }

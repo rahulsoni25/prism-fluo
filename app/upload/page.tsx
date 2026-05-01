@@ -268,8 +268,37 @@ function UploadDataInner() {
     const summary = await upRes.json();
     if (!upRes.ok) throw new Error(summary.message ?? `Upload failed (${upRes.status})`);
 
-    const { uploadId, sheets } = summary;
-    if (!sheets?.length) { addLog(`⚠ No sheets found in "${file.name}"`); return { charts: [], uploadId }; }
+    const { uploadId, sheets, rawText } = summary;
+
+    // ── Raw text fallback: structured parsing returned 0 rows ──────────
+    // ExcelJS couldn't parse this CSV/Excel. Route the raw file content
+    // directly to Gemini's text analysis path (same as PDF analysis).
+    if (!sheets?.length && rawText) {
+      addLog(`⚠ Structured parser found no rows in "${file.name}" — sending raw content to Gemini…`);
+      try {
+        const aiRes = await fetch('/api/ai/analyze-pdf', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: rawText, filename: file.name }),
+        });
+        const body = await aiRes.json().catch(() => ({}));
+        const insights = (body as any).insights;
+        if (aiRes.ok && Array.isArray(insights) && insights.length > 0) {
+          addLog(`✨ Gemini generated ${insights.length} PRISM insights from raw content`);
+          const charts: ChartSpec[] = insightsToCharts(insights, entryIdx);
+          updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
+          addLog(`✅ "${file.name}" → ${charts.length} insights ready`);
+          return { charts, uploadId };
+        }
+        addLog(`⚠ Gemini raw-text analysis returned no insights (${(body as any).error ?? aiRes.status})`);
+      } catch (err: any) {
+        addLog(`⚡ Gemini raw-text analysis failed: ${err.message}`);
+      }
+      updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: `Could not extract data from "${file.name}". Check the file has content and try again.` });
+      return { charts: [], uploadId };
+    }
+
+    if (!sheets?.length) { addLog(`⚠ No data found in "${file.name}"`); return { charts: [], uploadId }; }
 
     updateEntry(entryIdx, { status: 'analyzing' });
 

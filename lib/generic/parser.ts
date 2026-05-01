@@ -18,13 +18,14 @@ export function parseGenericSheet(
   });
   if (allRows.length < 2) return [];
 
-  // Find header row: first row with >3 non-empty cells
+  // Find header row: first row with ≥2 non-empty cells
+  // (was >3 — too strict for narrow exports like Helium10 Niche)
   let headerIdx = 0;
   let headers: string[] = [];
   for (let i = 0; i < Math.min(10, allRows.length); i++) {
     const row = allRows[i] as any[];
     const filled = row.filter(c => c != null && String(c).trim().length > 0);
-    if (filled.length > 3) {
+    if (filled.length >= 2) {
       headers = row.map(c => String(c ?? '').trim());
       headerIdx = i;
       break;
