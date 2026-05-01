@@ -56,8 +56,11 @@ export async function upsertUser(input: {
     console.error('❌ upsertUser database error:', err.message);
     // FALLBACK: Return a mock user if the database is down to allow dummy sign-in for debugging
     // This generates a stable UUID-like string from the email for consistent local debugging
+    // Generate a stable valid UUID from the email so session userId is always UUID-compatible
+    const emailHash = Buffer.from(input.email.toLowerCase()).toString('hex').padEnd(32, '0').slice(0, 32);
+    const fallbackUUID = `${emailHash.slice(0,8)}-${emailHash.slice(8,12)}-4${emailHash.slice(13,16)}-a${emailHash.slice(17,20)}-${emailHash.slice(20,32)}`;
     return {
-      id:    `dummy-${Buffer.from(input.email).toString('hex').slice(0, 8)}`,
+      id:    fallbackUUID,
       email: input.email.toLowerCase().trim(),
       name:  input.name ?? input.email.split('@')[0],
       image: input.image ?? null,
