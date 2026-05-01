@@ -103,7 +103,7 @@ export async function POST(request) {
       market, geography,
       competitors, background,
       insight_buckets,
-      status = 'waiting_for_data',  // default new brief: waiting for data upload
+      status = 'draft',  // default new brief: starts as draft until data is uploaded
     } = body;
 
     if (!brand?.trim()) {
