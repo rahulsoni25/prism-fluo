@@ -25,6 +25,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/health',
   '/api/version',
   '/api/debug-db',
+  '/api/init-db',  // Temporary database initialization endpoint (remove after use)
 ];
 // Static assets — never gate
 function isStatic(pathname: string): boolean {
