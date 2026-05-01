@@ -3,9 +3,16 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic'; // never cache — always live
 
 export function GET() {
-  const sha    = process.env.RAILWAY_GIT_COMMIT_SHA ?? 'local';
-  const branch = process.env.RAILWAY_GIT_BRANCH      ?? 'unknown';
-  const author = process.env.RAILWAY_GIT_AUTHOR       ?? 'unknown';
+  // Support both Railway and Vercel deployment environments
+  const sha    = process.env.VERCEL_GIT_COMMIT_SHA
+              ?? process.env.RAILWAY_GIT_COMMIT_SHA
+              ?? 'local';
+  const branch = process.env.VERCEL_GIT_COMMIT_REF
+              ?? process.env.RAILWAY_GIT_BRANCH
+              ?? 'unknown';
+  const author = process.env.VERCEL_GIT_COMMIT_AUTHOR_NAME
+              ?? process.env.RAILWAY_GIT_AUTHOR
+              ?? 'unknown';
 
   return NextResponse.json({
     commit:     sha.slice(0, 7),          // short SHA  e.g. "3ac5b82"
