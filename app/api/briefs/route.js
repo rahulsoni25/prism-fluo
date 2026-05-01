@@ -103,7 +103,7 @@ export async function POST(request) {
       market, geography,
       competitors, background,
       insight_buckets,
-      status = 'draft',  // default new brief: starts as draft until data is uploaded
+      status = 'waiting_for_data',  // default new brief: waiting for data upload
     } = body;
 
     if (!brand?.trim()) {
@@ -158,7 +158,25 @@ export async function POST(request) {
     return NextResponse.json(brief, { status: 201 });
 
   } catch (err) {
-    logger.error('api:POST /api/briefs failed', { error: err.message });
-    return NextResponse.json({ error: 'CREATE_FAILED', message: 'Failed to create brief' }, { status: 500 });
+    // Log the FULL error so we can debug
+    console.error('❌ POST /api/briefs - FULL ERROR:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      constraint: err.constraint,
+      stack: err.stack
+    });
+    logger.error('api:POST /api/briefs failed', { error: err.message, code: err.code, detail: err.detail });
+
+    // Return more details in dev/debug
+    return NextResponse.json({
+      error: 'CREATE_FAILED',
+      message: 'Failed to create brief',
+      debug: {
+        errorMessage: err.message,
+        errorCode: err.code,
+        errorDetail: err.detail
+      }
+    }, { status: 500 });
   }
 }
