@@ -11,8 +11,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { cache } from '@/lib/cache';
 import { logger } from '@/lib/logger';
-import { calculateSla } from '@/lib/sla.server';
 import { getSession } from '@/lib/auth/server';
+import { sendBriefCreatedEmail } from '@/lib/email';
 
 const VALID_STATUSES = ['draft', 'waiting_for_data', 'processing', 'ready'];
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -229,22 +229,11 @@ export async function POST(request) {
       );
     }
 
-    // Deterministic SLA — under-promise, over-deliver
-    let slaHours = 24, slaDueAt = new Date(Date.now() + 24 * 3600000).toISOString();
-    try {
-      const slaResult = await calculateSla();
-      if (slaResult?.slaHours) {
-        slaHours = slaResult.slaHours;
-        slaDueAt = slaResult.slaDueAt;
-      }
-    } catch (slaErr) {
-      console.warn('⚠️ SLA calculation failed, using defaults', { error: slaErr.message });
-      // Keep defaults
-    }
+    // SLA is NOT set at brief creation — it will be calculated and stored
+    // when the user uploads data files (POST /api/analyses sets sla_hours + sla_due_at).
+    // This ensures the SLA countdown only starts when real data is attached.
 
     // Resolve the canonical user_id for this session.
-    // Use the shared resolveUserIds helper (email-based lookup via pg then PostgREST).
-    // Prefer the first resolved UUID, falling back to session.userId if none found.
     const resolvedIds = await resolveUserIds(session);
     const validUserId = resolvedIds.length > 0 ? resolvedIds[0] : null;
 
@@ -253,11 +242,11 @@ export async function POST(request) {
       db.query(
         `INSERT INTO briefs
            (brand, category, objective, age_ranges, gender, sec, market, geography,
-            competitors, background, insight_buckets, status, sla_hours, sla_due_at, user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            competitors, background, insight_buckets, status, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          RETURNING *`,
         [brand, category, objective, age_ranges, gender, sec, market, geography,
-         competitors, background, insight_buckets, status, slaHours, slaDueAt, validUserId]
+         competitors, background, insight_buckets, status, validUserId]
       )
     );
 
@@ -268,8 +257,7 @@ export async function POST(request) {
       logger.warn('api:POST /api/briefs - pg returned no data, trying PostgREST', { brand });
       brief = await insertBriefViaRest({
         brand, category, objective, age_ranges, gender, sec, market, geography,
-        competitors, background, insight_buckets, status,
-        sla_hours: slaHours, sla_due_at: slaDueAt, user_id: validUserId,
+        competitors, background, insight_buckets, status, user_id: validUserId,
       });
     }
 
@@ -277,6 +265,12 @@ export async function POST(request) {
 
     // Bust the per-user dashboard cache so the new brief appears immediately
     cache.del(`dashboard:overview:${session.userId}`);
+
+    // Fire email notification to rahul@fluodigital.com — non-blocking
+    sendBriefCreatedEmail(
+      { id: brief.id, brand, category, objective, market, age_ranges, gender, background, insight_buckets },
+      { name: session.name, email: session.email }
+    ).catch(e => logger.warn('brief:email_failed', { error: e.message }));
 
     logger.info('api:POST /api/briefs', { ms: Date.now() - t0, id: brief.id, brand, slaHours, userId: session.userId });
     return NextResponse.json(brief, { status: 201 });

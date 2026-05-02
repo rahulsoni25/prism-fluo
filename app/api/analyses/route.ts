@@ -10,6 +10,8 @@ import { db } from '@/lib/db/client';
 import { cache } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/auth/server';
+import { calculateSla } from '@/lib/sla.server';
+import { sendBriefActiveEmail } from '@/lib/email';
 
 export async function GET() {
   const t0 = Date.now();
@@ -115,21 +117,44 @@ export async function POST(req: NextRequest) {
       logger.warn('api:POST /api/analyses - using dummy analysis fallback', { sheetName });
     }
 
-    // If a briefId was supplied, link analysis + flip to ready + stamp completion.
-    // Owner check is enforced via WHERE user_id — never modifies someone else's brief.
+    // If a briefId was supplied, link analysis + flip to ready + set SLA + stamp completion.
+    // SLA is calculated NOW (when data arrives) — not at brief creation time.
     if (id && briefId) {
-      await db.query(
+      // Calculate SLA based on current queue depth
+      let slaHours = 24;
+      let slaDueAt = new Date(Date.now() + 24 * 3600_000).toISOString();
+      try {
+        const slaResult = await calculateSla();
+        if (slaResult?.slaHours) { slaHours = slaResult.slaHours; slaDueAt = slaResult.slaDueAt; }
+      } catch { /* keep defaults */ }
+
+      const briefRow = await db.query(
         `UPDATE briefs
             SET analysis_id         = $1,
                 status              = 'ready',
+                sla_hours           = $4,
+                sla_due_at          = $5,
                 actual_completed_at = COALESCE(actual_completed_at, NOW())
-          WHERE id = $2 AND user_id = $3`,
-        [id, briefId, session.userId]
+          WHERE id = $2 AND user_id = $3
+          RETURNING brand, category`,
+        [id, briefId, session.userId, slaHours, slaDueAt]
       ).catch((err: any) => {
         logger.warn('analyses:brief_link_failed', { briefId, error: err.message });
+        return { rows: [] };
       });
+
       cache.del(`dashboard:overview:${session.userId}`);
       cache.del(`analyses:list:${session.userId}`);
+
+      // Fire "Brief Active" email — non-blocking
+      const bf = briefRow.rows?.[0];
+      if (bf) {
+        sendBriefActiveEmail(
+          { id: briefId, brand: bf.brand, category: bf.category },
+          { email: session.email, name: (session as any).name },
+          slaHours,
+        ).catch((e: Error) => logger.warn('analyses:active_email_failed', { error: e.message }));
+      }
     }
 
     logger.info('api:POST /api/analyses', { ms: Date.now() - t0, id });

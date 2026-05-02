@@ -15,11 +15,12 @@ const CATEGORY_ICONS = {
   'Beauty & Cosmetics':        '💄',
 };
 
+// Status config — kept only for the filter bar; BriefCard handles its own visuals
 const STATUS_BADGE = {
-  ready:            { text: '✓ Ready',       cls: 'badge-ready' },
-  processing:       { text: '⟳ Processing',  cls: 'badge-processing', extra: 'pulsing' },
-  waiting_for_data: { text: '⏳ Waiting',     cls: 'badge-processing' },
-  draft:            { text: 'Draft',          cls: 'badge-draft' },
+  ready:            { text: '✓ Active',       cls: 'badge-ready' },
+  processing:       { text: '⟳ In Progress',  cls: 'badge-processing', extra: 'pulsing' },
+  waiting_for_data: { text: '⏳ In Progress',  cls: 'badge-processing' },
+  draft:            { text: 'Draft',           cls: 'badge-draft' },
 };
 
 function formatMeta(brief) {
@@ -187,24 +188,26 @@ export default function Dashboard() {
 
             {/* Real briefs */}
             {!loading && !error && filtered.map(brief => {
-              const badge = STATUS_BADGE[brief.status] || STATUS_BADGE.draft;
-              const slaText = formatSlaBadge(brief.sla_due_at, brief.actual_completed_at, brief.created_at);
-              const footer  = ['📡 7 sources'];
+              // Only show SLA in footer if it has been set (i.e. data was uploaded)
+              const slaText = brief.sla_due_at
+                ? formatSlaBadge(brief.sla_due_at, brief.actual_completed_at, brief.created_at)
+                : null;
+              const footer = ['📡 7 sources'];
               if (slaText) footer.push(`⏱ ${slaText}`);
+
               return (
                 <BriefCard
                   key={brief.id}
+                  status={brief.status}
+                  category={brief.category}
                   href={
                     brief.status === 'ready'
                       ? (brief.analysis_id ? `/insights?id=${brief.analysis_id}` : '/insights')
                       : brief.status === 'processing' || brief.status === 'waiting_for_data'
                       ? `/brief/processing?id=${brief.id}`
-                      : '/brief/new'
+                      : `/brief/new?from=${brief.id}`
                   }
                   icon={CATEGORY_ICONS[brief.category] || '📋'}
-                  badgeText={badge.text}
-                  badgeClass={badge.cls}
-                  badgeExtra={badge.extra || ''}
                   brand={brief.brand}
                   meta={formatMeta(brief)}
                   tags={buildTags(brief)}
