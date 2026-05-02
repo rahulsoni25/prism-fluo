@@ -229,7 +229,7 @@ async function handleExcelUpload(
     let headers: string[] = [];
     for (const row of sampleRows) {
       const r = row as any[];
-      if (r.filter(Boolean).length > 2) {
+      if (r.filter(Boolean).length >= 2) {
         headers = r.map(c => String(c ?? ''));
         break;
       }
