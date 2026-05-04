@@ -36,6 +36,39 @@ import { parsePdf }          from '@/lib/pdf/parser';
 
 import type { UploadSummary, SheetMeta, SheetType } from '@/types/dataset';
 
+// ── Auto-migration (runs once per cold start) ─────────────────
+// Ensures tool_data table and optional uploads columns exist even if
+// init_db.mjs was never run against the production database.
+let _migrationDone = false;
+async function ensureSchema(): Promise<void> {
+  if (_migrationDone) return;
+  _migrationDone = true; // set early so concurrent requests don't pile up
+
+  const stmts = [
+    // Optional columns on uploads
+    `ALTER TABLE uploads ADD COLUMN IF NOT EXISTS user_id  UUID REFERENCES users(id)  ON DELETE CASCADE`,
+    `ALTER TABLE uploads ADD COLUMN IF NOT EXISTS brief_id UUID REFERENCES briefs(id) ON DELETE SET NULL`,
+    `ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_hours  INTEGER`,
+    `ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMP WITH TIME ZONE`,
+    // tool_data table — where GWI Core / generic Excel data is stored
+    `CREATE TABLE IF NOT EXISTS tool_data (
+       id          SERIAL PRIMARY KEY,
+       upload_id   UUID NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,
+       sheet_name  TEXT NOT NULL,
+       tool_type   TEXT NOT NULL DEFAULT 'generic',
+       row_data    JSONB NOT NULL,
+       created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+     )`,
+    `CREATE INDEX IF NOT EXISTS idx_tool_data_upload       ON tool_data(upload_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_tool_data_upload_sheet ON tool_data(upload_id, sheet_name)`,
+  ];
+
+  for (const sql of stmts) {
+    await db.query(sql); // errors silently caught by db.query wrapper
+  }
+  logger.info('upload:schema_ensured');
+}
+
 // ── Bulk insert helpers ───────────────────────────────────────
 
 async function bulkInsertGwi(
@@ -394,6 +427,9 @@ export async function handleUpload(
   const t0       = Date.now();
   const uploadId = crypto.randomUUID();
   const ext      = filename.split('.').pop()?.toLowerCase() ?? '';
+
+  // Ensure schema is up to date before any DB operations
+  await ensureSchema();
 
   const sheetsMeta: SheetMeta[] = [];
 
