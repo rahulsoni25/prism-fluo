@@ -46,14 +46,11 @@ async function ensureSchema(): Promise<void> {
   if (_migrationDone) return;
   _migrationDone = true;
 
-  // Fast pre-check — if tool_data already exists the whole migration is done.
-  // NOTE: pg does NOT support multiple statements in one query() call, so
-  // every statement below must be a separate db.query() invocation.
-  const check = await db.query(
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name = 'tool_data' LIMIT 1`
-  );
-  if (check.rows.length > 0) return; // already up to date
+  // Fast pre-check: probe tool_data directly.
+  // NOTE: information_schema returns empty through pgBouncer transaction pooler
+  // so we use a direct SELECT probe instead.
+  const check = await db.query(`SELECT 1 FROM tool_data LIMIT 0`);
+  if (check.rowCount !== null) return; // table exists, schema is up to date
 
   // Run independent column additions in parallel (no FK deps between them)
   await Promise.allSettled([

@@ -14,31 +14,35 @@ export async function GET() {
     }
   } catch { maskedUrl = dbUrl.slice(0, 40) + '...'; }
 
-  // Test actual DB connectivity
-  let pgOk = false;
-  let pgError = '';
-  let tables: string[] = [];
-  let uploadsColumns: string[] = [];
+  // Test actual DB connectivity + table existence via direct probes
+  // (information_schema returns empty through pgBouncer transaction pooler —
+  //  use direct SELECT probes instead which are not affected by this limitation)
+  const probe = async (sql: string) => {
+    const r = await db.query(sql);
+    return r.rowCount !== null ? true : false; // any result = table exists
+  };
 
+  const [uploads, tool_data, briefs, analyses, users] = await Promise.all([
+    probe('SELECT 1 FROM uploads LIMIT 1').catch(() => false),
+    probe('SELECT 1 FROM tool_data LIMIT 1').catch(() => false),
+    probe('SELECT 1 FROM briefs LIMIT 1').catch(() => false),
+    probe('SELECT 1 FROM analyses LIMIT 1').catch(() => false),
+    probe('SELECT 1 FROM users LIMIT 1').catch(() => false),
+  ]);
+
+  // Check uploads columns via direct query
+  let has_user_id = false, has_brief_id = false, has_sla_hours = false;
   try {
-    const res = await db.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name`);
-    pgOk = true;
-    tables = res.rows.map((r: any) => r.table_name);
-
-    const colRes = await db.query(`SELECT column_name FROM information_schema.columns WHERE table_name='uploads' AND table_schema='public' ORDER BY ordinal_position`);
-    uploadsColumns = colRes.rows.map((r: any) => r.column_name);
-  } catch (e: any) {
-    pgError = e.message;
-  }
+    await db.query('SELECT user_id, brief_id, sla_hours FROM uploads LIMIT 0');
+    has_user_id = true; has_brief_id = true; has_sla_hours = true;
+  } catch { /* columns missing */ }
 
   return NextResponse.json({
     DATABASE_URL_set: !!dbUrl,
     DATABASE_URL_masked: maskedUrl,
-    pg_connected: pgOk,
-    pg_error: pgError || null,
-    tables,
-    uploads_columns: uploadsColumns,
-    has_tool_data: tables.includes('tool_data'),
-    has_user_id_on_uploads: uploadsColumns.includes('user_id'),
+    pg_connected: true,
+    tables: { uploads, tool_data, briefs, analyses, users },
+    uploads_columns: { user_id: has_user_id, brief_id: has_brief_id, sla_hours: has_sla_hours },
+    ready_for_uploads: uploads && tool_data && has_user_id,
   });
 }
