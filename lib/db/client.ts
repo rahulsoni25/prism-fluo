@@ -15,7 +15,11 @@ import { config } from '@/lib/config';
 
 let _pool: Pool | null = null;
 
-function getPool(): Pool {
+/** Returns the shared pool (creates it lazily).  Exported so callers that
+ *  want real error propagation (instead of the silent fallback in db.query)
+ *  can call pool.query() directly.
+ */
+export function getPool(): Pool {
   if (!_pool) {
     _pool = new Pool({
       connectionString: config.DATABASE_URL, // lazy getter — safe to call here

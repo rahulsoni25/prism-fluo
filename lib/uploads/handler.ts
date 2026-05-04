@@ -11,7 +11,7 @@
 import ExcelJS from 'exceljs';
 import { Readable } from 'stream';
 import type { PoolClient } from 'pg';
-import { db } from '@/lib/db/client';
+import { db, getPool } from '@/lib/db/client';
 import { logger } from '@/lib/logger';
 
 import { isGwiTimeSpentFormat } from '@/lib/gwi/detector';
@@ -86,9 +86,13 @@ async function ensureSchema(): Promise<void> {
 }
 
 // ── Bulk insert helpers ───────────────────────────────────────
+// These functions use getPool().query() directly so that errors THROW
+// instead of being silently swallowed by the db.query() wrapper.
+// The caller (handleExcelUpload) must wrap calls in try/catch if partial
+// failures are acceptable — for now we let errors propagate so they are
+// visible in logs.
 
 async function bulkInsertGwi(
-  client: PoolClient,
   rows: Awaited<ReturnType<typeof tidyGwiTimeSpent>>
 ) {
   if (rows.length === 0) return;
@@ -104,7 +108,7 @@ async function bulkInsertGwi(
   const indexScores   = rows.map(r => r.index ?? null);
   const responses     = rows.map(r => r.responses ?? null);
 
-  await client.query(
+  await getPool().query(
     `INSERT INTO gwi_time_spent
        (upload_id, sheet_name, question_name, question_message,
         time_bucket, audience, audience_pct, data_point_pct,
@@ -123,7 +127,6 @@ async function bulkInsertGwi(
 }
 
 async function bulkInsertKeywords(
-  client: PoolClient,
   rows: Awaited<ReturnType<typeof tidyKeywordPlan>>
 ) {
   if (rows.length === 0) return;
@@ -140,7 +143,7 @@ async function bulkInsertKeywords(
   const categories   = rows.map(r => r.categories ?? null);
   const priceIntents = rows.map(r => r.isPriceIntent ?? false);
 
-  await client.query(
+  await getPool().query(
     `INSERT INTO keywords
        (upload_id, sheet_name, keyword, avg_monthly_searches, competition,
         competition_indexed, bid_low, bid_high, tier, brand, categories, is_price_intent)
@@ -156,7 +159,6 @@ async function bulkInsertKeywords(
 }
 
 async function bulkInsertToolData(
-  client: PoolClient,
   rows: Array<{ uploadId: string; sheetName: string; toolType: string; rowData: Record<string, any> }>
 ) {
   if (rows.length === 0) return;
@@ -167,14 +169,87 @@ async function bulkInsertToolData(
     const uploadIds  = chunk.map(r => r.uploadId);
     const sheetNames = chunk.map(r => r.sheetName);
     const toolTypes  = chunk.map(r => r.toolType);
-    const rowDatas   = chunk.map(r => JSON.stringify(r.rowData));
-    await client.query(
+    // Sanitise each rowData value: replace undefined/NaN/Infinity with null so
+    // JSON.stringify always produces valid JSONB-castable strings.
+    const rowDatas = chunk.map(r => JSON.stringify(r.rowData, (_k, v) => {
+      if (v === undefined || (typeof v === 'number' && !isFinite(v))) return null;
+      return v;
+    }));
+    await getPool().query(
       `INSERT INTO tool_data (upload_id, sheet_name, tool_type, row_data)
        SELECT * FROM UNNEST($1::uuid[], $2::text[], $3::text[], $4::jsonb[])
        AS t(upload_id, sheet_name, tool_type, row_data)`,
       [uploadIds, sheetNames, toolTypes, rowDatas]
     );
   }
+}
+
+// ── GWI Core detector & parser ───────────────────────────────
+// GWI Core exports (Attitude & Lifestyle, Messaging Apps, TV & Streaming,
+// Internet Usage, etc.) use a 2-row compound header:
+//   Row N  : ["","","Audience %","Data point %","Universe","Index","Responses"]
+//   Row N+1: ["Short Label Question","Attributes","Segment","Segment",...]
+// parseGenericSheet picks Row N as headers (first row with ≥2 non-empty cells),
+// causing "Short Label Question" and "Attributes" to be dropped, which breaks
+// Gemini's ability to group insights by question.
+// This dedicated parser merges both header rows to produce:
+//   { "Short Label Question": "...", "Attributes": "...", "Audience %": 59.9, ... }
+
+function detectGwiCoreHeaderRows(allRows: any[][]): { columnRowIdx: number } | null {
+  for (let i = 0; i < Math.min(12, allRows.length); i++) {
+    const vals = (allRows[i] || []).map((v: any) => String(v ?? '').trim().toLowerCase());
+    const hasQuestion = vals.some(v =>
+      v === 'short label question' || v === 'question name' || v === 'question');
+    const hasAttribs  = vals.some(v => v === 'attributes' || v === 'attribute');
+    if (hasQuestion && hasAttribs) return { columnRowIdx: i };
+  }
+  return null;
+}
+
+function parseGwiCore(
+  uploadId: string,
+  sheetName: string,
+  worksheet: ExcelJS.Worksheet
+): Array<{ uploadId: string; sheetName: string; toolType: string; rowData: Record<string, any> }> {
+  const allRows: any[][] = [];
+  worksheet.eachRow({ includeEmpty: false }, row => allRows.push(row.values as any[]));
+
+  const detected = detectGwiCoreHeaderRows(allRows);
+  if (!detected) return [];
+
+  const { columnRowIdx } = detected;
+  const columnRow = (allRows[columnRowIdx] || []) as any[];  // Short Label Question, Attributes, Segment...
+  const metricRow = columnRowIdx > 0 ? (allRows[columnRowIdx - 1] || []) as any[] : []; // Audience %, ...
+
+  // Build merged column names:
+  //   - If metricRow[idx] has a value (Audience %, Data point %, ...) → use it
+  //   - Else use columnRow[idx] (Short Label Question, Attributes)
+  const headers = columnRow.map((v: any, idx: number) => {
+    const metric = String(metricRow[idx] ?? '').trim();
+    const col    = String(v ?? '').trim();
+    return metric || col; // metric names take priority for cols 3+
+  });
+
+  const result: Array<{ uploadId: string; sheetName: string; toolType: string; rowData: Record<string, any> }> = [];
+  for (let i = columnRowIdx + 1; i < allRows.length; i++) {
+    const row = allRows[i];
+    const obj: Record<string, any> = {};
+    headers.forEach((h: string, idx: number) => {
+      if (!h) return;
+      const raw = row[idx];
+      // Convert ExcelJS special objects (RichText, Hyperlink) to plain values
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        if ('richText' in raw) { obj[h] = (raw as any).richText?.map((r: any) => r.text).join('') ?? null; return; }
+        if ('text' in raw)     { obj[h] = (raw as any).text ?? null; return; }
+        if ('result' in raw)   { obj[h] = (raw as any).result ?? null; return; }
+      }
+      obj[h] = raw ?? null;
+    });
+    const nonEmpty = Object.values(obj).filter(v => v != null && v !== '').length;
+    if (nonEmpty < 2) continue;
+    result.push({ uploadId, sheetName, toolType: 'gwi_core', rowData: obj });
+  }
+  return result;
 }
 
 // ── Tool type label helper ───────────────────────────────────
@@ -240,7 +315,6 @@ function parseRawCsv(buffer: Buffer): Array<Record<string, string>> {
 // ── Excel/CSV handler ────────────────────────────────────────
 
 async function handleExcelUpload(
-  client: PoolClient,
   buffer: Buffer,
   filename: string,
   uploadId: string
@@ -287,12 +361,35 @@ async function handleExcelUpload(
     let type: SheetType = 'generic_table';
     let meta: Partial<SheetMeta> = { sheetName, type };
 
-    if (isGwiTimeSpentFormat(col0, headers)) {
-      // ── GWI ──
+    // ── Read all rows once for GWI Core detection ─────────────────────────
+    const allRowsForDetect: any[][] = [];
+    worksheet.eachRow({ includeEmpty: false }, row => {
+      if (allRowsForDetect.length < 15) allRowsForDetect.push(row.values as any[]);
+    });
+    const gwiCoreInfo = detectGwiCoreHeaderRows(allRowsForDetect);
+
+    if (gwiCoreInfo) {
+      // ── GWI Core (Attitude & Lifestyle, Messaging Apps, etc.) ──
+      // Has compound 2-row header: metric names (Audience %, ...) above
+      // column names (Short Label Question, Attributes, ...)
+      type = 'generic_table';
+      const rows = parseGwiCore(uploadId, sheetName, worksheet);
+      if (rows.length > 0) {
+        await bulkInsertToolData(rows);
+        meta = {
+          sheetName, type,
+          question:    `GWI — ${sheetName}`,
+          description: `${rows.length} rows from GWI Core export`,
+        };
+        logger.info('upload:gwi_core_sheet', { sheetName, rows: rows.length });
+      }
+
+    } else if (isGwiTimeSpentFormat(col0, headers)) {
+      // ── GWI Time Spent ──
       type = 'gwi_time_spent';
       const rows = tidyGwiTimeSpent(uploadId, sheetName, worksheet);
       if (rows.length > 0) {
-        await bulkInsertGwi(client, rows);
+        await bulkInsertGwi(rows);
         meta = {
           sheetName, type,
           question:    rows[0].questionName,
@@ -300,24 +397,6 @@ async function handleExcelUpload(
           chartSpecs:  gwiDefaultChartSpecs(rows[0].questionName),
         };
         logger.info('upload:gwi_sheet', { sheetName, rows: rows.length });
-      } else {
-        // GWI format detected but GWI-Time-Spent parser extracted 0 rows.
-        // This happens for GWI Core exports (Attitude & Lifestyle, Messaging Apps,
-        // TV & Streaming, Internet Usage, etc.) which share the same column structure
-        // but have a different question layout.  Fall through to generic parser so
-        // the data is still stored and available for Gemini analysis.
-        logger.info('upload:gwi_fallback_to_generic', { sheetName });
-        type = 'generic_table';
-        const genericRows = parseGenericSheet(uploadId, sheetName, worksheet);
-        if (genericRows.length > 0) {
-          await bulkInsertToolData(client, genericRows);
-          meta = {
-            sheetName, type,
-            question:    `GWI — ${sheetName}`,
-            description: `${genericRows.length} rows from GWI Core export`,
-          };
-          logger.info('upload:gwi_core_generic', { sheetName, rows: genericRows.length });
-        }
       }
 
     } else if (isKeywordPlan(headers)) {
@@ -325,7 +404,7 @@ async function handleExcelUpload(
       type = 'keyword_plan';
       const rows = tidyKeywordPlan(uploadId, sheetName, worksheet);
       if (rows.length > 0) {
-        await bulkInsertKeywords(client, rows);
+        await bulkInsertKeywords(rows);
         meta = { sheetName, type, chartSpecs: keywordDefaultChartSpecs() };
         logger.info('upload:kw_sheet', { sheetName, rows: rows.length });
       }
@@ -336,7 +415,7 @@ async function handleExcelUpload(
       const variant = detectH10Variant(headers);
       const rows = parseHelium10(uploadId, sheetName, worksheet, variant);
       if (rows.length > 0) {
-        await bulkInsertToolData(client, rows);
+        await bulkInsertToolData(rows);
         meta = {
           sheetName, type,
           question:    `${toolLabel(`helium10_${variant}`)} — ${sheetName}`,
@@ -350,7 +429,7 @@ async function handleExcelUpload(
       type = 'generic_table';
       const rows = parseGoogleTrends(uploadId, sheetName, worksheet);
       if (rows.length > 0) {
-        await bulkInsertToolData(client, rows);
+        await bulkInsertToolData(rows);
         meta = {
           sheetName, type,
           question:    `Google Trends — ${sheetName}`,
@@ -364,7 +443,7 @@ async function handleExcelUpload(
       type = 'generic_table';
       const rows = parseKonnect(uploadId, sheetName, worksheet);
       if (rows.length > 0) {
-        await bulkInsertToolData(client, rows);
+        await bulkInsertToolData(rows);
         meta = {
           sheetName, type,
           question:    `Konnect Insights — ${sheetName}`,
@@ -378,7 +457,7 @@ async function handleExcelUpload(
       type = 'generic_table';
       const rows = parseGenericSheet(uploadId, sheetName, worksheet);
       if (rows.length > 0) {
-        await bulkInsertToolData(client, rows);
+        await bulkInsertToolData(rows);
         meta = {
           sheetName, type,
           question:    sheetName,
@@ -409,7 +488,7 @@ async function handleExcelUpload(
         toolType:  'generic' as const,
         rowData,
       }));
-      try { await bulkInsertToolData(client, toolRows); } catch { /* best-effort */ }
+      try { await bulkInsertToolData(toolRows); } catch { /* best-effort */ }
       sheetsMeta.push({
         sheetName:   filename,
         type:        'generic_table',
@@ -426,7 +505,6 @@ async function handleExcelUpload(
 // ── PDF handler ──────────────────────────────────────────────
 
 async function handlePdfUpload(
-  client: PoolClient,
   buffer: Buffer,
   filename: string,
   uploadId: string
@@ -436,7 +514,7 @@ async function handlePdfUpload(
 
   for (const { sheetName, rows } of sheets) {
     if (rows.length === 0) continue;
-    await bulkInsertToolData(client, rows);
+    await bulkInsertToolData(rows);
     sheetsMeta.push({
       sheetName,
       type: 'generic_table',
@@ -502,10 +580,10 @@ export async function handleUpload(
 
   // ── 2. Now parse + bulk insert (FK is satisfied) ─────────────────
   if (ext === 'pdf') {
-    const sheets = await handlePdfUpload(db as any, buffer, filename, uploadId);
+    const sheets = await handlePdfUpload(buffer, filename, uploadId);
     sheetsMeta.push(...sheets);
   } else {
-    const sheets = await handleExcelUpload(db as any, buffer, filename, uploadId);
+    const sheets = await handleExcelUpload(buffer, filename, uploadId);
     sheetsMeta.push(...sheets);
   }
 
