@@ -37,12 +37,27 @@ export async function GET() {
     has_user_id = true; has_brief_id = true; has_sla_hours = true;
   } catch { /* columns missing */ }
 
+  const gemini_api_key_set = !!process.env.GEMINI_API_KEY;
+  const smtp_set = !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+  const nextauth_set = !!process.env.NEXTAUTH_SECRET;
+
   return NextResponse.json({
     DATABASE_URL_set: !!dbUrl,
     DATABASE_URL_masked: maskedUrl,
     pg_connected: true,
     tables: { uploads, tool_data, briefs, analyses, users },
     uploads_columns: { user_id: has_user_id, brief_id: has_brief_id, sla_hours: has_sla_hours },
+    env: {
+      GEMINI_API_KEY: gemini_api_key_set,
+      SMTP: smtp_set,
+      NEXTAUTH_SECRET: nextauth_set,
+    },
     ready_for_uploads: uploads && tool_data && has_user_id,
+    ready_for_ai: uploads && tool_data && has_user_id && gemini_api_key_set,
+    diagnosis: !uploads ? 'MISSING: uploads table — run /api/migrate'
+      : !tool_data ? 'MISSING: tool_data table — run /api/migrate'
+      : !has_user_id ? 'MISSING: user_id column on uploads — run /api/migrate'
+      : !gemini_api_key_set ? 'MISSING: GEMINI_API_KEY env var — add to Vercel dashboard'
+      : 'OK — all systems go',
   });
 }

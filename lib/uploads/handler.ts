@@ -49,8 +49,12 @@ async function ensureSchema(): Promise<void> {
   // Fast pre-check: probe tool_data directly.
   // NOTE: information_schema returns empty through pgBouncer transaction pooler
   // so we use a direct SELECT probe instead.
-  const check = await db.query(`SELECT 1 FROM tool_data LIMIT 0`);
-  if (check.rowCount !== null) return; // table exists, schema is up to date
+  // IMPORTANT: db.query silently catches errors and returns { rows:[], rowCount:0, fields:[] }
+  // so we cannot rely on rowCount (it's 0 both when table exists with LIMIT 0 AND when there's an error).
+  // Instead we check fields.length — on a successful query fields has at least 1 entry;
+  // on a silently-caught error the fallback returns fields:[].
+  const check = await db.query(`SELECT 1 AS ok FROM tool_data LIMIT 0`);
+  if (check.fields && check.fields.length > 0) return; // table exists, schema is up to date
 
   // Run independent column additions in parallel (no FK deps between them)
   await Promise.allSettled([

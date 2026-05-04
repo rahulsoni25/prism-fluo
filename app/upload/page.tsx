@@ -314,7 +314,8 @@ function UploadDataInner() {
     const rawData: any[] = await dataRes.json();
 
     if (!Array.isArray(rawData) || rawData.length === 0) {
-      addLog(`⚠ No data in "${preferredSheet.sheetName}"`);
+      addLog(`⚠ No data found in "${preferredSheet.sheetName}" — the sheet may be empty or data storage failed`);
+      updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: `No rows returned for sheet "${preferredSheet.sheetName}". Check that the file has data and the database is reachable.` });
       return { charts: [], uploadId };
     }
     addLog(`  └─ ${rawData.length} rows loaded`);
