@@ -403,7 +403,16 @@ export async function handleUpload(
     slaDueAt = new Date(Date.now() + slaHours * 3600000);
   }
 
-  // ── Process file FIRST (no DB needed for parsing) ────────────────
+  // ── 1. Insert uploads record FIRST so bulk inserts can satisfy FK ─
+  // tool_data, gwi_time_spent, keywords all reference uploads(id).
+  // If we parse first and insert uploads after, the FK constraint fires
+  // and db.query swallows the error silently — data is lost.
+  await db.query(
+    'INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at) VALUES ($1, $2, $3, $4, $5, $6)',
+    [uploadId, filename, briefId ?? null, userId ?? null, slaHours ?? null, slaDueAt ?? null]
+  );
+
+  // ── 2. Now parse + bulk insert (FK is satisfied) ─────────────────
   if (ext === 'pdf') {
     const sheets = await handlePdfUpload(db as any, buffer, filename, uploadId);
     sheetsMeta.push(...sheets);
@@ -412,24 +421,13 @@ export async function handleUpload(
     sheetsMeta.push(...sheets);
   }
 
-  // ── Then try to save to DB (optional in dev) ──────────────────────
-  await db.transaction(async (client) => {
-    await client.query(
-      'INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at) VALUES ($1, $2, $3, $4, $5, $6)',
-      [uploadId, filename, briefId ?? null, userId ?? null, slaHours ?? null, slaDueAt ?? null]
-    );
-
-    if (briefId) {
-      const params: any[] = [briefId];
-      let where = `id = $1 AND status = 'waiting_for_data'`;
-      if (userId) { params.push(userId); where += ` AND user_id = $${params.length}`; }
-      await client.query(`UPDATE briefs SET status = 'processing' WHERE ${where}`, params);
-    }
-
-    // Note: bulk inserts inside handleExcel/Pdf are skipped here because we 
-    // already processed them above using 'db as any'. In dev, db.query 
-    // handles failures gracefully.
-  });
+  // ── 3. Update brief status if linked to a brief ───────────────────
+  if (briefId) {
+    const params: any[] = [briefId];
+    let where = `id = $1 AND status = 'waiting_for_data'`;
+    if (userId) { params.push(userId); where += ` AND user_id = $${params.length}`; }
+    await db.query(`UPDATE briefs SET status = 'processing' WHERE ${where}`, params);
+  }
 
   // ── Last-resort raw text ─────────────────────────────────────
   // If structured parsing still returned nothing, include the raw file text so
