@@ -44,21 +44,27 @@ import type { UploadSummary, SheetMeta, SheetType } from '@/types/dataset';
 let _migrationDone = false;
 async function ensureSchema(): Promise<void> {
   if (_migrationDone) return;
-  _migrationDone = true; // prevent concurrent cold-start pile-up
+  _migrationDone = true;
 
-  // Fast check: if tool_data already exists the schema is up to date.
+  // Fast pre-check — if tool_data already exists the whole migration is done.
+  // NOTE: pg does NOT support multiple statements in one query() call, so
+  // every statement below must be a separate db.query() invocation.
   const check = await db.query(
     `SELECT 1 FROM information_schema.tables
      WHERE table_schema = 'public' AND table_name = 'tool_data' LIMIT 1`
   );
-  if (check.rows.length > 0) return; // already migrated — skip
+  if (check.rows.length > 0) return; // already up to date
 
-  // Run all DDL in a single round-trip
+  // Run independent column additions in parallel (no FK deps between them)
+  await Promise.allSettled([
+    db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS user_id    UUID REFERENCES users(id)   ON DELETE CASCADE`),
+    db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS brief_id   UUID REFERENCES briefs(id)  ON DELETE SET NULL`),
+    db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_hours  INTEGER`),
+    db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMP WITH TIME ZONE`),
+  ]);
+
+  // Create tool_data (depends on uploads existing — must run after ALTER TABLE above)
   await db.query(`
-    ALTER TABLE uploads ADD COLUMN IF NOT EXISTS user_id    UUID REFERENCES users(id)   ON DELETE CASCADE;
-    ALTER TABLE uploads ADD COLUMN IF NOT EXISTS brief_id   UUID REFERENCES briefs(id)  ON DELETE SET NULL;
-    ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_hours  INTEGER;
-    ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMP WITH TIME ZONE;
     CREATE TABLE IF NOT EXISTS tool_data (
       id          SERIAL PRIMARY KEY,
       upload_id   UUID NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,
@@ -66,10 +72,15 @@ async function ensureSchema(): Promise<void> {
       tool_type   TEXT NOT NULL DEFAULT 'generic',
       row_data    JSONB NOT NULL,
       created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE INDEX IF NOT EXISTS idx_tool_data_upload       ON tool_data(upload_id);
-    CREATE INDEX IF NOT EXISTS idx_tool_data_upload_sheet ON tool_data(upload_id, sheet_name);
+    )
   `);
+
+  // Indexes can run in parallel after table exists
+  await Promise.allSettled([
+    db.query(`CREATE INDEX IF NOT EXISTS idx_tool_data_upload       ON tool_data(upload_id)`),
+    db.query(`CREATE INDEX IF NOT EXISTS idx_tool_data_upload_sheet ON tool_data(upload_id, sheet_name)`),
+  ]);
+
   logger.info('upload:schema_migrated');
 }
 
