@@ -14,11 +14,12 @@
  *   NOTIFY_EMAIL — who receives brief notifications (default: rahul@fluodigital.com)
  */
 
-import nodemailer from 'nodemailer';
+// nodemailer is loaded lazily (dynamic import) to avoid bundler issues in
+// Next.js serverless/Edge environments where top-level Node.js-only modules
+// can fail at initialisation time.
+let _transporter: import('nodemailer').Transporter | null = null;
 
-let _transporter: nodemailer.Transporter | null = null;
-
-function getTransporter(): nodemailer.Transporter | null {
+async function getTransporter(): Promise<import('nodemailer').Transporter | null> {
   if (_transporter) return _transporter;
 
   const user = process.env.SMTP_USER;
@@ -29,6 +30,7 @@ function getTransporter(): nodemailer.Transporter | null {
     return null;
   }
 
+  const nodemailer = (await import('nodemailer')).default;
   _transporter = nodemailer.createTransport({
     host:   process.env.SMTP_HOST ?? 'smtp.gmail.com',
     port:   Number(process.env.SMTP_PORT ?? 465),
@@ -69,7 +71,7 @@ export async function sendBriefCreatedEmail(
   },
   submittedBy: { name?: string; email: string },
 ): Promise<void> {
-  const transport = getTransporter();
+  const transport = await getTransporter();
   if (!transport) return;
 
   const user    = process.env.SMTP_USER!;
@@ -157,7 +159,7 @@ export async function sendBriefActiveEmail(
   submittedBy: { name?: string; email: string },
   slaHours: number,
 ): Promise<void> {
-  const transport = getTransporter();
+  const transport = await getTransporter();
   if (!transport) return;
 
   const user     = process.env.SMTP_USER!;

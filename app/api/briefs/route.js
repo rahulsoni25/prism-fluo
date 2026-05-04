@@ -272,7 +272,7 @@ export async function POST(request) {
       { name: session.name, email: session.email }
     ).catch(e => logger.warn('brief:email_failed', { error: e.message }));
 
-    logger.info('api:POST /api/briefs', { ms: Date.now() - t0, id: brief.id, brand, slaHours, userId: session.userId });
+    logger.info('api:POST /api/briefs', { ms: Date.now() - t0, id: brief.id, brand, userId: session.userId });
     return NextResponse.json(brief, { status: 201 });
 
   } catch (err) {
