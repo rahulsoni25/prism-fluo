@@ -405,12 +405,30 @@ export async function handleUpload(
 
   // ── 1. Insert uploads record FIRST so bulk inserts can satisfy FK ─
   // tool_data, gwi_time_spent, keywords all reference uploads(id).
-  // If we parse first and insert uploads after, the FK constraint fires
-  // and db.query swallows the error silently — data is lost.
-  await db.query(
-    'INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at) VALUES ($1, $2, $3, $4, $5, $6)',
+  // We try the full INSERT (with optional columns) first.  If it returns
+  // rowCount=0 (db.query silently caught a "column does not exist" error
+  // because the migration hasn't run yet), fall back to the minimal INSERT
+  // that works on every schema version, then UPDATE optional columns.
+  const fullIns = await db.query(
+    `INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO NOTHING`,
     [uploadId, filename, briefId ?? null, userId ?? null, slaHours ?? null, slaDueAt ?? null]
   );
+
+  if (!fullIns.rowCount) {
+    // Minimal INSERT — works even on the original schema (id + filename only)
+    await db.query(
+      `INSERT INTO uploads (id, filename) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
+      [uploadId, filename]
+    );
+    // Best-effort UPDATE of optional columns (silently skipped if cols missing)
+    await db.query(
+      `UPDATE uploads SET user_id = $2, brief_id = $3 WHERE id = $1`,
+      [uploadId, userId ?? null, briefId ?? null]
+    );
+    logger.warn('upload:fallback_minimal_insert', { uploadId, filename });
+  }
 
   // ── 2. Now parse + bulk insert (FK is satisfied) ─────────────────
   if (ext === 'pdf') {
