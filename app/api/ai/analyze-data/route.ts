@@ -12,6 +12,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { analyzeDataForPRISM, analyzeGenericTabularForPRISM } from '@/lib/ai/gemini';
 import type { DataSlot } from '@/lib/ai/gemini';
 
+// Vercel Hobby plan default timeout is 10 s — Gemini 2.5 routinely takes 15-40 s.
+// Setting maxDuration = 60 (the Hobby-plan maximum) prevents premature timeouts.
+export const maxDuration = 60;
+
 // ── Column aliases ────────────────────────────────────────────
 function col(row: any, ...keys: string[]): string {
   for (const k of keys) if (row[k] != null && row[k] !== '') return String(row[k]);

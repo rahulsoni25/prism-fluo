@@ -5,6 +5,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enhanceInsightTitles, enhanceInsightNarratives } from '@/lib/ai/gemini';
 
+export const maxDuration = 60; // Gemini 2.5 can exceed Vercel's 10 s default
+
 export async function POST(req: NextRequest) {
   try {
     const { charts, context, mode } = await req.json();

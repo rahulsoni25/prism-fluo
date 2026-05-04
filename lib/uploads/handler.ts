@@ -300,6 +300,24 @@ async function handleExcelUpload(
           chartSpecs:  gwiDefaultChartSpecs(rows[0].questionName),
         };
         logger.info('upload:gwi_sheet', { sheetName, rows: rows.length });
+      } else {
+        // GWI format detected but GWI-Time-Spent parser extracted 0 rows.
+        // This happens for GWI Core exports (Attitude & Lifestyle, Messaging Apps,
+        // TV & Streaming, Internet Usage, etc.) which share the same column structure
+        // but have a different question layout.  Fall through to generic parser so
+        // the data is still stored and available for Gemini analysis.
+        logger.info('upload:gwi_fallback_to_generic', { sheetName });
+        type = 'generic_table';
+        const genericRows = parseGenericSheet(uploadId, sheetName, worksheet);
+        if (genericRows.length > 0) {
+          await bulkInsertToolData(client, genericRows);
+          meta = {
+            sheetName, type,
+            question:    `GWI — ${sheetName}`,
+            description: `${genericRows.length} rows from GWI Core export`,
+          };
+          logger.info('upload:gwi_core_generic', { sheetName, rows: genericRows.length });
+        }
       }
 
     } else if (isKeywordPlan(headers)) {
