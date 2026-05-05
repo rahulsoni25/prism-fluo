@@ -270,24 +270,58 @@ function toolLabel(toolType: string): string {
 
 // ── Raw CSV text parser (fallback when ExcelJS fails) ────────
 /**
- * Parse a CSV buffer as plain text.
- * Handles UTF-8 BOM, Windows line endings, and quoted commas.
+ * Decode a CSV/TSV buffer to a UTF-8 string.
+ * Handles UTF-8 BOM (EF BB BF) and UTF-16 LE BOM (FF FE).
+ */
+function decodeCsvBuffer(buffer: Buffer): string {
+  if (buffer[0] === 0xFF && buffer[1] === 0xFE) {
+    // UTF-16 LE — strip 2-byte BOM then decode
+    return buffer.slice(2).toString('utf16le');
+  }
+  // UTF-8 (strip optional BOM ﻿)
+  return buffer.toString('utf-8').replace(/^﻿/, '');
+}
+
+/**
+ * Detect whether text is tab- or comma-separated.
+ * Checks up to the first 10 non-empty lines and picks whichever
+ * delimiter appears more frequently across those lines.
+ * Handles files with metadata rows before the real header (e.g. Google
+ * Keyword Planner exports that start with a title and date-range row).
+ */
+function detectDelimiter(text: string): string {
+  const lines = text.split('\n').filter(l => l.trim().length > 0).slice(0, 10);
+  let tabs = 0, commas = 0;
+  for (const line of lines) {
+    tabs   += (line.match(/\t/g) ?? []).length;
+    commas += (line.match(/,/g)  ?? []).length;
+  }
+  return tabs > commas ? '\t' : ',';
+}
+
+/**
+ * Parse a CSV/TSV buffer as plain text.
+ * Handles UTF-8 BOM, UTF-16 LE BOM, Windows line endings, tab-separated files,
+ * and metadata rows before the actual header (e.g. Google Keyword Planner exports).
  * Returns an array of row objects keyed by header names.
  */
 function parseRawCsv(buffer: Buffer): Array<Record<string, string>> {
-  // Strip UTF-8 BOM (﻿) and normalise line endings
-  const text  = buffer.toString('utf-8').replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const text  = decodeCsvBuffer(buffer).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = text.split('\n').filter(l => l.trim().length > 0);
   if (lines.length < 2) return [];
 
+  // Detect delimiter by scanning up to 10 lines (handles metadata rows before real header)
+  const delim = detectDelimiter(text);
+
   const splitLine = (line: string): string[] => {
+    if (delim === '\t') return line.split('\t').map(v => v.replace(/^"|"$/g, '').trim());
+    // Comma-split with quoted-field support
     const result: string[] = [];
     let cur = '';
     let inQ  = false;
     for (let ci = 0; ci < line.length; ci++) {
       const ch = line[ci];
       if (ch === '"') {
-        // Handle escaped quotes ("")
         if (inQ && line[ci + 1] === '"') { cur += '"'; ci++; }
         else { inQ = !inQ; }
       } else if (ch === ',' && !inQ) {
@@ -301,10 +335,18 @@ function parseRawCsv(buffer: Buffer): Array<Record<string, string>> {
     return result;
   };
 
-  const headers = splitLine(lines[0]).map(h => h.replace(/^"|"$/g, '').trim());
+  // Find actual header row: first row that has ≥2 non-empty values after splitting
+  // (skips metadata rows like "Keyword Stats 2026-04-29…" or date-range lines)
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(6, lines.length); i++) {
+    const vals = splitLine(lines[i]);
+    if (vals.filter(Boolean).length >= 2) { headerIdx = i; break; }
+  }
+
+  const headers = splitLine(lines[headerIdx]).map(h => h.replace(/^"|"$/g, '').trim());
   if (headers.filter(Boolean).length < 2) return [];
 
-  return lines.slice(1).map(line => {
+  return lines.slice(headerIdx + 1).map(line => {
     const vals = splitLine(line);
     const obj: Record<string, string> = {};
     headers.forEach((h, i) => { if (h) obj[h] = (vals[i] ?? '').replace(/^"|"$/g, '').trim(); });
@@ -323,12 +365,15 @@ async function handleExcelUpload(
 
   const ext = filename.split('.').pop()?.toLowerCase();
   if (ext === 'csv') {
-    // Strip BOM before handing to ExcelJS — BOM confuses the CSV reader
-    const cleanBuf = buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF
-      ? buffer.subarray(3)
-      : buffer;
+    // Decode UTF-16 LE or strip UTF-8 BOM, then detect delimiter.
+    // ExcelJS needs a UTF-8 buffer + explicit delimiter or it silently garbles the data.
+    const decoded   = decodeCsvBuffer(buffer);
+    const delimiter = detectDelimiter(decoded);
+    const cleanBuf  = Buffer.from(decoded, 'utf-8');
     try {
-      await workbook.csv.read(Readable.from(cleanBuf));
+      await workbook.csv.read(Readable.from(cleanBuf), {
+        parserOptions: { delimiter },
+      });
     } catch (csvErr) {
       logger.warn('upload:exceljs_csv_failed', { filename, error: (csvErr as Error).message });
       // Fall through — workbook will have 0 worksheets → raw CSV fallback kicks in
