@@ -26,8 +26,8 @@ export function getPool(): Pool {
       max: 10,                   // max simultaneous connections
       idleTimeoutMillis: 30_000, // release idle connections after 30s
       connectionTimeoutMillis: 5_000, // fail fast if pool is exhausted
-      ssl: (config.isProd || config.DATABASE_URL.includes('supabase.co') || config.DATABASE_URL.includes('railway.app')) 
-        ? { rejectUnauthorized: false } 
+      ssl: (config.isProd || config.DATABASE_URL.includes('supabase') || config.DATABASE_URL.includes('railway.app'))
+        ? { rejectUnauthorized: false }
         : false,
     });
 
