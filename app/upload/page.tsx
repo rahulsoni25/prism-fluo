@@ -545,7 +545,7 @@ function UploadDataInner() {
     for (const f of picked) {
       const ext    = f.name.split('.').pop()?.toLowerCase() ?? '';
       const maxMB  = ext === 'pdf' ? 15 : 10;
-      if (!['xlsx','xls','csv','pdf'].includes(ext)) {
+      if (!['xlsx','xls','csv','pdf','pptx','ppt'].includes(ext)) {
         errors.push(`"${f.name}" — unsupported format (use xlsx, csv, or pdf)`);
         continue;
       }
@@ -723,13 +723,13 @@ function UploadDataInner() {
             </p>
             {/* Format chips */}
             <div style={{ display:'flex', gap:8, justifyContent:'center', marginTop:20 }}>
-              {['.xlsx','.xls','.csv','.pdf'].map(ext => (
+              {['.xlsx','.xls','.csv','.pdf','.pptx','.ppt'].map(ext => (
                 <span key={ext} style={{ padding:'4px 10px', borderRadius:8,
                   background:'#F1F5F9', color:'#475569', fontSize:11, fontWeight:700 }}>{ext}</span>
               ))}
             </div>
             <input ref={fileInputRef} type="file" multiple className="hidden"
-              accept=".xlsx,.xls,.csv,.pdf" onChange={handleFileChange} />
+              accept=".xlsx,.xls,.csv,.pdf,.pptx,.ppt" onChange={handleFileChange} />
           </div>
         )}
 
@@ -811,7 +811,7 @@ function UploadDataInner() {
               </button>
             )}
             <input ref={fileInputRef} type="file" multiple className="hidden"
-              accept=".xlsx,.xls,.csv,.pdf" onChange={handleFileChange} />
+              accept=".xlsx,.xls,.csv,.pdf,.pptx,.ppt" onChange={handleFileChange} />
           </div>
         )}
 

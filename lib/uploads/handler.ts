@@ -33,6 +33,7 @@ import { parseKonnect }    from '@/lib/konnect/parser';
 
 import { parseGenericSheet } from '@/lib/generic/parser';
 import { parsePdf }          from '@/lib/pdf/parser';
+import { extractPptxText }   from '@/lib/pptx/parser';
 
 import type { UploadSummary, SheetMeta, SheetType } from '@/types/dataset';
 
@@ -627,6 +628,11 @@ export async function handleUpload(
   if (ext === 'pdf') {
     const sheets = await handlePdfUpload(buffer, filename, uploadId);
     sheetsMeta.push(...sheets);
+  } else if (ext === 'pptx' || ext === 'ppt') {
+    // PowerPoint decks: extract slide text → leave structured sheets empty so
+    // the rawText fallback below routes the deck to Gemini text analysis
+    // (same path the frontend uses for unstructured CSVs and PDFs).
+    // We don't attempt structured parsing — slides are not tabular.
   } else {
     const sheets = await handleExcelUpload(buffer, filename, uploadId);
     sheetsMeta.push(...sheets);
@@ -646,9 +652,9 @@ export async function handleUpload(
   let rawText: string | undefined;
   if (sheetsMeta.length === 0) {
     if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') {
-      // For CSV just decode; for Excel convert to CSV-like text via ExcelJS
+      // For CSV decode (handles UTF-16 LE + UTF-8 BOM); for Excel convert to CSV-like text via ExcelJS
       if (ext === 'csv') {
-        rawText = buffer.toString('utf-8').replace(/^﻿/, '').slice(0, 40000);
+        rawText = decodeCsvBuffer(buffer).slice(0, 40000);
       } else {
         // Best-effort: read all cells as tab-separated text
         try {
@@ -662,6 +668,13 @@ export async function handleUpload(
           });
           rawText = lines.slice(0, 2000).join('\n');
         } catch { /* ignore */ }
+      }
+    } else if (ext === 'pptx' || ext === 'ppt') {
+      // PowerPoint: extract text from every slide so Gemini can analyse it
+      try {
+        rawText = (await extractPptxText(buffer)).slice(0, 40000);
+      } catch (err: any) {
+        logger.warn('upload:pptx_extract_failed', { filename, error: err.message });
       }
     }
     logger.warn('upload:no_structured_sheets', { filename, hasRawText: !!rawText });

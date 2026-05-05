@@ -53,9 +53,9 @@ export const POST = async (req: NextRequest) => {
     }
 
     const ext = fileObj.name.split('.').pop()?.toLowerCase();
-    if (!['xlsx', 'xls', 'csv', 'pdf'].includes(ext ?? '')) {
+    if (!['xlsx', 'xls', 'csv', 'pdf', 'pptx', 'ppt'].includes(ext ?? '')) {
       return NextResponse.json(
-        { error: 'UNSUPPORTED_TYPE', message: 'Only .xlsx, .xls, .csv, and .pdf files are supported.' },
+        { error: 'UNSUPPORTED_TYPE', message: 'Only .xlsx, .xls, .csv, .pdf, .pptx, and .ppt files are supported.' },
         { status: 415 }
       );
     }
