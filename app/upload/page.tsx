@@ -544,9 +544,12 @@ function UploadDataInner() {
 
     for (const f of picked) {
       const ext    = f.name.split('.').pop()?.toLowerCase() ?? '';
-      const maxMB  = ext === 'pdf' ? 15 : 10;
+      // 20 MB limit aligns with backend MAX_FILE_SIZE_MB so users can upload
+      // realistic GWI / Helium10 / brand-tracking exports without hitting an
+      // arbitrary client-side cap that the server would have accepted.
+      const maxMB  = 20;
       if (!['xlsx','xls','csv','pdf','pptx','ppt'].includes(ext)) {
-        errors.push(`"${f.name}" — unsupported format (use xlsx, csv, or pdf)`);
+        errors.push(`"${f.name}" — unsupported format (use xlsx, csv, pdf, pptx, or ppt)`);
         continue;
       }
       if (f.size > maxMB * 1024 * 1024) {

@@ -20,6 +20,49 @@ async function getGenAI() {
 }
 
 /**
+ * Pick up to N rows uniformly across the dataset (head + middle + tail).
+ * Beats `rows.slice(0, N)` for large sorted/grouped exports where the
+ * interesting variation lives outside the first N rows.
+ */
+function stratifiedSample<T>(rows: T[], n: number): T[] {
+  if (rows.length <= n) return rows.slice();
+  const out: T[] = [];
+  const step = (rows.length - 1) / (n - 1);
+  for (let i = 0; i < n; i++) out.push(rows[Math.round(i * step)]);
+  return out;
+}
+
+/**
+ * Call generateContent with bounded retry on transient failures.
+ * Retries on 429 (rate limit), 503 (overloaded), and ECONNRESET/timeout
+ * with exponential backoff: 1s → 3s → 7s. Hard caps total wait at ~12s
+ * so we still finish within the 60s function budget on Vercel Hobby.
+ *
+ * Non-retryable errors (400, 401, 403, 404, JSON shape errors) propagate
+ * immediately so we don't waste budget on permanent failures.
+ */
+async function callGeminiWithRetry(model: any, prompt: string): Promise<any> {
+  const MAX_ATTEMPTS = 3;
+  const DELAYS_MS = [1000, 3000, 7000];
+  let lastErr: any = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      return await model.generateContent(prompt);
+    } catch (err: any) {
+      lastErr = err;
+      const msg    = String(err?.message ?? err);
+      const status = (err?.status ?? err?.response?.status ?? 0) as number;
+      const transient =
+        status === 429 || status === 503 || status === 504 ||
+        /overloaded|rate ?limit|temporar|timeout|ECONNRESET|ETIMEDOUT|fetch failed/i.test(msg);
+      if (!transient || attempt === MAX_ATTEMPTS - 1) throw err;
+      await new Promise(r => setTimeout(r, DELAYS_MS[attempt]));
+    }
+  }
+  throw lastErr;
+}
+
+/**
  * Cascading model selection. `getGenerativeModel` doesn't validate the
  * name — invalid models only fail on generateContent(). So we try one,
  * run a tiny ping, and fall back if it fails. The result is cached so
@@ -198,7 +241,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 ]`;
 
   try {
-    const result  = await model.generateContent(prompt);
+    const result  = await callGeminiWithRetry(model, prompt);
     const rawText = result.response.text().trim();
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
@@ -249,8 +292,10 @@ export async function analyzeGenericTabularForPRISM(
 
   const { model } = await getModel(genAI);
 
-  // Sample to keep token use bounded — first 60 rows is plenty for pattern detection
-  const sample = rows.slice(0, 60);
+  // Sample to keep token use bounded. For large datasets we take a stratified
+  // sample (head + middle + tail) rather than only the first N rows so we don't
+  // miss patterns concentrated in later rows (e.g. sorted-by-date exports).
+  const sample = stratifiedSample(rows, 120);
   const columns = Object.keys(sample[0] ?? {});
   // Trim long string fields so the prompt stays compact
   const compactSample = sample.map(r => {
@@ -318,7 +363,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 ]`;
 
   try {
-    const result  = await model.generateContent(prompt);
+    const result  = await callGeminiWithRetry(model, prompt);
     const rawText = result.response.text().trim();
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
@@ -456,7 +501,7 @@ Return ONLY a valid JSON object with these four fields. No markdown, no extra te
 }`;
 
   try {
-    const result = await model.generateContent(prompt);
+    const result = await callGeminiWithRetry(model, prompt);
     const rawText = result.response.text().trim();
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match = cleaned.match(/\{[\s\S]*\}/);
@@ -528,7 +573,7 @@ ${charts.map((c, i) => `${i + 1}. Type: ${c.type} | Label: "${c.lbl || ''}" | Cu
 Return ONLY a valid JSON array of strings, one per chart.
 Example: ["Title 1", "Title 2"]`;
 
-    const result = await model.generateContent(prompt);
+    const result = await callGeminiWithRetry(model, prompt);
     const text   = result.response.text();
     const match  = text.match(/\[[\s\S]*?\]/);
     if (match) {
@@ -565,7 +610,7 @@ Return ONLY a valid JSON array, one object per chart:
 - rec: 1 sentence starting with a verb, specific channel and creative angle
 - stat: one short plain-English highlight stat, or null`;
 
-    const result = await model.generateContent(prompt);
+    const result = await callGeminiWithRetry(model, prompt);
     const text   = result.response.text();
     const match  = text.match(/\[[\s\S]*?\]/);
     if (match) {
@@ -655,7 +700,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 ]`;
 
   try {
-    const result  = await model.generateContent(prompt);
+    const result  = await callGeminiWithRetry(model, prompt);
     const rawText = result.response.text().trim();
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
