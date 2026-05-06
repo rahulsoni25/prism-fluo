@@ -69,7 +69,8 @@ export async function generatePresentation(data: PresentationData): Promise<Buff
  * Add a professional header line
  */
 function addHeaderLine(slide: any, palette: any) {
-  slide.addShape(slide.ShapeType.line, {
+  // Use string 'line' — slide.ShapeType is undefined (ShapeType is on the prs instance)
+  slide.addShape('line', {
     x: SPACING.MARGIN_H,
     y: SPACING.MARGIN_V - 0.3,
     w: SLIDE.WIDTH - SPACING.MARGIN_H * 2,

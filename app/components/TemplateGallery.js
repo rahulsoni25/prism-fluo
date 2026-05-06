@@ -44,7 +44,10 @@ export default function TemplateGallery({ onSelectTemplate, analysisId }) {
         body: JSON.stringify({ templateId: template.id, analysisId }),
       });
       if (res.ok) { onSelectTemplate(await res.json()); }
-      else        { alert('Failed to generate presentation. Please try again.'); }
+      else {
+        const body = await res.json().catch(() => ({}));
+        alert('Failed to generate presentation: ' + (body.details || body.error || res.status));
+      }
     } catch { alert('Error generating presentation'); }
     finally { setGenerating(null); }
   };
