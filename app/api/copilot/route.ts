@@ -1,128 +1,184 @@
 /**
  * POST /api/copilot
  *
- * In-dashboard copilot. Answers questions grounded ONLY in the analysis the
- * user is currently viewing — no general-knowledge tangents, no hallucinated
- * numbers. Powered by Ollama (Cloud or self-hosted via OLLAMA_API_KEY /
- * OLLAMA_BASE_URL / OLLAMA_MODEL env vars).
+ * Copilot AI assistant that provides deeper insights based on uploaded data.
+ * Uses Grok API (xAI) to answer user questions constrained to the analysis data.
  *
- * Body:  { analysisId: string, question: string, history?: ChatMessage[] }
- * Reply: { answer: string }   or   { error: string }
+ * Request body:
+ * {
+ *   analysisId: string,
+ *   question: string,
+ *   conversationHistory?: Array<{ role, content }>
+ * }
+ *
+ * Response: { answer: string }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
-import { chat, ollamaConfigured, type ChatMessage } from '@/lib/ai/ollama';
+import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/auth/server';
 
-export const dynamic = 'force-dynamic';
-
-interface Chart {
-  title?: string;
-  bucket?: string;
-  type?: string;
-  obs?: string;
-  stat?: string;
-  rec?: string;
-  toolLabel?: string;
-  conviction?: number;
-  computedChartData?: { labels?: string[]; datasets?: Array<{ data?: number[] }> };
-}
-
-/** Compress an analysis into a tight, fact-only context block for the model. */
-function buildContext(analysis: any): string {
-  const r       = analysis?.results_json ?? {};
-  const meta    = r.meta ?? {};
-  const charts: Chart[] = Array.isArray(r.charts) ? r.charts : [];
-
-  const lines: string[] = [];
-  lines.push(`ANALYSIS TITLE: ${analysis.sheet_name || analysis.filename || 'Untitled'}`);
-  if (analysis.filename) lines.push(`SOURCE FILE(S): ${analysis.filename}`);
-  if (meta.domain)       lines.push(`SOURCE TYPE: ${meta.domain}`);
-  lines.push(`INSIGHT COUNT: ${charts.length}`);
-  lines.push('');
-  lines.push('INSIGHT CARDS (use only these facts to answer):');
-
-  charts.forEach((c, i) => {
-    const labels = c.computedChartData?.labels?.slice(0, 6).join(', ') ?? '';
-    const values = c.computedChartData?.datasets?.[0]?.data?.slice(0, 6).join(', ') ?? '';
-    lines.push(`
-[${i + 1}] (${c.bucket ?? 'general'} · ${c.type ?? 'chart'}${c.conviction ? ` · ${c.conviction}% conf` : ''})
-TITLE: ${c.title ?? ''}
-OBS:   ${c.obs   ?? ''}
-STAT:  ${c.stat  ?? ''}
-REC:   ${c.rec   ?? ''}
-DATA:  ${labels ? `labels=[${labels}]` : ''}${values ? ` values=[${values}]` : ''}`.trim());
-  });
-
-  return lines.join('\n');
-}
-
-const SYSTEM_PROMPT = `You are PRISM Copilot — an in-dashboard assistant for creative and media professionals.
-
-Rules:
-1. Answer ONLY from the analysis context provided below. If a fact is not in the context, say so plainly — do not invent numbers, percentages, or platform names.
-2. Audience: brand managers, media planners, creative directors, content strategists. Plain English. Short sentences. Active voice.
-3. NEVER use stock-market or finance jargon: tailspin, momentum, volatility, multiplier, dominance, volume-capture, capitalise on, breakout.
-4. NEVER use consulting jargon: over-index, leverage, cohort, synergy, touchpoint, holistic, robust, paradigm.
-5. When the user asks "what should I do" — give one specific action: name a platform (Instagram Reels, YouTube, Hotstar, Amazon, Flipkart, Meesho, etc.), a format (15-second Reel, search ad, sponsored listing, CTV pre-roll), and a creative angle.
-6. Keep answers under 120 words unless the user asks for more.`;
+const GROK_API_KEY = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
+const GROK_API_URL = 'https://api.x.ai/v1/chat/completions';
 
 export async function POST(req: NextRequest) {
-  if (!ollamaConfigured()) {
+  const t0 = Date.now();
+
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { analysisId, question, conversationHistory = [] } = body;
+
+    if (!analysisId || !question) {
+      return NextResponse.json(
+        { error: 'VALIDATION_ERROR', message: 'analysisId and question are required' },
+        { status: 400 }
+      );
+    }
+
+    // ── Fetch the analysis data ────────────────────────────────────────
+    const { rows: analyses } = await db.query(
+      `SELECT
+        a.id, a.filename, a.sheet_name, a.results_json,
+        b.brand, b.category, b.objective
+       FROM analyses a
+       LEFT JOIN briefs b ON a.brief_id = b.id
+       WHERE a.id = $1 AND (a.user_id = $2 OR a.user_id IS NULL)`,
+      [analysisId, session.userId]
+    );
+
+    if (analyses.length === 0) {
+      return NextResponse.json(
+        { error: 'NOT_FOUND', message: 'Analysis not found' },
+        { status: 404 }
+      );
+    }
+
+    const analysis = analyses[0];
+    const analysisData = analysis.results_json || {};
+    const briefContext = analysis.brand
+      ? `This analysis is for ${analysis.brand} (${analysis.category}) - ${analysis.objective}`
+      : '';
+
+    // ── Build system prompt that constrains Grok to analysis data ──────
+    const systemPrompt = `You are PRISM Fluo's Copilot - an expert marketing intelligence assistant.
+
+Your role is to provide DEEPER insights into customer data and marketing analysis.
+
+IMPORTANT CONSTRAINTS:
+1. You ONLY answer questions based on the provided analysis data
+2. You do NOT use general knowledge or external information
+3. If a question cannot be answered from the provided data, say: "This insight is not available in the current analysis. Please upload data that contains this information."
+4. You provide 4-pillar analysis: Content, Commerce, Communication, Culture
+5. You recommend specific, actionable strategies based on the data
+
+ANALYSIS CONTEXT:
+${briefContext}
+
+Analysis File: ${analysis.filename}
+Sheet: ${analysis.sheet_name}
+
+DATA SUMMARY:
+${JSON.stringify(analysisData, null, 2)}
+
+When answering:
+- Be specific and cite data points from the analysis
+- Organize insights by the 4 pillars when relevant
+- Suggest actionable recommendations
+- Ask clarifying questions if the user's question is ambiguous
+- Provide deeper insights beyond surface-level observations`;
+
+    // ── Build messages for Grok ────────────────────────────────────────
+    const messages = [
+      ...conversationHistory.map((msg: any) => ({
+        role: msg.role,
+        content: msg.content
+      })),
+      {
+        role: 'user',
+        content: question
+      }
+    ];
+
+    // ── Call Grok API ─────────────────────────────────────────────────
+    if (!GROK_API_KEY) {
+      logger.error('copilot:missing_api_key', { error: 'GROK_API_KEY or XAI_API_KEY not set' });
+      return NextResponse.json(
+        {
+          error: 'CONFIG_ERROR',
+          message: 'Copilot API key not configured. Please add GROK_API_KEY or XAI_API_KEY to environment variables.'
+        },
+        { status: 500 }
+      );
+    }
+
+    const grokResponse = await fetch(GROK_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROK_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'grok-2-1212',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...messages
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+        top_p: 0.9
+      })
+    });
+
+    if (!grokResponse.ok) {
+      const errorData = await grokResponse.text();
+      logger.error('copilot:grok_api_error', {
+        status: grokResponse.status,
+        error: errorData,
+        analysisId,
+        userId: session.userId
+      });
+
+      return NextResponse.json(
+        {
+          error: 'GROK_ERROR',
+          message: 'Failed to generate insight. Please try again.'
+        },
+        { status: 500 }
+      );
+    }
+
+    const grokData = await grokResponse.json();
+    const answer = grokData.choices?.[0]?.message?.content || '';
+
+    if (!answer) {
+      logger.error('copilot:empty_response', { analysisId });
+      return NextResponse.json(
+        { error: 'EMPTY_RESPONSE', message: 'No response from AI' },
+        { status: 500 }
+      );
+    }
+
+    logger.info('copilot:answer_generated', {
+      ms: Date.now() - t0,
+      analysisId,
+      userId: session.userId,
+      questionLength: question.length,
+      answerLength: answer.length
+    });
+
+    return NextResponse.json({ answer }, { status: 200 });
+
+  } catch (err: any) {
+    logger.error('api:POST /api/copilot failed', { error: err.message });
     return NextResponse.json(
-      { error: 'Copilot disabled — set OLLAMA_API_KEY (and optionally OLLAMA_BASE_URL / OLLAMA_MODEL) on Railway.' },
-      { status: 503 },
+      { error: 'SERVER_ERROR', message: err.message },
+      { status: 500 }
     );
-  }
-
-  let body: any;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 }); }
-
-  const { analysisId, question, history } = body ?? {};
-  if (!analysisId || typeof analysisId !== 'string')
-    return NextResponse.json({ error: 'analysisId required' }, { status: 400 });
-  if (!question || typeof question !== 'string' || !question.trim())
-    return NextResponse.json({ error: 'question required' }, { status: 400 });
-
-  // Owner check — copilot only answers about analyses the user owns.
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
-
-  let analysis: any;
-  try {
-    const { rows } = await db.query(
-      'SELECT * FROM analyses WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)',
-      [analysisId, session.userId],
-    );
-    if (rows.length === 0)
-      return NextResponse.json({ error: 'Analysis not found' }, { status: 404 });
-    analysis = rows[0];
-  } catch (err: any) {
-    return NextResponse.json({ error: `DB error: ${err.message}` }, { status: 500 });
-  }
-
-  const context = buildContext(analysis);
-
-  // Trim history to last 6 turns so the prompt stays bounded
-  const trimmedHistory: ChatMessage[] = Array.isArray(history)
-    ? history.slice(-6).filter((m: any) =>
-        m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string',
-      )
-    : [];
-
-  const messages: ChatMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'system', content: `ANALYSIS CONTEXT:\n\n${context}` },
-    ...trimmedHistory,
-    { role: 'user', content: question.trim() },
-  ];
-
-  try {
-    const answer = await chat(messages, { temperature: 0.4, timeoutMs: 30_000 });
-    return NextResponse.json({ answer });
-  } catch (err: any) {
-    console.error('[copilot]', err.message);
-    return NextResponse.json({ error: `Copilot failed: ${err.message}` }, { status: 502 });
   }
 }
