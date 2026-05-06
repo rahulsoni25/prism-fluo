@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/client';
+import { db, getPool } from '@/lib/db/client';
 import { cache } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/auth/server';
@@ -95,8 +95,10 @@ export async function POST(req: NextRequest) {
     // Upsert — if this sheet was already analyzed, update the results in place.
     // If a briefId is supplied, write it onto the analysis row too so the
     // file-to-brief relationship is queryable from either side.
+    // Use getPool().query() here (not db.query) to throw on actual errors
+    // instead of silently returning empty rows, so we can see what failed.
     const { rows } = await logger.query('analyses:upsert', () =>
-      db.query(
+      getPool().query(
         `INSERT INTO analyses (upload_id, sheet_name, filename, results_json, brief_id, user_id)
          VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT ON CONSTRAINT analyses_upload_sheet_unique
