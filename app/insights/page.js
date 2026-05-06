@@ -924,7 +924,7 @@ function AnalysisDetail({ id }) {
           onClose={() => setShowDeckModal(false)}
           onSuccess={(deck) => {
             setShowDeckModal(false);
-            alert(`✓ Presentation created! You can view it in the Presentations library.`);
+            router.push('/presentations');
           }}
         />
       )}

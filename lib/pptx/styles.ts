@@ -152,7 +152,7 @@ export function createColoredBox(
   bgColor: string,
   opacity: number = 1,
 ) {
-  slide.addShape(slide.ShapeType.rect, {
+  slide.addShape('rect', {
     x, y, w, h,
     fill: { color: bgColor, transparency: 100 - opacity * 100 },
     line: { type: 'solid', color: bgColor, width: 0 },
@@ -170,7 +170,7 @@ export function addDivider(
   color: string = 'E5E7EB',
   thickness: number = 2,
 ) {
-  slide.addShape(slide.ShapeType.line, {
+  slide.addShape('line', {
     x, y, w, h: 0,
     line: { color, width: thickness },
   });
