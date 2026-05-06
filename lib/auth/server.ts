@@ -5,7 +5,7 @@
 
 import { cookies } from 'next/headers';
 import { verifySession, SESSION_COOKIE_NAME, type SessionPayload } from './session';
-import { db } from '@/lib/db/client';
+import { db, getPool } from '@/lib/db/client';
 
 // Supabase PostgREST endpoint — used as fallback when pg.Pool cannot reach the DB
 // (e.g. wrong DATABASE_URL password or IP allowlist blocking direct TCP connections).
@@ -63,7 +63,8 @@ export async function upsertUser(input: {
   providerId?: string | null;
 }): Promise<{ id: string; email: string; name: string | null; image: string | null }> {
   try {
-    const { rows } = await db.query(
+    // Use getPool().query() — throws real errors instead of silently returning empty rows
+    const { rows } = await getPool().query(
       `INSERT INTO users (email, name, image, provider, provider_id, last_login)
        VALUES ($1, $2, $3, $4, $5, NOW())
        ON CONFLICT (email)
@@ -82,10 +83,8 @@ export async function upsertUser(input: {
         input.providerId  ?? null,
       ],
     );
-    if (!rows || rows.length === 0) {
-      throw new Error('DATABASE_UNREACHABLE');
-    }
-    return rows[0];
+    if (rows && rows.length > 0) return rows[0];
+    throw new Error('INSERT returned no rows');
   } catch (err: any) {
     console.error('❌ upsertUser pg error — trying PostgREST fallback:', err.message);
     // pg.Pool failed (wrong password, IP allowlist, etc.) — try Supabase HTTP API instead

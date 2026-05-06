@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, getPool } from '@/lib/db/client';
 import { cache } from '@/lib/cache';
 import { logger } from '@/lib/logger';
-import { getSession } from '@/lib/auth/server';
+import { getSession, upsertUser } from '@/lib/auth/server';
 import { calculateSla } from '@/lib/sla.server';
 import { sendBriefActiveEmail } from '@/lib/email';
 
@@ -44,7 +44,7 @@ export async function GET() {
                ) AS brief
         FROM analyses a
         LEFT JOIN briefs b ON a.brief_id = b.id
-        WHERE a.user_id = $1
+        WHERE (a.user_id = $1 OR a.user_id IS NULL)
         ORDER BY a.created_at DESC
         LIMIT 100
       `, [session.userId])
@@ -96,18 +96,34 @@ export async function POST(req: NextRequest) {
     const { randomUUID } = await import('crypto');
     let id = randomUUID();
 
-    // Verify userId actually exists in users table (fallback UUIDs from auth
-    // failures are stored in the session but are NOT in the users table —
-    // passing them as user_id violates the FK constraint and kills the INSERT)
-    let safeUserId: string | null = null;
+    // Ensure the user exists in the DB. Auth fallback UUIDs (generated from
+    // email hash when DB was unreachable at login) are NOT in the users table,
+    // causing a FK violation on INSERT. Re-upsert here to self-heal.
+    let safeUserId: string | null = session.userId;
     try {
       const userCheck = await getPool().query(
         `SELECT id FROM users WHERE id = $1`, [session.userId]
       );
-      if (userCheck.rows.length > 0) safeUserId = session.userId;
-      else logger.warn('analyses:user_not_in_db', { userId: session.userId });
+      if (userCheck.rows.length === 0) {
+        // User not in DB — try to re-create from session data
+        logger.warn('analyses:user_not_in_db_reinserting', { userId: session.userId });
+        try {
+          const reinserted = await upsertUser({
+            email:    session.email,
+            name:     (session as any).name ?? null,
+            image:    (session as any).image ?? null,
+            provider: session.provider ?? 'demo',
+          });
+          safeUserId = reinserted.id;
+          logger.info('analyses:user_reinserted', { newId: reinserted.id });
+        } catch (e: any) {
+          logger.warn('analyses:user_reinsert_failed', { error: e.message });
+          safeUserId = null; // Save without user ownership rather than fail
+        }
+      }
     } catch (e: any) {
       logger.warn('analyses:user_check_failed', { error: e.message });
+      safeUserId = null;
     }
 
     try {
