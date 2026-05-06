@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
-        'Content-Length': pdfBuffer.length,
+        'Content-Length': String(pdfBuffer.length),
         'Cache-Control': 'private, max-age=3600',
       },
     });
@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
-        'Content-Length': pdfBuffer.length,
+        'Content-Length': String(pdfBuffer.length),
         'Cache-Control': 'private, max-age=3600',
       },
     });

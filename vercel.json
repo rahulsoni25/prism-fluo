@@ -20,7 +20,7 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, s-maxage=60, stale-while-revalidate=120"
+          "value": "private, no-cache, no-store, must-revalidate"
         },
         {
           "key": "X-Content-Type-Options",

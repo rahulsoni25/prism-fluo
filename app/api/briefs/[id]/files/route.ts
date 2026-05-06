@@ -41,7 +41,7 @@ export async function GET(
           COUNT(DISTINCT t.sheet_name) as sheet_count
         FROM uploads u
         LEFT JOIN tool_data t ON u.id = t.upload_id
-        WHERE u.brief_id = $1 AND u.user_id = $2
+        WHERE u.brief_id = $1 AND (u.user_id = $2 OR u.user_id IS NULL)
         GROUP BY u.id, u.filename, u.created_at, u.sla_hours, u.sla_due_at
         ORDER BY u.created_at DESC
         LIMIT 50

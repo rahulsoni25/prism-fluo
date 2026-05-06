@@ -97,7 +97,7 @@ const STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS presentations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     analysis_id UUID NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     template_id TEXT NOT NULL, template_name TEXT NOT NULL, brief_name TEXT NOT NULL,
     headline TEXT, pptx_data BYTEA, pdf_data BYTEA,
     status TEXT NOT NULL DEFAULT 'generated'
@@ -124,6 +124,9 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_analyses_brief ON analyses(brief_id)`,
   `ALTER TABLE briefs DROP CONSTRAINT IF EXISTS briefs_status_check`,
   `ALTER TABLE briefs ADD CONSTRAINT briefs_status_check CHECK (status IN ('draft','waiting_for_data','processing','ready'))`,
+  // Make presentations.user_id nullable so rows can be saved even when the
+  // session falls back to a generated UUID that isn't in the users table.
+  `ALTER TABLE presentations ALTER COLUMN user_id DROP NOT NULL`,
 ];
 
 /** Convert pooler URL (port 6543) → direct Supabase URL (port 5432) for DDL */

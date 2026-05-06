@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db/client';
+import { getSession } from '@/lib/auth/server';
 
 export async function GET() {
+  // Block in production — this endpoint exposes DB topology
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
+  }
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
   const dbUrl = process.env.DATABASE_URL ?? '';
 
   // Mask password
