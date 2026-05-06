@@ -29,7 +29,7 @@ export async function GET(
               END AS brief
          FROM analyses a
          LEFT JOIN briefs b ON b.id = a.brief_id
-        WHERE a.id = $1 AND a.user_id = $2`,
+        WHERE a.id = $1 AND (a.user_id = $2 OR a.user_id IS NULL)`,
       [id, session.userId]
     );
 

@@ -27,7 +27,7 @@ export async function GET(
     const { rows } = await db.query(
       `SELECT id, results_json, sheet_name, filename
        FROM analyses
-       WHERE id = $1 AND user_id = $2`,
+       WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)`,
       [id, session.userId],
     );
 

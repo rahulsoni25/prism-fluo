@@ -28,7 +28,7 @@ export async function GET(
   if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
   const { rows } = await db.query(
-    'SELECT id, sheet_name, filename, results_json, created_at FROM analyses WHERE id = $1 AND user_id = $2',
+    'SELECT id, sheet_name, filename, results_json, created_at FROM analyses WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)',
     [id, session.userId],
   );
   if (rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
