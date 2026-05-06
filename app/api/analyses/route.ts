@@ -92,46 +92,51 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate a UUID on the server (not relying on Postgres to return it)
+    // Generate a UUID on the server — never rely on RETURNING from Supabase
     const { randomUUID } = await import('crypto');
     let id = randomUUID();
 
+    // Verify userId actually exists in users table (fallback UUIDs from auth
+    // failures are stored in the session but are NOT in the users table —
+    // passing them as user_id violates the FK constraint and kills the INSERT)
+    let safeUserId: string | null = null;
     try {
-      // Step 1: Try to INSERT first (with pre-generated UUID)
-      try {
+      const userCheck = await getPool().query(
+        `SELECT id FROM users WHERE id = $1`, [session.userId]
+      );
+      if (userCheck.rows.length > 0) safeUserId = session.userId;
+      else logger.warn('analyses:user_not_in_db', { userId: session.userId });
+    } catch (e: any) {
+      logger.warn('analyses:user_check_failed', { error: e.message });
+    }
+
+    try {
+      // Step 1: Check if row already exists (avoids FK errors on duplicate inserts)
+      const existing = await getPool().query(
+        `SELECT id FROM analyses WHERE upload_id = $1 AND sheet_name = $2`,
+        [uploadId, sheetName]
+      );
+
+      if (existing.rows.length > 0) {
+        // Row exists → UPDATE in place, reuse existing id
+        id = existing.rows[0].id;
+        await getPool().query(
+          `UPDATE analyses
+             SET results_json = $1, filename = $2,
+                 brief_id  = COALESCE($3, brief_id),
+                 user_id   = COALESCE($4, user_id)
+           WHERE id = $5`,
+          [JSON.stringify(results), filename ?? null, briefId ?? null, safeUserId, id]
+        );
+        logger.info('analyses:update_success', { id, uploadId, sheetName });
+      } else {
+        // Row does not exist → INSERT with pre-generated UUID (no RETURNING needed)
         await getPool().query(
           `INSERT INTO analyses (id, upload_id, sheet_name, filename, results_json, brief_id, user_id)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [id, uploadId, sheetName, filename ?? null, JSON.stringify(results), briefId ?? null, session.userId]
+          [id, uploadId, sheetName, filename ?? null, JSON.stringify(results), briefId ?? null, safeUserId]
         );
         logger.info('analyses:insert_success', { id, uploadId, sheetName });
-      } catch (insertErr: any) {
-        // Step 2: If INSERT fails (likely due to UNIQUE constraint), UPDATE instead
-        if (insertErr.message?.includes('duplicate') || insertErr.message?.includes('unique')) {
-          logger.info('analyses:constraint_hit_doing_update', { uploadId, sheetName });
-
-          // Get the existing ID
-          const existingRow = await getPool().query(
-            `SELECT id FROM analyses WHERE upload_id = $1 AND sheet_name = $2`,
-            [uploadId, sheetName]
-          );
-
-          if (existingRow.rows[0]) {
-            id = existingRow.rows[0].id;
-
-            // UPDATE the existing row
-            await getPool().query(
-              `UPDATE analyses
-               SET results_json = $1, filename = $2, brief_id = COALESCE($3, brief_id), user_id = COALESCE($4, user_id)
-               WHERE id = $5`,
-              [JSON.stringify(results), filename ?? null, briefId ?? null, session.userId, id]
-            );
-            logger.info('analyses:update_success', { id, uploadId, sheetName });
-          }
-        } else {
-          // Unknown error, rethrow
-          throw insertErr;
-        }
       }
     } catch (err: any) {
       logger.error('analyses:upsert_failed', { error: err.message, uploadId, sheetName, userId: session.userId });
