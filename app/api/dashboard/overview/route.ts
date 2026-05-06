@@ -22,6 +22,45 @@ import { getSession } from '@/lib/auth/server';
 
 const CACHE_TTL = 90; // seconds
 
+/**
+ * Demo briefs shown to users with no real data
+ * Helps new users see the interface with realistic content
+ */
+function getDemoBriefs() {
+  return [
+    {
+      id: 'demo-brief-1',
+      brand: 'Coca-Cola',
+      category: 'FMCG — Food & Beverages',
+      objective: 'Summer Campaign Analysis',
+      status: 'ready',
+      analysis_id: 'demo-analysis-1',
+      created_at: new Date(Date.now() - 3600000).toISOString(),
+      sla_hours: 4,
+      sla_due_at: new Date(Date.now() + 7200000).toISOString(),
+      actual_completed_at: new Date(Date.now() - 1200000).toISOString(),
+    },
+    {
+      id: 'demo-brief-2',
+      brand: 'Nike India',
+      category: 'Sportswear & Footwear',
+      objective: 'Strategic Brand Audit',
+      status: 'processing',
+      created_at: new Date(Date.now() - 7200000).toISOString(),
+      sla_hours: 6,
+      sla_due_at: new Date(Date.now() + 14400000).toISOString(),
+    },
+    {
+      id: 'demo-brief-3',
+      brand: 'Samsung',
+      category: 'Telecom',
+      objective: 'Product Launch Insights',
+      status: 'draft',
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+    }
+  ];
+}
+
 export async function GET() {
   const t0 = Date.now();
 
@@ -98,9 +137,23 @@ export async function GET() {
       draft:      parseInt(raw.draft,      10),
     };
 
+    // ── If user has no real briefs, show demo data so they can see the UI in action ──
+    let briefs = briefsRes.rows;
+    if (briefs.length === 0) {
+      briefs = getDemoBriefs();
+      // Update stats to reflect demo briefs
+      stats = {
+        total: briefs.length,
+        ready: briefs.filter(b => b.status === 'ready').length,
+        processing: briefs.filter(b => b.status === 'processing').length,
+        waiting: briefs.filter(b => b.status === 'waiting_for_data').length,
+        draft: briefs.filter(b => b.status === 'draft').length,
+      };
+    }
+
     const payload = {
       stats,
-      briefs:          briefsRes.rows,
+      briefs,
       recentAnalyses:  analysesRes.rows,
     };
 
