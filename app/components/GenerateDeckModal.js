@@ -12,23 +12,46 @@ export default function GenerateDeckModal({ analysisId, onClose, onSuccess }) {
   const handleStartOver      = () => { setStep('gallery'); setDeck(null); };
 
   const handleDownload = async () => {
-    if (!deck?.downloadUrl) return;
     setDownloading(true);
     try {
-      const res = await fetch(deck.downloadUrl);
-      if (res.ok) {
-        const blob = await res.blob();
+      // Prefer inline base64 (no extra network round-trip, works even if DB insert failed)
+      if (deck?.pptxBase64) {
+        const binary = atob(deck.pptxBase64);
+        const bytes  = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement('a');
         a.href     = url;
-        a.download = `${(deck.briefName || 'presentation').replace(/\s+/g,'_')}.pptx`;
+        a.download = deck.filename || `${(deck.briefName || 'presentation').replace(/\s+/g,'_')}.pptx`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        return;
       }
-    } catch { alert('Download failed. Try the direct link below.'); }
-    finally { setDownloading(false); }
+      // Fallback: fetch from DB-backed download route
+      if (deck?.downloadUrl) {
+        const res = await fetch(deck.downloadUrl);
+        if (res.ok) {
+          const blob = await res.blob();
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement('a');
+          a.href     = url;
+          a.download = deck.filename || `${(deck.briefName || 'presentation').replace(/\s+/g,'_')}.pptx`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } else {
+          alert('Download failed — please try generating the presentation again.');
+        }
+      }
+    } catch (err) {
+      alert('Download failed — please try generating the presentation again.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (

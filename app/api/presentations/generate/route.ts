@@ -146,6 +146,13 @@ export async function POST(req: NextRequest) {
       console.warn('Presentation DB insert warning (non-fatal):', tableError.message);
     }
 
+    // Return base64 PPTX inline so the client can download immediately
+    // without requiring a separate DB-backed download route.
+    // The downloadUrl is kept as a fallback (works once /api/migrate has run
+    // and drops the NOT NULL constraint on presentations.user_id).
+    const pptxBase64 = pptxBuffer.toString('base64');
+    const filename = `${(analysis.sheet_name || 'Presentation').replace(/\s+/g,'_')}_${template.name.replace(/\s+/g,'_')}.pptx`;
+
     return NextResponse.json(
       {
         success: true,
@@ -154,6 +161,8 @@ export async function POST(req: NextRequest) {
         briefName: analysis.sheet_name || 'Presentation',
         headline: summary.headline || 'Insights Report',
         downloadUrl: `/api/presentations/${presentationId}/download`,
+        pptxBase64,
+        filename,
         status: 'generated',
         message: '✨ Your professional presentation is ready!',
       },
