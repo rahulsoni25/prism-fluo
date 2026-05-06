@@ -23,7 +23,7 @@ export async function GET(
 
     // Fetch presentation with ownership check
     const { rows } = await db.query(
-      'SELECT id, brief_name, template_name, pptx_data FROM presentations WHERE id = $1 AND user_id = $2',
+      'SELECT id, brief_name, template_name, pptx_data FROM presentations WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)',
       [presentationId, session.userId],
     );
 

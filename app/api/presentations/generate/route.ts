@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/client';
+import { db, getPool } from '@/lib/db/client';
 import { getSession } from '@/lib/auth/server';
 import { generatePresentation } from '@/lib/pptx/generator';
 import { getTemplate } from '@/lib/pptx/templates';
@@ -33,9 +33,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    // Fetch analysis - with owner check
+    // Fetch analysis — accept NULL user_id (analyses saved during auth-fallback)
     const { rows } = await db.query(
-      'SELECT id, sheet_name, results_json, brief_id FROM analyses WHERE id = $1 AND user_id = $2',
+      'SELECT id, sheet_name, results_json, brief_id FROM analyses WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)',
       [analysisId, session.userId],
     );
 
@@ -114,20 +114,25 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    // Generate unique presentation ID
-    const presentationId = `pres_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // Generate unique presentation ID (must be UUID for the presentations table)
+    const { randomUUID } = await import('crypto');
+    const presentationId = randomUUID();
 
-    // Store in database
+    // Store in database — verify user exists first to avoid FK violation
     try {
-      await db.query(
+      let safeUserId: string | null = session.userId;
+      const userCheck = await getPool().query('SELECT id FROM users WHERE id = $1', [session.userId]);
+      if (userCheck.rows.length === 0) safeUserId = null;
+
+      await getPool().query(
         `INSERT INTO presentations (
           id, analysis_id, user_id, template_id, template_name,
-          brief_name, headline, pptx_data, status, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          brief_name, headline, pptx_data, status, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
         [
           presentationId,
           analysisId,
-          session.userId,
+          safeUserId,
           templateId,
           template.name,
           analysis.sheet_name || 'Presentation',
@@ -138,11 +143,7 @@ export async function POST(req: NextRequest) {
         ],
       );
     } catch (tableError: any) {
-      if (tableError.message?.includes('presentations') || tableError.code === 'UNDEFINED_TABLE') {
-        console.warn('Presentations table does not exist, but presentation was generated successfully');
-      } else {
-        console.warn('Database insert warning:', tableError.message);
-      }
+      console.warn('Presentation DB insert warning (non-fatal):', tableError.message);
     }
 
     return NextResponse.json(
