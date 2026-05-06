@@ -39,7 +39,7 @@ export default function Copilot({ analysisId, analysisTitle }) {
       const res = await fetch('/api/copilot', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ analysisId, question: q, history: next.slice(0, -1) }),
+        body:    JSON.stringify({ analysisId, question: q, conversationHistory: next.slice(0, -1) }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
