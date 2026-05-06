@@ -99,21 +99,44 @@ export async function POST(req: NextRequest) {
     // instead of silently returning empty rows, so we can see what failed.
     let id: string | null = null;
     try {
-      // Use ON CONFLICT with column names instead of constraint name (more robust)
-      const result = await getPool().query(
-        `INSERT INTO analyses (upload_id, sheet_name, filename, results_json, brief_id, user_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (upload_id, sheet_name)
-         DO UPDATE SET results_json = EXCLUDED.results_json,
-                       filename     = EXCLUDED.filename,
-                       brief_id     = COALESCE(EXCLUDED.brief_id, analyses.brief_id),
-                       user_id      = COALESCE(EXCLUDED.user_id,  analyses.user_id)
-         RETURNING id`,
-        [uploadId, sheetName, filename ?? null, JSON.stringify(results), briefId ?? null, session.userId]
-      );
-      logger.info('analyses:upsert_debug', { rowCount: result.rowCount, rowsLength: result.rows?.length ?? 0 });
-      id = result.rows[0]?.id ?? null;
-      logger.info('analyses:upsert', { id, uploadId, sheetName, rowCount: result.rowCount });
+      // Step 1: Try to INSERT first
+      try {
+        const insertResult = await getPool().query(
+          `INSERT INTO analyses (id, upload_id, sheet_name, filename, results_json, brief_id, user_id)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
+           RETURNING id`,
+          [uploadId, sheetName, filename ?? null, JSON.stringify(results), briefId ?? null, session.userId]
+        );
+        id = insertResult.rows[0]?.id ?? null;
+        logger.info('analyses:insert_success', { id, uploadId, sheetName });
+      } catch (insertErr: any) {
+        // Step 2: If INSERT fails (likely due to UNIQUE constraint), UPDATE instead
+        if (insertErr.message?.includes('duplicate') || insertErr.message?.includes('unique')) {
+          logger.info('analyses:constraint_hit_doing_update', { uploadId, sheetName });
+
+          // First, get the existing ID
+          const existingRow = await getPool().query(
+            `SELECT id FROM analyses WHERE upload_id = $1 AND sheet_name = $2`,
+            [uploadId, sheetName]
+          );
+
+          if (existingRow.rows[0]) {
+            id = existingRow.rows[0].id;
+
+            // Now UPDATE the existing row
+            await getPool().query(
+              `UPDATE analyses
+               SET results_json = $1, filename = $2, brief_id = COALESCE($3, brief_id), user_id = COALESCE($4, user_id)
+               WHERE id = $5`,
+              [JSON.stringify(results), filename ?? null, briefId ?? null, session.userId, id]
+            );
+            logger.info('analyses:update_success', { id, uploadId, sheetName });
+          }
+        } else {
+          // Unknown error, rethrow
+          throw insertErr;
+        }
+      }
     } catch (err: any) {
       logger.error('analyses:upsert_failed', { error: err.message, uploadId, sheetName, userId: session.userId });
       throw err;
