@@ -99,10 +99,11 @@ export async function POST(req: NextRequest) {
     // instead of silently returning empty rows, so we can see what failed.
     let id: string | null = null;
     try {
+      // Use ON CONFLICT with column names instead of constraint name (more robust)
       const result = await getPool().query(
         `INSERT INTO analyses (upload_id, sheet_name, filename, results_json, brief_id, user_id)
          VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT ON CONSTRAINT analyses_upload_sheet_unique
+         ON CONFLICT (upload_id, sheet_name)
          DO UPDATE SET results_json = EXCLUDED.results_json,
                        filename     = EXCLUDED.filename,
                        brief_id     = COALESCE(EXCLUDED.brief_id, analyses.brief_id),
@@ -110,6 +111,7 @@ export async function POST(req: NextRequest) {
          RETURNING id`,
         [uploadId, sheetName, filename ?? null, JSON.stringify(results), briefId ?? null, session.userId]
       );
+      logger.info('analyses:upsert_debug', { rowCount: result.rowCount, rowsLength: result.rows?.length ?? 0 });
       id = result.rows[0]?.id ?? null;
       logger.info('analyses:upsert', { id, uploadId, sheetName, rowCount: result.rowCount });
     } catch (err: any) {
