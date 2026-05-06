@@ -97,8 +97,9 @@ export async function POST(req: NextRequest) {
     // file-to-brief relationship is queryable from either side.
     // Use getPool().query() here (not db.query) to throw on actual errors
     // instead of silently returning empty rows, so we can see what failed.
-    const { rows } = await logger.query('analyses:upsert', () =>
-      getPool().query(
+    let id: string | null = null;
+    try {
+      const result = await getPool().query(
         `INSERT INTO analyses (upload_id, sheet_name, filename, results_json, brief_id, user_id)
          VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT ON CONSTRAINT analyses_upload_sheet_unique
@@ -108,10 +109,13 @@ export async function POST(req: NextRequest) {
                        user_id      = COALESCE(EXCLUDED.user_id,  analyses.user_id)
          RETURNING id`,
         [uploadId, sheetName, filename ?? null, JSON.stringify(results), briefId ?? null, session.userId]
-      )
-    );
-
-    let id = rows[0]?.id ?? null;
+      );
+      id = result.rows[0]?.id ?? null;
+      logger.info('analyses:upsert', { id, uploadId, sheetName, rowCount: result.rowCount });
+    } catch (err: any) {
+      logger.error('analyses:upsert_failed', { error: err.message, uploadId, sheetName, userId: session.userId });
+      throw err;
+    }
 
     // FALLBACK: If DB is down in dev, return a mock analysis ID to allow the UI to redirect
     if (!id && process.env.NODE_ENV !== 'production') {
