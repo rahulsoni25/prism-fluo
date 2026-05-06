@@ -78,7 +78,7 @@ export async function GET() {
           a.results_json->'meta'->>'domain' AS domain,
           a.results_json->'meta'->>'title'  AS title
         FROM analyses a
-        WHERE a.user_id = $1
+        WHERE (a.user_id = $1 OR a.user_id IS NULL)
         ORDER BY a.created_at DESC
         LIMIT 10
       `, [userId])

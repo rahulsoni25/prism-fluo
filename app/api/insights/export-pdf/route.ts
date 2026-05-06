@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         b.brand, b.objective
       FROM analyses a
       LEFT JOIN briefs b ON a.brief_id = b.id
-      WHERE a.id = $1 AND a.user_id = $2`,
+      WHERE a.id = $1 AND (a.user_id = $2 OR a.user_id IS NULL)`,
       [analysisId, session.userId],
     );
 
@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
         b.brand, b.objective
       FROM analyses a
       LEFT JOIN briefs b ON a.brief_id = b.id
-      WHERE a.id = $1 AND a.user_id = $2`,
+      WHERE a.id = $1 AND (a.user_id = $2 OR a.user_id IS NULL)`,
       [analysisId, session.userId],
     );
 

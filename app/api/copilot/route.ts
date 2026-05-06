@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
   let analysis: any;
   try {
     const { rows } = await db.query(
-      'SELECT * FROM analyses WHERE id = $1 AND user_id = $2',
+      'SELECT * FROM analyses WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)',
       [analysisId, session.userId],
     );
     if (rows.length === 0)

@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
         id, analysis_id, template_id, template_name, brief_name,
         headline, gamma_url, status, created_at
        FROM presentations
-       WHERE user_id = $1
+       WHERE (user_id = $1 OR user_id IS NULL)
        ORDER BY created_at DESC
        LIMIT 100`,
       [session.userId],

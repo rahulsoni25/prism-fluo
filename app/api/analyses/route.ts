@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
                 sla_hours           = $4,
                 sla_due_at          = $5,
                 actual_completed_at = COALESCE(actual_completed_at, NOW())
-          WHERE id = $2 AND user_id = $3
+          WHERE id = $2 AND (user_id = $3 OR user_id IS NULL)
           RETURNING brand, category`,
         [id, briefId, session.userId, slaHours, slaDueAt]
       ).catch((err: any) => {
