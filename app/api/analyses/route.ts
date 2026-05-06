@@ -92,29 +92,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Upsert — if this sheet was already analyzed, update the results in place.
-    // If a briefId is supplied, write it onto the analysis row too so the
-    // file-to-brief relationship is queryable from either side.
-    // Use getPool().query() here (not db.query) to throw on actual errors
-    // instead of silently returning empty rows, so we can see what failed.
-    let id: string | null = null;
+    // Generate a UUID on the server (not relying on Postgres to return it)
+    const { randomUUID } = await import('crypto');
+    let id = randomUUID();
+
     try {
-      // Step 1: Try to INSERT first
+      // Step 1: Try to INSERT first (with pre-generated UUID)
       try {
-        const insertResult = await getPool().query(
+        await getPool().query(
           `INSERT INTO analyses (id, upload_id, sheet_name, filename, results_json, brief_id, user_id)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
-           RETURNING id`,
-          [uploadId, sheetName, filename ?? null, JSON.stringify(results), briefId ?? null, session.userId]
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [id, uploadId, sheetName, filename ?? null, JSON.stringify(results), briefId ?? null, session.userId]
         );
-        id = insertResult.rows[0]?.id ?? null;
         logger.info('analyses:insert_success', { id, uploadId, sheetName });
       } catch (insertErr: any) {
         // Step 2: If INSERT fails (likely due to UNIQUE constraint), UPDATE instead
         if (insertErr.message?.includes('duplicate') || insertErr.message?.includes('unique')) {
           logger.info('analyses:constraint_hit_doing_update', { uploadId, sheetName });
 
-          // First, get the existing ID
+          // Get the existing ID
           const existingRow = await getPool().query(
             `SELECT id FROM analyses WHERE upload_id = $1 AND sheet_name = $2`,
             [uploadId, sheetName]
@@ -123,7 +119,7 @@ export async function POST(req: NextRequest) {
           if (existingRow.rows[0]) {
             id = existingRow.rows[0].id;
 
-            // Now UPDATE the existing row
+            // UPDATE the existing row
             await getPool().query(
               `UPDATE analyses
                SET results_json = $1, filename = $2, brief_id = COALESCE($3, brief_id), user_id = COALESCE($4, user_id)
