@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
     const body = await req.json();
-    const { uploadId, sheetName, filename, results, briefId } = body;
+    const { uploadId, sheetName, filename, results, briefId, slaHours } = body;
 
     if (!uploadId || !sheetName || !results) {
       return NextResponse.json(
@@ -166,15 +166,21 @@ export async function POST(req: NextRequest) {
     }
 
     // If a briefId was supplied, link analysis + flip to ready + set SLA + stamp completion.
-    // SLA is calculated NOW (when data arrives) — not at brief creation time.
+    // SLA can either be user-selected (passed in body) or auto-calculated based on queue depth.
     if (id && briefId) {
-      // Calculate SLA based on current queue depth
-      let slaHours = 24;
-      let slaDueAt = new Date(Date.now() + 24 * 3600_000).toISOString();
-      try {
-        const slaResult = await calculateSla();
-        if (slaResult?.slaHours) { slaHours = slaResult.slaHours; slaDueAt = slaResult.slaDueAt; }
-      } catch { /* keep defaults */ }
+      let finalSlaHours = slaHours ?? 24;
+      let slaDueAt = new Date(Date.now() + finalSlaHours * 3600_000).toISOString();
+
+      // Only auto-calculate SLA if user didn't provide one
+      if (!slaHours) {
+        try {
+          const slaResult = await calculateSla();
+          if (slaResult?.slaHours) {
+            finalSlaHours = slaResult.slaHours;
+            slaDueAt = slaResult.slaDueAt;
+          }
+        } catch { /* keep defaults */ }
+      }
 
       const briefRow = await db.query(
         `UPDATE briefs
@@ -185,7 +191,7 @@ export async function POST(req: NextRequest) {
                 actual_completed_at = COALESCE(actual_completed_at, NOW())
           WHERE id = $2 AND (user_id = $3 OR user_id IS NULL)
           RETURNING brand, category`,
-        [id, briefId, session.userId, slaHours, slaDueAt]
+        [id, briefId, session.userId, finalSlaHours, slaDueAt]
       ).catch((err: any) => {
         logger.warn('analyses:brief_link_failed', { briefId, error: err.message });
         return { rows: [] };
@@ -200,7 +206,7 @@ export async function POST(req: NextRequest) {
         sendBriefActiveEmail(
           { id: briefId, brand: bf.brand, category: bf.category },
           { email: session.email, name: (session as any).name },
-          slaHours,
+          finalSlaHours,
         ).catch((e: Error) => logger.warn('analyses:active_email_failed', { error: e.message }));
       }
     }

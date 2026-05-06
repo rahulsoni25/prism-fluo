@@ -494,6 +494,7 @@ function UploadDataInner() {
           sheetName: combinedName,
           filename:  entries.map(e => e.file.name).join(' + '),
           briefId,                  // when set, auto-flips brief to 'ready' + stamps actual_completed_at
+          slaHours: selectedSlaHours,  // pass user-selected SLA to brief
           results: {
             charts:         finalCharts,
             scorecards:     [],
