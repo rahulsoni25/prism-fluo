@@ -19,9 +19,23 @@ import { cache } from '@/lib/cache';
 
 export const maxDuration = 60;
 
-// ── Cache ─────────────────────────────────────────────────────
+// ── Cache keys ────────────────────────────────────────────────
 function cacheKey(q: string, geo: string, period: string) {
   return `trends:${q.toLowerCase().trim()}:${geo}:${period}`;
+}
+
+// ── Per-keyword backoff tracker ───────────────────────────────
+// Prevents hammering Google after a 429 — skip re-fetch for BACKOFF_MS
+const BACKOFF_MS = 5 * 60 * 1000; // 5 minutes
+const backoffUntil = new Map<string, number>();
+
+function isBackedOff(key: string): boolean {
+  const until = backoffUntil.get(key) ?? 0;
+  return Date.now() < until;
+}
+
+function setBackoff(key: string): void {
+  backoffUntil.set(key, Date.now() + BACKOFF_MS);
 }
 
 // ── Strip Google's anti-hijacking prefix ──────────────────────
@@ -150,27 +164,40 @@ export async function GET(req: NextRequest) {
 
   if (!q) return NextResponse.json({ error: 'q is required' }, { status: 400 });
 
-  // Cache hit (6h)
-  const key    = cacheKey(q, geo, period);
+  const key = cacheKey(q, geo, period);
+
+  // ── Fresh cache hit ────────────────────────────────────────
   const cached = cache.get<object>(key);
   if (cached) return NextResponse.json({ ...cached, cached: true });
+
+  // ── Backoff: if recently rate-limited, skip fetch and return stale ──
+  if (isBackedOff(key)) {
+    const stale = cache.getStale<object>(key);
+    if (stale) {
+      return NextResponse.json({ ...stale, stale: true, cached: true });
+    }
+    return NextResponse.json(
+      { error: 'Google Trends temporarily unavailable — please try again shortly.', captcha: true, keyword: q },
+      { status: 429 },
+    );
+  }
 
   try {
     const widgets = await getWidgetTokens(q, geo, period);
 
-    const timeWidget    = widgets.find((w: any) => w.id === 'TIMESERIES');
-    const queryWidget   = widgets.find((w: any) => w.id === 'RELATED_QUERIES');
-    const topicWidget   = widgets.find((w: any) => w.id === 'RELATED_TOPICS');
+    const timeWidget  = widgets.find((w: any) => w.id === 'TIMESERIES');
+    const queryWidget = widgets.find((w: any) => w.id === 'RELATED_QUERIES');
+    const topicWidget = widgets.find((w: any) => w.id === 'RELATED_TOPICS');
 
     const [timeline, queries, topics] = await Promise.allSettled([
       timeWidget  ? fetchTimeSeries(timeWidget, q, geo, period) : Promise.resolve([]),
-      queryWidget ? fetchRelatedQueries(queryWidget)             : Promise.resolve({ top: [], rising: [] }),
-      topicWidget ? fetchRelatedTopics(topicWidget)              : Promise.resolve([]),
+      queryWidget ? fetchRelatedQueries(queryWidget)            : Promise.resolve({ top: [], rising: [] }),
+      topicWidget ? fetchRelatedTopics(topicWidget)             : Promise.resolve([]),
     ]);
 
-    const tl     = timeline.status  === 'fulfilled' ? timeline.value  : [];
-    const qr     = queries.status   === 'fulfilled' ? queries.value   : { top: [], rising: [] };
-    const topics2 = topics.status   === 'fulfilled' ? topics.value    : [];
+    const tl      = timeline.status === 'fulfilled' ? timeline.value : [];
+    const qr      = queries.status  === 'fulfilled' ? queries.value  : { top: [], rising: [] };
+    const topics2 = topics.status   === 'fulfilled' ? topics.value   : [];
 
     const peakWeek = tl.length > 0
       ? tl.reduce((best: any, p: any) => p.value > best.value ? p : best)
@@ -188,22 +215,38 @@ export async function GET(req: NextRequest) {
       peakValue:     peakWeek?.value ?? 0,
       trend:         computeTrend(tl),
       dataPoints:    tl.length,
+      fetchedAt:     new Date().toISOString(),
     };
 
-    cache.set(key, payload, 6 * 3600); // 6h TTL
+    // Cache for 24h — long TTL means we rarely need to re-hit Google
+    cache.set(key, payload, 24 * 3600);
     return NextResponse.json(payload);
 
   } catch (err: any) {
-    // Google may return CAPTCHA or rate-limit — surface this clearly
-    const msg = err.message ?? String(err);
-    const isCaptcha = msg.includes('429') || msg.includes('403') || msg.includes('CAPTCHA');
+    const msg        = String(err?.message ?? err);
+    const isBlocked  = /429|403|captcha|rate.limit|too many/i.test(msg);
+
+    if (isBlocked) {
+      // Arm the backoff so the next request in this window skips the fetch
+      setBackoff(key);
+
+      // Serve stale data if we have any — beats showing a hard error
+      const stale = cache.getStale<object>(key);
+      if (stale) {
+        console.warn(`[trends] rate-limited for "${q}" — serving stale cache`);
+        return NextResponse.json({ ...stale, stale: true, cached: true });
+      }
+    }
+
     return NextResponse.json(
       {
-        error:       isCaptcha ? 'Google Trends rate-limited this server. Try again in a few minutes.' : `Trends fetch failed: ${msg}`,
-        captcha:     isCaptcha,
-        keyword:     q,
+        error:    isBlocked
+          ? 'Google Trends is temporarily rate-limiting this server. Data will refresh automatically.'
+          : `Trends fetch failed: ${msg}`,
+        captcha:  isBlocked,
+        keyword:  q,
       },
-      { status: isCaptcha ? 429 : 502 },
+      { status: isBlocked ? 429 : 502 },
     );
   }
 }

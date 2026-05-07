@@ -32,6 +32,18 @@ class MemoryCache {
     return entry.value as T;
   }
 
+  /**
+   * Like get(), but returns the cached value EVEN if the TTL has expired.
+   * Used for stale-while-revalidate patterns (e.g. Google Trends rate-limiting).
+   * Does NOT delete the expired entry — lets it serve as a fallback.
+   */
+  getStale<T>(key: string): T | null {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    logger.debug('cache:stale-hit', { key, expired: Date.now() > entry.expiresAt });
+    return entry.value as T;
+  }
+
   set<T>(key: string, value: T, ttlSeconds: number = config.CACHE_TTL_SECONDS): void {
     this.store.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
     logger.debug('cache:set', { key, ttlSeconds });

@@ -110,6 +110,11 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
     try {
       const res  = await fetch(`/api/trends?q=${encodeURIComponent(kw)}&geo=IN&period=today%203-m`);
       const data = await res.json();
+      // Stale-while-revalidate: server was rate-limited but returned cached data
+      if (data.stale && data.timeline) {
+        setTrendsData({ ...data, stale: true });
+        return;
+      }
       if (!res.ok) throw new Error(data.error || 'Trends fetch failed');
       setTrendsData(data);
     } catch (e) { setErrorT(e.message); }
@@ -170,7 +175,7 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
             <div style={{ color: '#fff', fontWeight: 800, fontSize: 14, letterSpacing: '-.2px' }}>
               Live Google Trends
             </div>
-            <div style={{ color: '#94A3B8', fontSize: 11 }}>India · Last 90 days · Auto-refreshed 6h</div>
+            <div style={{ color: '#94A3B8', fontSize: 11 }}>India · Last 90 days · Auto-refreshed 24h</div>
           </div>
         </div>
 
@@ -265,6 +270,13 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
             {/* ── Chart ── */}
             {activeTab === 'chart' && (
               <div>
+                {trendsData?.stale && (
+                  <div style={{ fontSize: 11, color: '#B45309', background: '#FFFBEB',
+                    border: '1px solid #FDE68A', borderRadius: 6, padding: '4px 10px',
+                    display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 10 }}>
+                    ⏱ Cached data · Google Trends temporarily rate-limited
+                  </div>
+                )}
                 <div className="stat-label" style={{ marginBottom: 10 }}>
                   Search interest for <strong style={{ color: 'var(--text)' }}>"{trendsData.keyword}"</strong>
                   &nbsp;· {trendsData.dataPoints} weekly points
