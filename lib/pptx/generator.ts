@@ -33,12 +33,17 @@ const FB = 'Calibri';  // body / UI
 
 // ─── Data model ──────────────────────────────────────────────────────────────
 export interface InsightCard {
-  title:       string;  // hook / insight headline
-  obs:         string;  // observation / finding
-  rec:         string;  // recommendation
-  stat?:       string;  // key statistic e.g. "4.2× higher engagement"
-  source?:     string;  // data source label
-  conviction?: number;  // 0-100 confidence score
+  title:        string;   // hook / insight headline
+  obs:          string;   // observation / finding
+  rec:          string;   // recommendation
+  stat?:        string;   // key statistic e.g. "4.2× higher engagement"
+  source?:      string;   // data source label
+  conviction?:  number;   // 0-100 confidence score
+  // Native chart data — passed directly to prs.addChart()
+  chartType?:   string;   // e.g. 'bar', 'hbar', 'doughnut', 'radar', ...
+  chartLabels?: string[]; // category labels
+  chartValues?: number[]; // primary series values
+  chartValues2?:number[]; // secondary series (combo charts)
 }
 
 export interface PillarData {
@@ -264,6 +269,127 @@ function slideDivider(prs: any, pm: PillarMeta, insightCount: number, slideNo: n
   footer(s, slideNo, d.briefName, true, pm.color);
 }
 
+// ─── Chart helpers ────────────────────────────────────────────────────────────
+
+/** Multi-hue palette used for pie / doughnut slices */
+const CHART_PALETTE = [
+  '3B82F6','F97316','10B981','A855F7',
+  'EF4444','F59E0B','06B6D4','EC4899',
+  '14B8A6','8B5CF6','84CC16','FB7185',
+];
+
+/** Map our chart type names → PptxGenJS chart enum keys */
+function pptxChartType(prs: any, type: string): any {
+  switch (type) {
+    case 'area':                    return prs.charts.AREA;
+    case 'line':                    return prs.charts.LINE;
+    case 'pie':                     return prs.charts.PIE;
+    case 'doughnut':                return prs.charts.DOUGHNUT;
+    case 'radar':                   return prs.charts.RADAR;
+    case 'scatter':                 return prs.charts.SCATTER;
+    case 'hbar':                    return prs.charts.BAR;     // barDir: 'bar'
+    case 'bar':
+    case 'combo':
+    case 'histogram':
+    case 'waterfall':
+    case 'funnel':
+    default:                        return prs.charts.BAR;
+  }
+}
+
+/**
+ * Embed a native PptxGenJS chart (no canvas / images needed).
+ * Falls back gracefully if data is missing or rendering fails.
+ */
+function addNativeChart(
+  prs:  any,
+  s:    any,
+  ins:  InsightCard,
+  pm:   PillarMeta,
+  x: number, y: number, w: number, h: number,
+): void {
+  const { chartType: type, chartLabels: labels, chartValues: vals, chartValues2: vals2 } = ins;
+  if (!type || !labels?.length || !vals?.length) return;
+
+  const ctype = pptxChartType(prs, type);
+  const isHBar = type === 'hbar';
+  const isRadial = type === 'pie' || type === 'doughnut';
+
+  // For pie/doughnut: every slice gets a distinct hue.
+  // For everything else: use the pillar primary colour.
+  const colors = isRadial
+    ? CHART_PALETTE.slice(0, labels.length)
+    : [pm.color];
+
+  const baseOpts: Record<string, any> = {
+    x, y, w, h,
+    showTitle:   false,
+    showLegend:  isRadial,
+    legendPos:   'b',
+    legendFontSize: 7,
+    chartColors: colors,
+    chartColorsOpacity: 85,
+  };
+
+  try {
+    if (type === 'scatter') {
+      // Scatter: index on x-axis, values on y-axis
+      s.addChart(ctype, [{
+        name:   'Data',
+        values: vals.map((_, i) => i + 1),   // x
+        sizes:  vals,                          // y
+      }], baseOpts);
+
+    } else if (type === 'combo' && vals2?.length) {
+      // Combo: bars (primary) + line (secondary)
+      s.addChart(prs.charts.BAR, [
+        { name: 'Volume',  labels, values: vals  },
+        { name: 'Trend',   labels, values: vals2 },
+      ], {
+        ...baseOpts,
+        barDir: 'col',
+        barGrouping: 'clustered',
+        chartColors: [pm.color, 'F97316'],
+      });
+
+    } else if (isRadial) {
+      const holeSize = type === 'doughnut' ? 55 : undefined;
+      s.addChart(ctype, [{ name: 'Data', labels, values: vals }], {
+        ...baseOpts,
+        ...(holeSize !== undefined ? { holeSize } : {}),
+        dataLabelPosition: 'bestFit',
+        dataLabelFormatCode: '0"%"',
+        dataLabelFontSize: 7.5,
+      });
+
+    } else if (type === 'radar') {
+      s.addChart(ctype, [{ name: 'Score', labels, values: vals }], {
+        ...baseOpts,
+        radarStyle: 'filled',
+        chartColors: [pm.color],
+        chartColorsOpacity: 40,
+      });
+
+    } else {
+      // bar, hbar, line, area, histogram, waterfall, funnel
+      s.addChart(ctype, [{ name: 'Data', labels, values: vals }], {
+        ...baseOpts,
+        barDir: isHBar ? 'bar' : 'col',
+        barGrouping: 'clustered',
+        lineSize: 2,
+        lineSmooth: type === 'area' || type === 'line',
+        showValue: isHBar,
+        dataLabelFontSize: 7.5,
+        valAxisLabelFontSize: 7.5,
+        catAxisLabelFontSize: 7.5,
+      });
+    }
+  } catch (err) {
+    // Non-fatal: if chart fails to render, slide still has text content
+    console.warn('[PPTX] addNativeChart failed:', (err as Error).message);
+  }
+}
+
 // ─── Insight card slide ───────────────────────────────────────────────────────
 function slideInsight(
   prs: any,
@@ -276,6 +402,18 @@ function slideInsight(
   const s = prs.addSlide();
   s.background = { color: 'FFFFFF' };
 
+  // Detect whether we have chart data to show in right column
+  const hasChart = !!(ins.chartType && ins.chartLabels?.length && ins.chartValues?.length);
+
+  // ── Layout constants ──────────────────────────────────────────────────────
+  // With chart: text occupies left 60%, chart occupies right 38%
+  // Without chart: text occupies full width (original layout)
+  const TEXT_W  = hasChart ? 7.40 : CW - 0.20;  // text block width
+  const CHART_X = 8.62;                           // chart panel x
+  const CHART_Y = 1.88;                           // chart panel y
+  const CHART_W = 4.42;                           // chart panel width
+  const CHART_H = 4.80;                           // chart panel height
+
   // Left pillar colour bar
   r(s, 0, 0, 0.12, H, pm.color);
 
@@ -284,7 +422,7 @@ function slideInsight(
     ML + 0.18, 0.38, 8, 0.24,
     { fontSize: 9, color: pm.color, fontFace: FB, bold: true, charSpacing: 2 });
 
-  // Insight headline / hook
+  // Insight headline / hook (always full-width — spans both columns)
   const titleText = ins.title.length > 110 ? ins.title.slice(0, 110) + '…' : ins.title;
   t(s, titleText, ML + 0.18, 0.70, CW - 0.2, 1.1,
     { fontSize: 24, color: '0F172A', fontFace: FH, bold: true, lineSpacingMultiple: 1.15 });
@@ -292,43 +430,52 @@ function slideInsight(
   ln(s, ML + 0.18, 1.90, 1.6, pm.color, 2);
 
   // ── Observation block ────────────────────────────────────────────────────
-  r(s, ML + 0.18, 2.08, CW - 0.20, 1.62, pm.light);
-  r(s, ML + 0.18, 2.08, 0.06, 1.62, pm.color);  // left strip
+  r(s, ML + 0.18, 2.08, TEXT_W, 1.62, pm.light);
+  r(s, ML + 0.18, 2.08, 0.06, 1.62, pm.color);
 
   t(s, 'OBSERVATION', ML + 0.40, 2.14, 3.5, 0.22,
     { fontSize: 8, color: pm.color, fontFace: FB, bold: true, charSpacing: 1.8 });
 
   const obsText = ins.obs.length > 260 ? ins.obs.slice(0, 260) + '…' : ins.obs;
-  t(s, obsText, ML + 0.40, 2.42, CW - 0.60, 1.16,
+  t(s, obsText, ML + 0.40, 2.42, TEXT_W - 0.40, 1.16,
     { fontSize: 12.5, color: '1E293B', fontFace: FB, lineSpacingMultiple: 1.4, valign: 'top' });
 
   // ── Recommendation block ─────────────────────────────────────────────────
-  r(s, ML + 0.18, 3.86, CW - 0.20, 1.62, '1E293B');
-  r(s, ML + 0.18, 3.86, 0.06, 1.62, pm.color); // left strip
+  r(s, ML + 0.18, 3.86, TEXT_W, 1.62, '1E293B');
+  r(s, ML + 0.18, 3.86, 0.06, 1.62, pm.color);
 
   t(s, '→  RECOMMENDATION', ML + 0.40, 3.92, 4.5, 0.22,
     { fontSize: 8, color: pm.color, fontFace: FB, bold: true, charSpacing: 1.8 });
 
   const recText = ins.rec.length > 260 ? ins.rec.slice(0, 260) + '…' : ins.rec;
-  t(s, recText, ML + 0.40, 4.20, CW - 0.60, 1.14,
+  t(s, recText, ML + 0.40, 4.20, TEXT_W - 0.40, 1.14,
     { fontSize: 12.5, color: 'FFFFFF', fontFace: FB, lineSpacingMultiple: 1.4, valign: 'top' });
 
   // ── Key stat + source ────────────────────────────────────────────────────
   if (ins.stat) {
-    r(s, ML + 0.18, 5.62, CW - 0.20, 0.60, pm.light);
-    t(s, '📊  ' + ins.stat, ML + 0.38, 5.66, CW - 0.60, 0.50,
+    r(s, ML + 0.18, 5.62, TEXT_W, 0.60, pm.light);
+    t(s, '📊  ' + ins.stat, ML + 0.38, 5.66, TEXT_W - 0.40, 0.50,
       { fontSize: 11.5, color: pm.dark || '0F172A', fontFace: FB, bold: true, valign: 'middle' });
   }
 
-  // Source + conviction
   const sourceLabel = [
     ins.source ? `Source: ${ins.source}` : '',
     ins.conviction ? `Confidence: ${ins.conviction}%` : '',
   ].filter(Boolean).join('  ·  ');
 
   if (sourceLabel) {
-    t(s, sourceLabel, ML + 0.18, 6.30, CW, 0.24,
+    t(s, sourceLabel, ML + 0.18, 6.30, TEXT_W, 0.24,
       { fontSize: 8, color: '94A3B8', fontFace: FB });
+  }
+
+  // ── Right column: native chart ────────────────────────────────────────────
+  if (hasChart) {
+    // Subtle background panel for the chart area
+    r(s, CHART_X - 0.12, CHART_Y - 0.12, CHART_W + 0.24, CHART_H + 0.24, 'F8FAFC');
+    // Thin pillar-coloured top border on the chart panel
+    r(s, CHART_X - 0.12, CHART_Y - 0.12, CHART_W + 0.24, 0.04, pm.color);
+
+    addNativeChart(prs, s, ins, pm, CHART_X, CHART_Y, CHART_W, CHART_H);
   }
 
   footer(s, slideNo, d.briefName);

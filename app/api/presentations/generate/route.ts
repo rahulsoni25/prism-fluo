@@ -28,14 +28,19 @@ interface GeneratePresentationRequest {
 type PrismBucket = 'content' | 'commerce' | 'communication' | 'culture';
 
 interface RawChart {
-  bucket?:     string;
-  title?:      string;
-  obs?:        string;
-  rec?:        string;
-  stat?:       string;
-  source?:     string;
-  toolLabel?:  string;
-  conviction?: number;
+  bucket?:       string;
+  title?:        string;
+  obs?:          string;
+  rec?:          string;
+  stat?:         string;
+  source?:       string;
+  toolLabel?:    string;
+  conviction?:   number;
+  // Chart rendering data (stored in results_json.charts by the analysis pipeline)
+  type?:         string;
+  chartLabels?:  string[];
+  chartValues?:  number[];
+  chartValues2?: number[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -45,12 +50,17 @@ function buildPillar(charts: RawChart[], bucket: PrismBucket): PillarData {
   const insights: InsightCard[] = charts
     .filter(c => c.bucket === bucket)
     .map(c => ({
-      title:       (c.title  || '').trim(),
-      obs:         (c.obs    || '').trim(),
-      rec:         (c.rec    || '').trim(),
-      stat:        c.stat       ? c.stat.trim()       : undefined,
-      source:      c.toolLabel  ? c.toolLabel.trim()  : (c.source ? c.source.trim() : undefined),
-      conviction:  c.conviction ?? undefined,
+      title:        (c.title  || '').trim(),
+      obs:          (c.obs    || '').trim(),
+      rec:          (c.rec    || '').trim(),
+      stat:         c.stat       ? c.stat.trim()       : undefined,
+      source:       c.toolLabel  ? c.toolLabel.trim()  : (c.source ? c.source.trim() : undefined),
+      conviction:   c.conviction ?? undefined,
+      // Pass chart data for native PPTX chart rendering
+      chartType:    c.type       ?? undefined,
+      chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels  : undefined,
+      chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : undefined,
+      chartValues2: Array.isArray(c.chartValues2) ? c.chartValues2.map(Number) : undefined,
     }))
     .filter(ins => ins.title || ins.obs || ins.rec);
   return { insights };
