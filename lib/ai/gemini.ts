@@ -628,18 +628,55 @@ export async function enhanceInsightNarratives(
 
   try {
     const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const prompt = `You are a senior strategic insights analyst writing for brand and media teams in India.
+    const prompt = `You are a Senior Brand Strategist writing insight recommendations for marketing teams.
 
-Rewrite each observation and recommendation in plain, clear English — no jargon, short sentences, active voice.
+Each recommendation must follow this 3-part structure:
+[SPECIFIC ACTION] + [DATA-BACKED REASON] + [MEASURABLE OUTCOME + TIMEFRAME]
 
-Charts from ${context}:
-${charts.map((c, i) => `${i + 1}. Title: "${c.title}" | Obs: "${c.obs || 'N/A'}" | Rec: "${c.rec || 'N/A'}"`).join('\n')}
+CRITICAL: The recommendation style must match the card's PRISM bucket — use the exact framework below for each bucket:
+
+━━━ 📝 CONTENT BUCKET ━━━
+Focus: What to create, which format, which platform, what story angle
+Action verbs: Produce, Develop, Brief agency on, Film, Publish, Build a series
+Channels: YouTube, Instagram Reels, TikTok, blog, podcast, OTT
+Outcome metrics: engagement rate, watch time, saves, shares, organic reach
+Example: "Produce a 6-part YouTube series on [specific topic] targeting [audience searching X] — brief on [specific creative angle] — aim for [X]% engagement lift within 90 days"
+
+━━━ 🛒 COMMERCE BUCKET ━━━
+Focus: Listings, keywords, pricing signals, search visibility, conversion
+Action verbs: Rewrite, Bid on, A/B test, Restructure, Optimise listing for, Prioritise
+Channels: Amazon, Google Shopping, D2C site, retail shelf, search ads
+Outcome metrics: CTR, conversion rate, ranking position, ROAS, revenue per listing
+Example: "Rewrite top [X] listing titles to lead with [symptom/use-case] keywords — test against current titles — target [X]% CTR improvement within 30 days"
+
+━━━ 📢 COMMUNICATION BUCKET ━━━
+Focus: Messaging, tone, campaign theme, media strategy, brand voice, copy angles
+Action verbs: Shift messaging to, Brief creative on, Lead campaign with, Reposition, Test copy
+Channels: OOH, TVC, digital display, social ads, influencer, PR
+Outcome metrics: brand recall, message resonance, awareness lift, media efficiency (CPM/CPC)
+Example: "Shift [X]% of campaign messaging from [old angle] to [new angle] — brief creative on [specific human truth from data] — measure recall lift in next brand tracker"
+
+━━━ 🌍 CULTURE BUCKET ━━━
+Focus: Trends, values, community, cultural moments, long-term brand relevance
+Action verbs: Partner with, Tap into, Align brand to, Sponsor, Build community around, Respond to
+Channels: events, creator partnerships, social movements, PR, community platforms
+Outcome metrics: brand affinity, cultural relevance score, community growth, earned media
+Example: "Partner with [specific community/creator type] around [cultural moment] — respond to [trend from data] before it peaks — target [X]% lift in brand affinity among [audience]"
+
+━━━ UNIVERSAL RULES ━━━
+• Always tie the recommendation directly to a number from the observation
+• Be specific: name the channel, name the format, name the audience
+• No jargon: ban leverage, synergy, touchpoint, utilise, holistic, robust
+• One recommendation per card — not a list, one sharp action sentence
+• Observation: 2 sentences, plain English, human behavior + a number
+
+Dataset: ${context}
+
+Charts:
+${charts.map((c, i) => `${i + 1}. Bucket: ${(c.bucket || 'content').toUpperCase()} | Title: "${c.title}" | Obs: "${c.obs || 'N/A'}" | Rec: "${c.rec || 'N/A'}"`).join('\n')}
 
 Return ONLY a valid JSON array, one object per chart:
-[{"obs": "...", "rec": "...", "stat": "..."}, ...]
-- obs: 2 sentences, plain English, include a specific number
-- rec: 1 sentence starting with a verb, specific channel and creative angle
-- stat: one short plain-English highlight stat, or null`;
+[{"obs": "2 sentences with human behavior + stat", "rec": "specific action + data reason + measurable outcome + timeframe", "stat": "one short highlight stat"}, ...]`;
 
     const result = await callGeminiWithRetry(model, prompt);
     const text   = result.response.text();
