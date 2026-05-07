@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import BriefCard from '@/components/BriefCard';
+import TrendPanel from '@/components/TrendPanel';
 import { useRouter } from 'next/navigation';
 import { formatSlaBadge } from '@/lib/sla';
 
@@ -124,6 +125,17 @@ export default function Dashboard() {
               <div className="stat-note" style={{ color: 'var(--muted)' }}>Platforms connected</div>
             </div>
           </div>
+
+          {/* ── Live Google Trends Panel ─────────────────────────── */}
+          <TrendPanel
+            defaultKeyword={
+              // Pre-fill with first ready brief's brand, or leave blank for manual search
+              briefs.find(b => b.status === 'ready')?.brand ?? ''
+            }
+            brandContext={
+              briefs.find(b => b.status === 'ready')?.brand ?? ''
+            }
+          />
 
           <div className="filter-bar">
             {FILTERS.map(f => (
