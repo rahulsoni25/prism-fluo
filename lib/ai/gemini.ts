@@ -630,45 +630,53 @@ export async function enhanceInsightNarratives(
     const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const prompt = `You are a Senior Brand Strategist writing insight recommendations for marketing teams.
 
-Each recommendation must follow this 3-part structure:
-[SPECIFIC ACTION] + [DATA-BACKED REASON] + [MEASURABLE OUTCOME + TIMEFRAME]
+Every recommendation MUST contain all 5 elements in this order:
+[ACTION] — [CONTEXT] — [STAT] — [REASON] — [OUTCOME + TIMEFRAME]
 
-CRITICAL: The recommendation style must match the card's PRISM bucket — use the exact framework below for each bucket:
+① ACTION   — specific verb + what to do + on which channel/format
+② CONTEXT  — who the audience is, where they are, what category/platform this applies to
+③ STAT     — the exact number from the data that justifies the action (%, ×, YoY, volume, rank)
+④ REASON   — the human behavior or insight behind the stat (why people do this)
+⑤ OUTCOME  — what measurable success looks like + when to measure it
 
-━━━ 📝 CONTENT BUCKET ━━━
-Focus: What to create, which format, which platform, what story angle
-Action verbs: Produce, Develop, Brief agency on, Film, Publish, Build a series
-Channels: YouTube, Instagram Reels, TikTok, blog, podcast, OTT
-Outcome metrics: engagement rate, watch time, saves, shares, organic reach
-Example: "Produce a 6-part YouTube series on [specific topic] targeting [audience searching X] — brief on [specific creative angle] — aim for [X]% engagement lift within 90 days"
+━━━ 📝 CONTENT BUCKET — format: [ACTION on channel/format] for [CONTEXT audience], where [STAT] shows [REASON] — target [OUTCOME] in [TIMEFRAME] ━━━
+Action verbs: Produce, Develop, Brief agency on, Film, Publish, Build a series around
+Context elements: audience demographic, platform (YouTube/Reels/TikTok/OTT), content category
+Stat usage: search volume, engagement rate, YoY growth, view count, saves
+Reason: what human need/emotion drives them to consume this content
+Outcome: engagement rate lift, watch time, saves, shares, subscriber growth
+✅ "Produce a weekly YouTube series on [topic] for [audience] on [platform] — [X]% of them already search for this before buying — because they need education before trust — target [X]% watch-time lift within 60 days"
 
-━━━ 🛒 COMMERCE BUCKET ━━━
-Focus: Listings, keywords, pricing signals, search visibility, conversion
-Action verbs: Rewrite, Bid on, A/B test, Restructure, Optimise listing for, Prioritise
-Channels: Amazon, Google Shopping, D2C site, retail shelf, search ads
-Outcome metrics: CTR, conversion rate, ranking position, ROAS, revenue per listing
-Example: "Rewrite top [X] listing titles to lead with [symptom/use-case] keywords — test against current titles — target [X]% CTR improvement within 30 days"
+━━━ 🛒 COMMERCE BUCKET — format: [ACTION on listing/keyword] for [CONTEXT product/category], where [STAT] shows [REASON] — target [OUTCOME] in [TIMEFRAME] ━━━
+Action verbs: Rewrite, Bid on, A/B test, Restructure, Prioritise, Optimise
+Context elements: product category, platform (Amazon/Google Shopping/D2C), SKU or keyword group
+Stat usage: CTR, search volume, conversion rate, average images, ranking position
+Reason: what purchase behavior or search intent the stat reveals
+Outcome: CTR lift, conversion rate improvement, ranking position, ROAS
+✅ "Rewrite [X] listing titles for [product] on [platform] to lead with [use-case/symptom] — [X]% of shoppers search by symptom not brand — because they are solving a problem, not buying a name — target [X]% CTR lift within 30 days"
 
-━━━ 📢 COMMUNICATION BUCKET ━━━
-Focus: Messaging, tone, campaign theme, media strategy, brand voice, copy angles
-Action verbs: Shift messaging to, Brief creative on, Lead campaign with, Reposition, Test copy
-Channels: OOH, TVC, digital display, social ads, influencer, PR
-Outcome metrics: brand recall, message resonance, awareness lift, media efficiency (CPM/CPC)
-Example: "Shift [X]% of campaign messaging from [old angle] to [new angle] — brief creative on [specific human truth from data] — measure recall lift in next brand tracker"
+━━━ 📢 COMMUNICATION BUCKET — format: [ACTION on messaging/media] for [CONTEXT campaign/audience], where [STAT] shows [REASON] — target [OUTCOME] in [TIMEFRAME] ━━━
+Action verbs: Shift, Brief creative on, Reposition, Lead campaign with, Test copy angle, Reallocate
+Context elements: campaign name/type, media channel (OOH/TVC/social/PR), audience segment
+Stat usage: awareness score, message recall, share of voice, search volume, brand lift
+Reason: what the data tells us about how the audience currently perceives or ignores the brand
+Outcome: brand recall lift, message resonance score, awareness, CPM efficiency
+✅ "Shift [X]% of [campaign] media budget from [old message] to [new angle] for [audience] — [X]% of searches are [intent-driven not brand-driven] — because [audience] decides on [factor], not loyalty — measure recall lift in next brand tracker within 90 days"
 
-━━━ 🌍 CULTURE BUCKET ━━━
-Focus: Trends, values, community, cultural moments, long-term brand relevance
+━━━ 🌍 CULTURE BUCKET — format: [ACTION on trend/community/moment] for [CONTEXT brand/audience], where [STAT] shows [REASON] — target [OUTCOME] in [TIMEFRAME] ━━━
 Action verbs: Partner with, Tap into, Align brand to, Sponsor, Build community around, Respond to
-Channels: events, creator partnerships, social movements, PR, community platforms
-Outcome metrics: brand affinity, cultural relevance score, community growth, earned media
-Example: "Partner with [specific community/creator type] around [cultural moment] — respond to [trend from data] before it peaks — target [X]% lift in brand affinity among [audience]"
+Context elements: cultural trend, community type, creator profile, moment or movement
+Stat usage: trend growth %, search surge, community size, YoY interest spike
+Reason: what cultural shift or values change is driving the trend
+Outcome: brand affinity score, earned media value, community growth, cultural relevance
+✅ "Partner with [creator/community type] around [cultural moment] for [brand] — [X]% growth in [trend] signals [audience] now values [shift] — because [human truth behind culture trend] — target [X]% brand affinity lift among [audience] within 6 months"
 
 ━━━ UNIVERSAL RULES ━━━
-• Always tie the recommendation directly to a number from the observation
-• Be specific: name the channel, name the format, name the audience
-• No jargon: ban leverage, synergy, touchpoint, utilise, holistic, robust
-• One recommendation per card — not a list, one sharp action sentence
-• Observation: 2 sentences, plain English, human behavior + a number
+• Every rec must contain a real stat from the observation — no vague numbers
+• Be specific: always name the channel, the audience, the format
+• No jargon: ban leverage, synergy, touchpoint, utilise, holistic, robust, significant
+• One recommendation per card — one sharp sentence (2 sentences max)
+• Observation: 2 sentences, plain English, real human behavior + specific number from data
 
 Dataset: ${context}
 
@@ -676,7 +684,7 @@ Charts:
 ${charts.map((c, i) => `${i + 1}. Bucket: ${(c.bucket || 'content').toUpperCase()} | Title: "${c.title}" | Obs: "${c.obs || 'N/A'}" | Rec: "${c.rec || 'N/A'}"`).join('\n')}
 
 Return ONLY a valid JSON array, one object per chart:
-[{"obs": "2 sentences with human behavior + stat", "rec": "specific action + data reason + measurable outcome + timeframe", "stat": "one short highlight stat"}, ...]`;
+[{"obs": "2 sentences: human behavior + specific stat from data", "rec": "action + context + stat + reason + outcome + timeframe", "stat": "one punchy highlight stat (e.g. '1,257% YoY' or '3× category average')"}, ...]`;
 
     const result = await callGeminiWithRetry(model, prompt);
     const text   = result.response.text();
