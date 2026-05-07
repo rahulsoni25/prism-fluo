@@ -554,39 +554,55 @@ export async function enhanceInsightTitles(
 
   try {
     const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const prompt = `You are a Senior Strategist writing insight headlines for brand and media teams.
+    const prompt = `You are a world-class Brand Strategist and editorial writer crafting insight headlines for senior marketing teams.
 
-Every headline MUST follow this exact 4-part formula in one sentence (max 16 words):
-[MAIN INSIGHT] + [CONTEXT] + [HOOK] + [STAT]
+Every headline contains 5 elements — but you can arrange them in ANY of these permutations to keep variety across cards:
 
-Formula rules:
-• MAIN INSIGHT — the single most important finding (what is happening)
-• CONTEXT — who/where/when this applies (the brand, category, or audience)
-• HOOK — the surprising angle or implication that makes it actionable
-• STAT — one concrete number from the data (%, X times, YoY, rank, volume)
+━━━ THE 5 ELEMENTS ━━━
+① MAIN INSIGHT   — the single sharpest finding (what is really happening)
+② CONTEXT        — who/where/when (brand, audience, platform, category, geography)
+③ HOOK           — the tension, surprise, or implication that makes a strategist sit up
+④ STAT           — one real, concrete number from the data (%, ×, YoY, rank, volume)
+⑤ HUMANIZE       — a real human behavior, emotion, or decision behind the number
+                   (e.g. "because runners fear injury", "as shoppers scroll past vague titles",
+                    "while parents search for symptom relief at midnight")
 
-Strict rules:
-• Always end with or embed a real stat from the observation
-• No jargon: ban over-index, leverage, cohort, synergy, touchpoint, utilise
-• Write like a Bloomberg or Economist headline — sharp, specific, confident
-• Never use vague words: "significant", "notable", "interesting", "various"
+━━━ PERMUTATION PATTERNS (rotate across cards, never repeat same structure twice) ━━━
+Pattern A — HOOK first:  "[Surprising behavior] — [Who] [What they do], [Stat]"
+Pattern B — STAT first:  "[Stat]: [Why humans do this] — [Brand/Category implication]"
+Pattern C — HUMAN first: "[Human emotion/behavior] drives [Main insight] — [Stat] [Context]"
+Pattern D — TENSION:     "[Old assumption] is wrong — [New reality], [Stat] [Who]"
+Pattern E — QUESTION:    "Why are [Human behavior]? [Answer] — [Stat] in [Context]"
+Pattern F — CONSEQUENCE: "[Stat] [Who] now [behavior] — [Brand] must [implication]"
 
-✅ GOOD examples:
-"Advil Shoppers Search by Symptom, Not Brand — 'Sinus Relief' Queries Up 3× YoY"
-"Visual Listings Win on Amazon: Advil Products Average 20 Images, Doubling Category Norm"
-"India's Runners Abandon Generic Shoes — 'Overpronation' Searches Surge 1,257% in 12 Months"
+━━━ STRICT RULES ━━━
+• Every headline must have a real stat embedded — no exceptions
+• Max 18 words
+• No jargon: ban over-index, leverage, cohort, synergy, touchpoint, utilise, significant, notable
+• Use active voice — people do things, not "there is a trend toward"
+• Humanize with verbs of real behavior: search, scroll, skip, switch, fear, trust, choose, avoid
+• Sound like a Bloomberg cover story, not a consulting deck
 
-❌ BAD examples:
-"Visuals Drive Discovery, Advil Listings Loaded with Detail"  ← no stat, vague hook
-"Shoppers Expect Product Specifics in Listing Titles"  ← no stat, no context, no hook
+━━━ EXAMPLES BY PATTERN ━━━
+Pattern A: "Runners Are Googling Their Injuries, Not Their Shoes — 'Overpronation' Up 1,257% YoY"
+Pattern B: "23 Images Per Listing: Advil Shoppers Scroll Until They Trust What They're Buying"
+Pattern C: "Fear of Buying the Wrong Size Pushes Nike Shoppers to Reviews First — 68% Check Before Adding to Cart"
+Pattern D: "Brand Loyalty Is Not Why They Buy — 74% of Advil Searches Are Symptom-Led, Not Name-Led"
+Pattern E: "Why Do Shoppers Ignore Generic Titles? Specific SKU Names Drive 3× More Clicks on Amazon"
+Pattern F: "1 in 3 HOKA Shoppers Discovered the Brand This Quarter — Awareness Is Now the Biggest Growth Lever"
+
+━━━ BAD EXAMPLES ━━━
+"Visuals Drive Discovery, Advil Listings Loaded with Detail"  ← no stat, no human behavior
+"Shoppers Expect Product Specifics in Listing Titles"  ← vague, no stat, no hook, no human
+"India's Runners Demand Specialized Shoes"  ← too generic, missing stat and humanize
 
 Dataset: ${context}
 
 Charts:
 ${charts.map((c, i) => `${i + 1}. Type: ${c.type} | Label: "${c.lbl || ''}" | Current: "${c.title}" | Observation: "${c.obs || ''}"`).join('\n')}
 
-Return ONLY a valid JSON array of strings, one per chart, following the formula exactly.
-Example: ["Main Insight — Context Hook, Stat%", "Main Insight — Context Hook, Stat×"]`;
+IMPORTANT: Use a DIFFERENT pattern for each card. Return ONLY a valid JSON array of strings, one title per chart.
+Example: ["Pattern A title with stat", "Pattern B title with stat", "Pattern C title with stat"]`;
 
     const result = await callGeminiWithRetry(model, prompt);
     const text   = result.response.text();
