@@ -818,11 +818,6 @@ function AnalysisDetail({ id }) {
         </div>
       </div>
 
-      {/* ── Executive Summary (SMART Framework) ── */}
-      <div className="insights-body">
-        <ExecutiveSummaryPanel analysisId={id} />
-      </div>
-
       {/* ── Body ──
           When printing, render every non-empty bucket stacked so the print
           dialog produces a complete report. When not printing, render only
@@ -903,9 +898,20 @@ function AnalysisDetail({ id }) {
         <SourceFilesPanel briefId={analysis.brief?.id} />
       </div>
 
-      {/* Tools-used panel — shows the contributing platforms */}
+      {/* Tools-used panel — HIDDEN per design decision (2026-05-07).
+          The panel and ToolsUsedPanel function are kept in the file in case
+          we want to re-enable them later, but no longer rendered. */}
+      {false && (
+        <div className="insights-body" style={{ paddingTop: 0 }}>
+          <ToolsUsedPanel charts={charts} />
+        </div>
+      )}
+
+      {/* ── Executive Summary (Footer) — SMART Framework ──
+          Moved from top to bottom so users see the full chart-driven
+          narrative first, then a recap of objective / key findings / actions. */}
       <div className="insights-body" style={{ paddingTop: 0 }}>
-        <ToolsUsedPanel charts={charts} />
+        <ExecutiveSummaryPanel analysisId={id} />
       </div>
 
       {/* Floating PRISM Copilot — grounded in this analysis. Wrapped so
