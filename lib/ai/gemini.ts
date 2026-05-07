@@ -556,43 +556,56 @@ export async function enhanceInsightTitles(
     const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const prompt = `You are a world-class Brand Strategist and editorial writer crafting insight headlines for senior marketing teams.
 
-Every headline contains 5 elements — but you can arrange them in ANY of these permutations to keep variety across cards:
+Every headline uses these 5 elements:
+① MAIN INSIGHT — the sharpest finding (what is really happening)
+② CONTEXT      — who/where/when (brand, audience, platform, category, geography)
+③ HOOK         — the tension, surprise, or implication that makes a strategist sit up
+④ STAT         — one real concrete number from the data (%, ×, YoY, rank, volume)
+⑤ HUMANIZE     — a real human behavior, emotion, or decision behind the number
 
-━━━ THE 5 ELEMENTS ━━━
-① MAIN INSIGHT   — the single sharpest finding (what is really happening)
-② CONTEXT        — who/where/when (brand, audience, platform, category, geography)
-③ HOOK           — the tension, surprise, or implication that makes a strategist sit up
-④ STAT           — one real, concrete number from the data (%, ×, YoY, rank, volume)
-⑤ HUMANIZE       — a real human behavior, emotion, or decision behind the number
-                   (e.g. "because runners fear injury", "as shoppers scroll past vague titles",
-                    "while parents search for symptom relief at midnight")
+━━━ STEP 1 — READ THE INSIGHT, THEN PICK THE RIGHT PATTERN ━━━
+Do NOT rotate patterns randomly. Read each chart's observation and choose the pattern that BEST fits the nature of that insight:
 
-━━━ PERMUTATION PATTERNS (rotate across cards, never repeat same structure twice) ━━━
-Pattern A — HOOK first:  "[Surprising behavior] — [Who] [What they do], [Stat]"
-Pattern B — STAT first:  "[Stat]: [Why humans do this] — [Brand/Category implication]"
-Pattern C — HUMAN first: "[Human emotion/behavior] drives [Main insight] — [Stat] [Context]"
-Pattern D — TENSION:     "[Old assumption] is wrong — [New reality], [Stat] [Who]"
-Pattern E — QUESTION:    "Why are [Human behavior]? [Answer] — [Stat] in [Context]"
-Pattern F — CONSEQUENCE: "[Stat] [Who] now [behavior] — [Brand] must [implication]"
+Pattern A — HOOK FIRST → use when: behavior is surprising or counterintuitive
+  Structure: "[Surprising behavior] — [Who + What they do], [Stat]"
+  Signal words in data: "despite", "instead of", "rather than", "avoiding", "ignoring"
+  Example: "Runners Are Googling Their Injuries, Not Their Shoes — 'Overpronation' Up 1,257% YoY"
 
-━━━ STRICT RULES ━━━
-• Every headline must have a real stat embedded — no exceptions
+Pattern B — STAT FIRST → use when: the number itself is the most shocking element
+  Structure: "[Stat]: [Why humans do this] — [Brand/Category implication]"
+  Signal words in data: a very large %, a multiple (3×, 10×), or a rank that shocks
+  Example: "23 Images Per Listing: Advil Shoppers Scroll Until They Trust What They're Buying"
+
+Pattern C — HUMAN FIRST → use when: emotion or fear is the real driver
+  Structure: "[Human emotion/behavior] drives [Main insight] — [Stat] [Context]"
+  Signal words in data: "fear", "trust", "prefer", "choose", "avoid", "worry"
+  Example: "Fear of Buying Wrong Size Pushes Shoppers to Reviews First — 68% Check Before Adding to Cart"
+
+Pattern D — TENSION → use when: data contradicts what brands/industry currently believe or do
+  Structure: "[Old assumption] is wrong — [New reality], [Stat] [Who]"
+  Signal words in data: gap between brand behavior and consumer behavior, unexpected reversal
+  Example: "Brand Loyalty Is Not Why They Buy — 74% of Advil Searches Are Symptom-Led, Not Name-Led"
+
+Pattern E — QUESTION → use when: the finding raises an obvious "but why?" that needs answering
+  Structure: "Why [Human behavior]? [Answer] — [Stat] in [Context]"
+  Signal words in data: an unexplained pattern, a trend that needs a cause
+  Example: "Why Do Shoppers Ignore Generic Titles? Specific SKU Names Drive 3× More Clicks on Amazon"
+
+Pattern F — CONSEQUENCE → use when: the stat signals a trend that demands brand action NOW
+  Structure: "[Stat] [Who] now [behavior] — [Brand/Category] must [implication]"
+  Signal words in data: rapid growth, first-time behavior, window closing, competitive shift
+  Example: "1 in 3 HOKA Shoppers Discovered the Brand This Quarter — Awareness Is the Biggest Growth Lever"
+
+━━━ STEP 2 — WRITE THE HEADLINE ━━━
 • Max 18 words
+• Always embed the real stat from the observation
+• Active voice — people do things, not "there is a trend toward"
+• Humanize with real behavior verbs: search, scroll, skip, switch, fear, trust, choose, avoid, discover
+• Sound like Bloomberg or The Economist — sharp, specific, confident
 • No jargon: ban over-index, leverage, cohort, synergy, touchpoint, utilise, significant, notable
-• Use active voice — people do things, not "there is a trend toward"
-• Humanize with verbs of real behavior: search, scroll, skip, switch, fear, trust, choose, avoid
-• Sound like a Bloomberg cover story, not a consulting deck
-
-━━━ EXAMPLES BY PATTERN ━━━
-Pattern A: "Runners Are Googling Their Injuries, Not Their Shoes — 'Overpronation' Up 1,257% YoY"
-Pattern B: "23 Images Per Listing: Advil Shoppers Scroll Until They Trust What They're Buying"
-Pattern C: "Fear of Buying the Wrong Size Pushes Nike Shoppers to Reviews First — 68% Check Before Adding to Cart"
-Pattern D: "Brand Loyalty Is Not Why They Buy — 74% of Advil Searches Are Symptom-Led, Not Name-Led"
-Pattern E: "Why Do Shoppers Ignore Generic Titles? Specific SKU Names Drive 3× More Clicks on Amazon"
-Pattern F: "1 in 3 HOKA Shoppers Discovered the Brand This Quarter — Awareness Is Now the Biggest Growth Lever"
 
 ━━━ BAD EXAMPLES ━━━
-"Visuals Drive Discovery, Advil Listings Loaded with Detail"  ← no stat, no human behavior
+"Visuals Drive Discovery, Advil Listings Loaded with Detail"  ← no stat, no human behavior, wrong pattern
 "Shoppers Expect Product Specifics in Listing Titles"  ← vague, no stat, no hook, no human
 "India's Runners Demand Specialized Shoes"  ← too generic, missing stat and humanize
 
@@ -601,8 +614,9 @@ Dataset: ${context}
 Charts:
 ${charts.map((c, i) => `${i + 1}. Type: ${c.type} | Label: "${c.lbl || ''}" | Current: "${c.title}" | Observation: "${c.obs || ''}"`).join('\n')}
 
-IMPORTANT: Use a DIFFERENT pattern for each card. Return ONLY a valid JSON array of strings, one title per chart.
-Example: ["Pattern A title with stat", "Pattern B title with stat", "Pattern C title with stat"]`;
+For each chart: read the observation carefully, pick the pattern that fits the nature of the insight, then write the headline.
+Return ONLY a valid JSON array of strings, one title per chart — no pattern labels, just the headlines.
+Example: ["headline 1", "headline 2", "headline 3"]`;
 
     const result = await callGeminiWithRetry(model, prompt);
     const text   = result.response.text();
@@ -630,71 +644,75 @@ export async function enhanceInsightNarratives(
     const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const prompt = `You are a Senior Brand Strategist writing insight cards for marketing teams.
 
-━━━ THE 7-ELEMENT FRAMEWORK ━━━
-Every OBSERVATION and RECOMMENDATION uses these elements. Not all 7 are forced every time — use TENSION and QUESTION MARK only when the data genuinely supports them.
+━━━ STEP 1 — READ THE INSIGHT, IDENTIFY ITS NATURE, PICK THE RIGHT PATTERN ━━━
+Before writing, decide which pattern best fits this specific insight's data:
 
-① ACTION      — specific verb + what to do + on which channel/format  [ALWAYS in rec]
-② CONTEXT     — who the audience is, platform, category, geography     [ALWAYS in both]
-③ STAT        — exact number from the data (%, ×, YoY, volume, rank)  [ALWAYS in both]
-④ REASON      — the human behavior or emotion behind the stat          [ALWAYS in both]
-⑤ OUTCOME     — measurable success metric + timeframe                  [ALWAYS in rec]
-⑥ TENSION     — the contradiction or paradox in the data               [USE when data shows an unexpected conflict — e.g. brand spends on X but consumers want Y]
-⑦ QUESTION ?  — a rhetorical question that creates curiosity or urgency [USE when the finding raises an obvious "but why?" or "so what now?" that pulls the reader in]
+Pattern A — HOOK FIRST    → insight has a surprising/counterintuitive behavior
+Pattern B — STAT FIRST    → the number itself is the most striking element
+Pattern C — HUMAN FIRST   → emotion or fear is the real driver behind the data
+Pattern D — TENSION       → data contradicts what the brand/industry currently does
+Pattern E — QUESTION      → finding raises an obvious "but why?" that needs answering
+Pattern F — CONSEQUENCE   → stat signals a trend demanding brand action NOW
 
-━━━ WHEN TO USE TENSION (⑥) ━━━
-Use TENSION when:
-• The data contradicts a common assumption ("brands invest in X, but shoppers ignore it")
-• There's a gap between brand behavior and consumer behavior
-• A rising trend conflicts with how the category currently operates
-• The stat reveals something the brand is NOT doing but should be
-Format: Embed as "Despite [expected behavior], [what data actually shows] — [STAT]"
-Or: "While [brand/industry does X], [audience actually does Y] — [STAT]"
+━━━ STEP 2 — WRITE OBSERVATION using the chosen pattern ━━━
+All observations MUST include: CONTEXT + STAT + REASON (always)
+Add TENSION when: brand/industry behavior contradicts what data shows
+Add QUESTION when: finding is counterintuitive enough to demand "why?" or "what now?"
 
-━━━ WHEN TO USE QUESTION MARK (⑦) ━━━
-Use QUESTION MARK when:
-• The observation raises an obvious strategic question the team needs to answer
-• The finding is counterintuitive and deserves a "wait — why?" moment
-• The recommendation needs urgency ("if not now, when?")
-• The stat is so striking it demands a reaction
-Format in OBS: Lead with "Why are [audience] doing X?" then answer it
-Format in REC: End with "If [brand] doesn't act now, who will?" or "The question is not whether — it's how fast."
+Pattern A obs: "[Surprising behavior that humans do] — [Stat] — [Context why this matters]"
+Pattern B obs: "[Stat] — [What this means about human behavior] — [Context/category implication]"
+Pattern C obs: "[Human emotion/fear] is driving [behavior] — [Stat] in [Context] — [why this is the real story]"
+Pattern D obs: "[What the industry/brand assumes] — but [what data actually shows], [Stat]. [TENSION: gap between assumption and reality]"
+Pattern E obs: "Why are [audience] doing [behavior]? [Answer] — [Stat] in [Context]. [What this reveals about human decision-making]"
+Pattern F obs: "[Stat] of [audience] now [behavior] in [Context] — [what this signals for the category going forward]"
 
-━━━ 📝 CONTENT BUCKET ━━━
-Obs format: [What audience does/consumes] + [STAT] + [REASON/human emotion] + [TENSION if brand isn't making this content] + [QUESTION if behavior is surprising]
-Rec format: [ACTION: Produce/Develop/Film] + [CONTEXT: platform, audience, format] + [STAT justifying it] + [REASON] + [OUTCOME + TIMEFRAME] + [TENSION if brand is missing this] + [QUESTION if urgency needed]
-✅ With tension+question: "Produce a YouTube series on overpronation for Indian runners — 1,257% search surge signals they are self-diagnosing before they buy. Despite this, most brands still lead with brand stories, not solutions. Why does the audience know more about their feet than the brands selling to them? Brief on symptom-education content — target 40% watch-time lift in 90 days."
+━━━ STEP 3 — WRITE RECOMMENDATION using the same pattern + 7 elements ━━━
+① ACTION  — specific verb + what to do + channel/format         [always]
+② CONTEXT — audience + platform + category                      [always]
+③ STAT    — exact number justifying the action                  [always]
+④ REASON  — human behavior/emotion behind the stat              [always]
+⑤ OUTCOME — measurable success metric + timeframe               [always]
+⑥ TENSION — contradiction between what brand does vs must do    [when Pattern D or gap exists]
+⑦ QUESTION— rhetorical urgency or "if not now, when?"           [when Pattern E or F, or competitive window closing]
 
-━━━ 🛒 COMMERCE BUCKET ━━━
-Obs format: [What shoppers search/click/avoid] + [STAT] + [REASON: what they are really trying to solve] + [TENSION if listings don't match intent] + [QUESTION if gap is striking]
-Rec format: [ACTION: Rewrite/Bid/A/B test] + [CONTEXT: platform, product, keyword group] + [STAT] + [REASON] + [OUTCOME + TIMEFRAME] + [TENSION if brand copy mismatches] + [QUESTION if competitive window is closing]
-✅ With tension+question: "Rewrite Advil's top 5 Amazon titles to lead with 'Sinus Relief', 'Fever', 'Headache' — 74% of searches are symptom-led, not brand-led, because shoppers are solving a problem not choosing a brand. Yet current titles lead with the brand name. How long before a generic brand with better keyword copy wins this shelf? Target 20% CTR lift within 30 days."
+Pattern A rec: Lead with the surprising behavior → what brand must do to meet it → stat → outcome
+Pattern B rec: Lead with the stat → explain what it means for brand action → specific channel → outcome
+Pattern C rec: Lead with the human emotion → what content/message addresses it → stat → outcome
+Pattern D rec: Name the tension explicitly → what must change → stat proving why → outcome + timeframe
+Pattern E rec: Open with the question → answer it with a specific action → stat proving the answer → outcome
+Pattern F rec: State the consequence → urgent specific action → stat proving the window → outcome + timeframe
 
-━━━ 📢 COMMUNICATION BUCKET ━━━
-Obs format: [What audience responds to / ignores] + [STAT] + [REASON: what message they actually need] + [TENSION if current campaign says something different] + [QUESTION if brand is talking to itself]
-Rec format: [ACTION: Shift/Reposition/Brief] + [CONTEXT: media channel, campaign, audience] + [STAT] + [REASON] + [OUTCOME + TIMEFRAME] + [TENSION if old vs new message conflict] + [QUESTION if brand risks irrelevance]
-✅ With tension+question: "Shift 30% of campaign spend from brand-awareness to symptom-relief messaging for Advil on digital — search data shows 74% of buyers are in problem-solving mode, not brand-discovery mode. The brand is spending to be remembered, but the audience is spending to find a solution. Is the campaign talking to the right moment? Measure recall shift in next brand tracker within 60 days."
+━━━ BUCKET-SPECIFIC ACTIONS AND METRICS ━━━
+📝 CONTENT  → verbs: Produce/Develop/Film/Brief/Publish | metrics: engagement rate, watch time, saves, shares
+🛒 COMMERCE → verbs: Rewrite/Bid/A/B test/Optimise/Restructure | metrics: CTR, conversion, ROAS, ranking
+📢 COMMUNICATION → verbs: Shift/Reposition/Brief creative/Reallocate/Test copy | metrics: brand recall, message resonance, awareness
+🌍 CULTURE  → verbs: Partner/Tap into/Align/Sponsor/Build community | metrics: brand affinity, earned media, community growth
 
-━━━ 🌍 CULTURE BUCKET ━━━
-Obs format: [What cultural shift is happening] + [STAT] + [REASON: values or lifestyle change driving it] + [TENSION if brand hasn't moved with the culture] + [QUESTION if window to act is narrowing]
-Rec format: [ACTION: Partner/Align/Sponsor] + [CONTEXT: trend, community, creator type] + [STAT] + [REASON] + [OUTCOME + TIMEFRAME] + [TENSION if brand still anchored in old culture] + [QUESTION if missing this moment costs relevance]
-✅ With tension+question: "Partner with Indian running communities and physiotherapy creators around biomechanical fitness — 'overpronation' searches up 1,257% YoY signals runners are entering a new phase of self-awareness. Yet most shoe brands still talk speed, not safety. If ASICS and HOKA are already winning this conversation, how much longer can [brand] stay silent? Target 25% brand affinity lift among active runners in 6 months."
+━━━ EXAMPLES ━━━
+Pattern D (TENSION) for COMMERCE:
+Obs: "Advil shoppers search 'sinus relief' and 'fever reducer' before they search the brand name — 74% of purchase-intent queries are symptom-led. Yet Advil's top listings lead with the brand name, not the symptom. The copy is solving the wrong problem."
+Rec: "Rewrite Advil's top 5 Amazon listing titles to lead with symptom terms ('Sinus', 'Fever', 'Headache') for shoppers in active problem-solving mode — 74% search by symptom not brand, because they are treating a condition not buying a product. Current titles fight the wrong battle. Target 20% CTR lift within 30 days."
+
+Pattern F (CONSEQUENCE) for CULTURE:
+Obs: "1 in 3 HOKA buyers discovered the brand for the first time this quarter — awareness, not loyalty, is driving volume. This is a discovery window that closes fast once competitors move."
+Rec: "Build a 'just discovered you' welcome campaign for HOKA targeting first-time buyers across Instagram and YouTube — 33% of buyers are brand-new this quarter, because the running category is expanding beyond core athletes. If HOKA doesn't convert discovery into loyalty now, a more established brand will. Target 15% repeat purchase rate within 90 days."
 
 ━━━ UNIVERSAL RULES ━━━
-• STAT is non-negotiable — every obs and rec must embed a real number from the data
-• CONTEXT is non-negotiable — always name the audience, platform, or category
-• TENSION: only use when data genuinely shows a contradiction — don't force it
-• QUESTION MARK: only use when the finding is striking enough to demand a "why?" or "what now?" — don't overuse
-• No jargon: ban leverage, synergy, touchpoint, utilise, holistic, robust, significant, notable
-• Observation: 2–3 sentences max. Recommendation: 2–3 sentences max.
-• Write like a strategist briefing a CMO — sharp, direct, no filler
+• STAT and CONTEXT are non-negotiable — every sentence needs both
+• TENSION: only when data genuinely contradicts brand/industry behavior
+• QUESTION: only when insight is striking enough to demand "why?" or "what now?"
+• No jargon: ban leverage, synergy, touchpoint, utilise, holistic, robust, significant
+• Observation: 2–3 sentences. Recommendation: 2–3 sentences.
+• Sharp, direct — write like a strategist briefing a CMO, not writing a report
 
 Dataset: ${context}
 
 Charts:
 ${charts.map((c, i) => `${i + 1}. Bucket: ${(c.bucket || 'content').toUpperCase()} | Title: "${c.title}" | Obs: "${c.obs || 'N/A'}" | Rec: "${c.rec || 'N/A'}"`).join('\n')}
 
+For each chart: read the data, pick the pattern that fits, then write obs and rec using that pattern.
 Return ONLY a valid JSON array, one object per chart:
-[{"obs": "2-3 sentences with stat + context + reason + tension/question when warranted", "rec": "2-3 sentences with action + context + stat + reason + outcome + timeframe + tension/question when warranted", "stat": "one punchy highlight stat (e.g. '1,257% YoY' or '3× category norm')"}, ...]`;
+[{"obs": "2-3 sentences — pattern-matched, stat + context + reason + tension/question when warranted", "rec": "2-3 sentences — action + context + stat + reason + outcome + timeframe + tension/question when warranted", "stat": "one punchy highlight stat (e.g. '1,257% YoY' or '3× category norm')"}, ...]`;
 
     const result = await callGeminiWithRetry(model, prompt);
     const text   = result.response.text();
