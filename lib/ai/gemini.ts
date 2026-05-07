@@ -628,55 +628,65 @@ export async function enhanceInsightNarratives(
 
   try {
     const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const prompt = `You are a Senior Brand Strategist writing insight recommendations for marketing teams.
+    const prompt = `You are a Senior Brand Strategist writing insight cards for marketing teams.
 
-Every recommendation MUST contain all 5 elements in this order:
-[ACTION] — [CONTEXT] — [STAT] — [REASON] — [OUTCOME + TIMEFRAME]
+━━━ THE 7-ELEMENT FRAMEWORK ━━━
+Every OBSERVATION and RECOMMENDATION uses these elements. Not all 7 are forced every time — use TENSION and QUESTION MARK only when the data genuinely supports them.
 
-① ACTION   — specific verb + what to do + on which channel/format
-② CONTEXT  — who the audience is, where they are, what category/platform this applies to
-③ STAT     — the exact number from the data that justifies the action (%, ×, YoY, volume, rank)
-④ REASON   — the human behavior or insight behind the stat (why people do this)
-⑤ OUTCOME  — what measurable success looks like + when to measure it
+① ACTION      — specific verb + what to do + on which channel/format  [ALWAYS in rec]
+② CONTEXT     — who the audience is, platform, category, geography     [ALWAYS in both]
+③ STAT        — exact number from the data (%, ×, YoY, volume, rank)  [ALWAYS in both]
+④ REASON      — the human behavior or emotion behind the stat          [ALWAYS in both]
+⑤ OUTCOME     — measurable success metric + timeframe                  [ALWAYS in rec]
+⑥ TENSION     — the contradiction or paradox in the data               [USE when data shows an unexpected conflict — e.g. brand spends on X but consumers want Y]
+⑦ QUESTION ?  — a rhetorical question that creates curiosity or urgency [USE when the finding raises an obvious "but why?" or "so what now?" that pulls the reader in]
 
-━━━ 📝 CONTENT BUCKET — format: [ACTION on channel/format] for [CONTEXT audience], where [STAT] shows [REASON] — target [OUTCOME] in [TIMEFRAME] ━━━
-Action verbs: Produce, Develop, Brief agency on, Film, Publish, Build a series around
-Context elements: audience demographic, platform (YouTube/Reels/TikTok/OTT), content category
-Stat usage: search volume, engagement rate, YoY growth, view count, saves
-Reason: what human need/emotion drives them to consume this content
-Outcome: engagement rate lift, watch time, saves, shares, subscriber growth
-✅ "Produce a weekly YouTube series on [topic] for [audience] on [platform] — [X]% of them already search for this before buying — because they need education before trust — target [X]% watch-time lift within 60 days"
+━━━ WHEN TO USE TENSION (⑥) ━━━
+Use TENSION when:
+• The data contradicts a common assumption ("brands invest in X, but shoppers ignore it")
+• There's a gap between brand behavior and consumer behavior
+• A rising trend conflicts with how the category currently operates
+• The stat reveals something the brand is NOT doing but should be
+Format: Embed as "Despite [expected behavior], [what data actually shows] — [STAT]"
+Or: "While [brand/industry does X], [audience actually does Y] — [STAT]"
 
-━━━ 🛒 COMMERCE BUCKET — format: [ACTION on listing/keyword] for [CONTEXT product/category], where [STAT] shows [REASON] — target [OUTCOME] in [TIMEFRAME] ━━━
-Action verbs: Rewrite, Bid on, A/B test, Restructure, Prioritise, Optimise
-Context elements: product category, platform (Amazon/Google Shopping/D2C), SKU or keyword group
-Stat usage: CTR, search volume, conversion rate, average images, ranking position
-Reason: what purchase behavior or search intent the stat reveals
-Outcome: CTR lift, conversion rate improvement, ranking position, ROAS
-✅ "Rewrite [X] listing titles for [product] on [platform] to lead with [use-case/symptom] — [X]% of shoppers search by symptom not brand — because they are solving a problem, not buying a name — target [X]% CTR lift within 30 days"
+━━━ WHEN TO USE QUESTION MARK (⑦) ━━━
+Use QUESTION MARK when:
+• The observation raises an obvious strategic question the team needs to answer
+• The finding is counterintuitive and deserves a "wait — why?" moment
+• The recommendation needs urgency ("if not now, when?")
+• The stat is so striking it demands a reaction
+Format in OBS: Lead with "Why are [audience] doing X?" then answer it
+Format in REC: End with "If [brand] doesn't act now, who will?" or "The question is not whether — it's how fast."
 
-━━━ 📢 COMMUNICATION BUCKET — format: [ACTION on messaging/media] for [CONTEXT campaign/audience], where [STAT] shows [REASON] — target [OUTCOME] in [TIMEFRAME] ━━━
-Action verbs: Shift, Brief creative on, Reposition, Lead campaign with, Test copy angle, Reallocate
-Context elements: campaign name/type, media channel (OOH/TVC/social/PR), audience segment
-Stat usage: awareness score, message recall, share of voice, search volume, brand lift
-Reason: what the data tells us about how the audience currently perceives or ignores the brand
-Outcome: brand recall lift, message resonance score, awareness, CPM efficiency
-✅ "Shift [X]% of [campaign] media budget from [old message] to [new angle] for [audience] — [X]% of searches are [intent-driven not brand-driven] — because [audience] decides on [factor], not loyalty — measure recall lift in next brand tracker within 90 days"
+━━━ 📝 CONTENT BUCKET ━━━
+Obs format: [What audience does/consumes] + [STAT] + [REASON/human emotion] + [TENSION if brand isn't making this content] + [QUESTION if behavior is surprising]
+Rec format: [ACTION: Produce/Develop/Film] + [CONTEXT: platform, audience, format] + [STAT justifying it] + [REASON] + [OUTCOME + TIMEFRAME] + [TENSION if brand is missing this] + [QUESTION if urgency needed]
+✅ With tension+question: "Produce a YouTube series on overpronation for Indian runners — 1,257% search surge signals they are self-diagnosing before they buy. Despite this, most brands still lead with brand stories, not solutions. Why does the audience know more about their feet than the brands selling to them? Brief on symptom-education content — target 40% watch-time lift in 90 days."
 
-━━━ 🌍 CULTURE BUCKET — format: [ACTION on trend/community/moment] for [CONTEXT brand/audience], where [STAT] shows [REASON] — target [OUTCOME] in [TIMEFRAME] ━━━
-Action verbs: Partner with, Tap into, Align brand to, Sponsor, Build community around, Respond to
-Context elements: cultural trend, community type, creator profile, moment or movement
-Stat usage: trend growth %, search surge, community size, YoY interest spike
-Reason: what cultural shift or values change is driving the trend
-Outcome: brand affinity score, earned media value, community growth, cultural relevance
-✅ "Partner with [creator/community type] around [cultural moment] for [brand] — [X]% growth in [trend] signals [audience] now values [shift] — because [human truth behind culture trend] — target [X]% brand affinity lift among [audience] within 6 months"
+━━━ 🛒 COMMERCE BUCKET ━━━
+Obs format: [What shoppers search/click/avoid] + [STAT] + [REASON: what they are really trying to solve] + [TENSION if listings don't match intent] + [QUESTION if gap is striking]
+Rec format: [ACTION: Rewrite/Bid/A/B test] + [CONTEXT: platform, product, keyword group] + [STAT] + [REASON] + [OUTCOME + TIMEFRAME] + [TENSION if brand copy mismatches] + [QUESTION if competitive window is closing]
+✅ With tension+question: "Rewrite Advil's top 5 Amazon titles to lead with 'Sinus Relief', 'Fever', 'Headache' — 74% of searches are symptom-led, not brand-led, because shoppers are solving a problem not choosing a brand. Yet current titles lead with the brand name. How long before a generic brand with better keyword copy wins this shelf? Target 20% CTR lift within 30 days."
+
+━━━ 📢 COMMUNICATION BUCKET ━━━
+Obs format: [What audience responds to / ignores] + [STAT] + [REASON: what message they actually need] + [TENSION if current campaign says something different] + [QUESTION if brand is talking to itself]
+Rec format: [ACTION: Shift/Reposition/Brief] + [CONTEXT: media channel, campaign, audience] + [STAT] + [REASON] + [OUTCOME + TIMEFRAME] + [TENSION if old vs new message conflict] + [QUESTION if brand risks irrelevance]
+✅ With tension+question: "Shift 30% of campaign spend from brand-awareness to symptom-relief messaging for Advil on digital — search data shows 74% of buyers are in problem-solving mode, not brand-discovery mode. The brand is spending to be remembered, but the audience is spending to find a solution. Is the campaign talking to the right moment? Measure recall shift in next brand tracker within 60 days."
+
+━━━ 🌍 CULTURE BUCKET ━━━
+Obs format: [What cultural shift is happening] + [STAT] + [REASON: values or lifestyle change driving it] + [TENSION if brand hasn't moved with the culture] + [QUESTION if window to act is narrowing]
+Rec format: [ACTION: Partner/Align/Sponsor] + [CONTEXT: trend, community, creator type] + [STAT] + [REASON] + [OUTCOME + TIMEFRAME] + [TENSION if brand still anchored in old culture] + [QUESTION if missing this moment costs relevance]
+✅ With tension+question: "Partner with Indian running communities and physiotherapy creators around biomechanical fitness — 'overpronation' searches up 1,257% YoY signals runners are entering a new phase of self-awareness. Yet most shoe brands still talk speed, not safety. If ASICS and HOKA are already winning this conversation, how much longer can [brand] stay silent? Target 25% brand affinity lift among active runners in 6 months."
 
 ━━━ UNIVERSAL RULES ━━━
-• Every rec must contain a real stat from the observation — no vague numbers
-• Be specific: always name the channel, the audience, the format
-• No jargon: ban leverage, synergy, touchpoint, utilise, holistic, robust, significant
-• One recommendation per card — one sharp sentence (2 sentences max)
-• Observation: 2 sentences, plain English, real human behavior + specific number from data
+• STAT is non-negotiable — every obs and rec must embed a real number from the data
+• CONTEXT is non-negotiable — always name the audience, platform, or category
+• TENSION: only use when data genuinely shows a contradiction — don't force it
+• QUESTION MARK: only use when the finding is striking enough to demand a "why?" or "what now?" — don't overuse
+• No jargon: ban leverage, synergy, touchpoint, utilise, holistic, robust, significant, notable
+• Observation: 2–3 sentences max. Recommendation: 2–3 sentences max.
+• Write like a strategist briefing a CMO — sharp, direct, no filler
 
 Dataset: ${context}
 
@@ -684,7 +694,7 @@ Charts:
 ${charts.map((c, i) => `${i + 1}. Bucket: ${(c.bucket || 'content').toUpperCase()} | Title: "${c.title}" | Obs: "${c.obs || 'N/A'}" | Rec: "${c.rec || 'N/A'}"`).join('\n')}
 
 Return ONLY a valid JSON array, one object per chart:
-[{"obs": "2 sentences: human behavior + specific stat from data", "rec": "action + context + stat + reason + outcome + timeframe", "stat": "one punchy highlight stat (e.g. '1,257% YoY' or '3× category average')"}, ...]`;
+[{"obs": "2-3 sentences with stat + context + reason + tension/question when warranted", "rec": "2-3 sentences with action + context + stat + reason + outcome + timeframe + tension/question when warranted", "stat": "one punchy highlight stat (e.g. '1,257% YoY' or '3× category norm')"}, ...]`;
 
     const result = await callGeminiWithRetry(model, prompt);
     const text   = result.response.text();
