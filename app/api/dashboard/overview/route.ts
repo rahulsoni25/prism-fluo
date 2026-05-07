@@ -129,7 +129,7 @@ export async function GET() {
     ]);
 
     const raw = statsRes.rows[0];
-    const stats = {
+    let stats = {
       total:      parseInt(raw.total,      10),
       ready:      parseInt(raw.ready,      10),
       processing: parseInt(raw.processing, 10),
