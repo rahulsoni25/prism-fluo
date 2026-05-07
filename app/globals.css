@@ -148,7 +148,9 @@ textarea {resize:vertical;min-height:80px}
 .proc-sub {color:#94A3B8;font-size:13px}
 .eta-pill {display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:30px;padding:8px 20px;margin-top:18px;font-size:13px}
 .platform-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
-.plat-card {background:#fff;border-radius:13px;padding:18px;box-shadow:var(--shadow);border-left:4px solid var(--border);transition:border-color .3s}
+.plat-card {background:#fff;border-radius:13px;padding:18px;box-shadow:var(--shadow);border-left:4px solid var(--border);transition:border-color .3s,transform .2s ease,box-shadow .2s ease;cursor:pointer}
+.plat-card:hover {transform:translateY(-3px);box-shadow:0 10px 30px rgba(0,0,0,0.13)}
+.plat-card.expanded {border-left-width:5px}
 .plat-card.complete {border-left-color:#059669}
 .plat-card.fetching {border-left-color:#2563EB}
 .plat-card.connecting {border-left-color:#D97706}
@@ -157,12 +159,31 @@ textarea {resize:vertical;min-height:80px}
 .plat-left {display:flex;align-items:center;gap:10px}
 .plat-nm {font-size:13px;font-weight:700}
 .plat-desc {font-size:11px;color:var(--muted);margin-bottom:10px}
-.plat-status {font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.plat-status {font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
 .s-complete {background:#D1FAE5;color:#065F46}
-.s-fetching {background:#DBEAFE;color:#1D4ED8}
-.s-connecting {background:#FEF3C7;color:#92400E}
+.s-fetching {background:#DBEAFE;color:#1D4ED8;animation:badge-pulse 1.6s ease-in-out infinite}
+.s-connecting {background:#FEF3C7;color:#92400E;animation:badge-pulse 2s ease-in-out infinite}
 .s-queued {background:#F1F5F9;color:#64748B}
 .plat-note {font-size:10px;color:var(--muted);margin-top:6px}
+.plat-expand {margin-top:12px;padding:12px;background:#F8FAFC;border-radius:8px;border:1px solid #E2E8F0;animation:fadeInUp .25s ease both}
+.plat-expand-row {display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-bottom:5px}
+.plat-expand-row:last-child {margin-bottom:0}
+/* New Brief form — platform sidebar states */
+.platform-dot {width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:background .4s ease,box-shadow .4s ease}
+.platform-dot.active {background:#059669;box-shadow:0 0 0 3px rgba(5,150,105,.18)}
+.platform-dot.pending {background:#CBD5E1}
+.platform-row {display:flex;align-items:center;gap:8px;margin-bottom:10px;transition:opacity .4s ease}
+.platform-row.active {opacity:1}
+.platform-row.pending {opacity:.5}
+.platform-source-bar {margin-bottom:14px;padding:8px 12px;border-radius:8px;border:1px solid #E2E8F0;background:#F8FAFC;display:flex;align-items:center;justify-content:space-between;transition:all .3s ease}
+.platform-source-bar.has-active {background:#EFF6FF;border-color:#BFDBFE}
+.platform-source-bar.all-active {background:#ECFDF5;border-color:#A7F3D0}
+.platform-ready-banner {margin-top:14px;padding:10px 12px;background:linear-gradient(135deg,#ECFDF5,#D1FAE5);border:1px solid #A7F3D0;border-radius:8px;font-size:11px;color:#065F46;font-weight:700;animation:fadeInUp .35s ease both}
+/* Elapsed timer pill */
+.elapsed-pill {display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:11px;color:#94A3B8;margin-top:10px}
+/* Pulsing dot inside status badges */
+@keyframes badge-pulse {0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes dot-activate {0%{transform:scale(.6);opacity:0}60%{transform:scale(1.4)}100%{transform:scale(1);opacity:1}}
 .bucket-progress-grid {display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
 .bucket-prog-card {background:#F8FAFC;border-radius:12px;padding:16px;text-align:center}
 .bpc-icon {font-size:22px;margin-bottom:8px}

@@ -5,8 +5,20 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { PLATFORMS_DATA } from '@/lib/data';
 import { formatSlaBadge } from '@/lib/sla';
 
-const SL = { complete: '✓ Complete', fetching: '⟳ Fetching', connecting: '⟳ Connecting', queued: '○ Queued' };
+const SL = { complete: '● Complete', fetching: '⟳ Fetching', connecting: '⟳ Connecting', queued: '○ Queued' };
 const SC = { complete: 's-complete', fetching: 's-fetching', connecting: 's-connecting', queued: 's-queued' };
+
+// Extra detail shown when a card is expanded (click to reveal)
+const PLATFORM_DETAILS = {
+  'Global Web Index (GWI)':      { metrics: ['14.2M respondents profiled', '47 psychographic signals', '8 audience segments built'], tip: 'Audience profile ready for content strategy' },
+  'Comscore':                    { metrics: ['8.4B digital touchpoints', '92% market reach coverage', 'Cross-device deduplication'], tip: 'Audience overlap with competitors detected' },
+  'SimilarWeb':                  { metrics: ['Crawling 14 competitor domains', 'Traffic gap analysis in progress', 'Channel mix comparison'], tip: 'Share-of-traffic benchmark being computed' },
+  'Google Trends':               { metrics: ['24-month search history fetched', 'Seasonality index calculated', 'Category trend mapped'], tip: 'Trend peak in past 4 weeks — good timing' },
+  'Google Insights Finder':      { metrics: ['Consumer intent signals loading', 'Interest affinity mapping', 'Audience interest clusters'], tip: 'API handshake in progress — ~2 min' },
+  'Brandwatch Sentiment':        { metrics: ['2.3M brand mentions processed', 'Share of voice calculated', 'Sentiment by channel split'], tip: 'Net sentiment positive at +68% this quarter' },
+  'Helium10':                    { metrics: ['Amazon keyword index queued', 'Category rank data queued', 'Starts after GWI + Comscore'], tip: 'Slot reserved — processing starts in ~2 hrs' },
+  'Google Keyword':              { metrics: ['500 high-intent keywords mapped', 'CPC benchmarks captured', 'Competitor keyword gaps listed'], tip: 'Top-of-funnel opportunities identified' },
+};
 
 const BUCKET_DEFS = [
   { icon: '📝', name: 'Content',       color: 'linear-gradient(90deg,#2563EB,#60A5FA)' },
@@ -23,6 +35,8 @@ function ProcessingInner() {
   const [brief, setBrief] = useState(null);
   const [widths, setWidths] = useState(PLATFORMS_DATA.map(p => p.pct));
   const [bucketPcts, setBucketPcts] = useState([45, 28, 60, 15]);
+  const [expandedCard, setExpandedCard] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
     if (!briefId) return;
@@ -50,10 +64,12 @@ function ProcessingInner() {
     const tb = setInterval(() => {
       setBucketPcts(prev => prev.map(p => Math.min(p + Math.random() * 0.3, 95)));
     }, 800);
-    return () => { clearInterval(t2); clearInterval(t4); clearInterval(tb); };
+    const te = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => { clearInterval(t2); clearInterval(t4); clearInterval(tb); clearInterval(te); };
   }, []);
 
   const completedSources = PLATFORMS_DATA.filter(p => p.status === 'complete').length;
+  const elapsedStr = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`;
   const brandLabel = brief?.brand ?? '…';
   const subLabel = [brief?.category, brief?.age_ranges, brief?.market, brief?.objective]
     .filter(Boolean).join(' · ');
@@ -77,6 +93,9 @@ function ProcessingInner() {
             </span>
           )}
           &nbsp;·&nbsp;{completedSources} of {PLATFORMS_DATA.length} sources complete
+        </div>
+        <div className="elapsed-pill">
+          ⏱ Processing for <strong style={{ color: '#fff', marginLeft: 4 }}>{elapsedStr}</strong>
         </div>
       </div>
 
@@ -115,22 +134,52 @@ function ProcessingInner() {
           </div>
 
           <div className="platform-grid">
-            {PLATFORMS_DATA.map((p, i) => (
-              <div key={i} className={`plat-card ${p.status} fade-in`} style={{ animationDelay: `${i * 0.07}s` }}>
-                <div className="plat-header">
-                  <div className="plat-left">
-                    <span style={{ fontSize: '18px' }}>{p.icon}</span>
-                    <div className="plat-nm">{p.name}</div>
+            {PLATFORMS_DATA.map((p, i) => {
+              const isExpanded = expandedCard === i;
+              const detail = PLATFORM_DETAILS[p.name] ?? { metrics: [], tip: '' };
+              return (
+                <div
+                  key={i}
+                  className={`plat-card ${p.status}${isExpanded ? ' expanded' : ''} fade-in`}
+                  style={{ animationDelay: `${i * 0.07}s` }}
+                  onClick={() => setExpandedCard(isExpanded ? null : i)}
+                  title="Click for details"
+                >
+                  <div className="plat-header">
+                    <div className="plat-left">
+                      <span style={{ fontSize: '18px' }}>{p.icon}</span>
+                      <div className="plat-nm">{p.name}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className={`plat-status ${SC[p.status]}`}>{SL[p.status]}</span>
+                      <span style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1 }}>{isExpanded ? '▲' : '▼'}</span>
+                    </div>
                   </div>
-                  <span className={`plat-status ${SC[p.status]}`}>{SL[p.status]}</span>
+                  <div className="plat-desc">{p.desc}</div>
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${widths[i]}%` }}></div>
+                  </div>
+                  <div className="plat-note">{p.note}</div>
+
+                  {/* Expanded detail panel */}
+                  {isExpanded && (
+                    <div className="plat-expand">
+                      {detail.metrics.map((m, mi) => (
+                        <div key={mi} className="plat-expand-row">
+                          <span style={{ color: p.status === 'complete' ? '#059669' : p.status === 'queued' ? '#94A3B8' : '#2563EB' }}>●</span>
+                          {m}
+                        </div>
+                      ))}
+                      {detail.tip && (
+                        <div style={{ marginTop: 8, padding: '6px 8px', background: '#FFF7ED', borderRadius: 6, fontSize: 11, color: '#92400E', fontStyle: 'italic' }}>
+                          💡 {detail.tip}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="plat-desc">{p.desc}</div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${widths[i]}%` }}></div>
-                </div>
-                <div className="plat-note">{p.note}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div style={{ background: '#fff', borderRadius: '14px', padding: '24px', marginTop: '22px', boxShadow: 'var(--shadow)' }}>

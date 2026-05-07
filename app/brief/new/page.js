@@ -320,13 +320,84 @@ function NewBriefInner() {
             <div>
               <div className="sidebar-card">
                 <div className="sidebar-title">Connected Platforms</div>
-                {PLATFORMS_DATA.map((p, idx) => (
-                  <div key={idx} className="platform-row">
-                    <div className="platform-dot"></div>
-                    <span className="platform-name-sm">{p.name}</span>
-                    <span className="platform-live">Live</span>
-                  </div>
-                ))}
+
+                {/* Dynamic source counter */}
+                {(() => {
+                  // Compute which platforms are active based on current form state
+                  const active = new Set();
+                  if (brandInput.trim().length >= 2) {
+                    active.add('Google Trends');
+                    active.add('Google Keyword');
+                    active.add('Brandwatch Sentiment');
+                  }
+                  if (category) {
+                    active.add('Global Web Index (GWI)');
+                    active.add('Comscore');
+                  }
+                  if (objective) {
+                    active.add('Google Insights Finder');
+                  }
+                  if (compInput.trim().length >= 1 || marketInput.trim()) {
+                    active.add('SimilarWeb');
+                  }
+                  if (selectedBuckets.some(b => b.includes('Commerce'))) {
+                    active.add('Helium10');
+                  }
+                  const n = active.size;
+                  const total = PLATFORMS_DATA.length;
+                  const allRequired = !!(brandInput.trim() && category && objective);
+                  const barCls = n === 0 ? '' : n === total ? 'all-active' : 'has-active';
+
+                  return (
+                    <>
+                      {/* Progress counter bar */}
+                      <div className={`platform-source-bar ${barCls}`}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: n === 0 ? '#94A3B8' : n === total ? '#065F46' : '#1D4ED8' }}>
+                          {n === 0
+                            ? '🔒 Fill form to activate sources'
+                            : n === total
+                              ? `✅ All ${total} sources ready`
+                              : `⚡ ${n} / ${total} sources ready`}
+                        </span>
+                        {n > 0 && (
+                          <span style={{ fontSize: 11, fontWeight: 800, color: n === total ? '#059669' : '#2563EB' }}>
+                            {Math.round(n / total * 100)}%
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Mini progress bar */}
+                      {n > 0 && (
+                        <div className="progress-bar" style={{ marginBottom: 14, height: 4 }}>
+                          <div className="progress-fill" style={{ width: `${Math.round(n / total * 100)}%`, transition: 'width 0.5s ease' }} />
+                        </div>
+                      )}
+
+                      {/* Platform rows */}
+                      {PLATFORMS_DATA.map((p, idx) => {
+                        const isActive = active.has(p.name);
+                        return (
+                          <div key={idx} className={`platform-row ${isActive ? 'active' : 'pending'}`}>
+                            <div className={`platform-dot ${isActive ? 'active' : 'pending'}`} />
+                            <span className="platform-name-sm" style={{ color: isActive ? 'var(--text)' : '#94A3B8', transition: 'color 0.3s', fontWeight: isActive ? 600 : 400 }}>
+                              {p.name}
+                            </span>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? '#059669' : '#94A3B8', transition: 'color 0.3s' }}>
+                              {isActive ? 'Live' : 'Pending'}
+                            </span>
+                          </div>
+                        );
+                      })}
+
+                      {/* Ready banner when required fields complete */}
+                      {allRequired && (
+                        <div className="platform-ready-banner">
+                          🚀 Brief ready — submit to start mining all sources
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
               <div className="sla-card">
                 <div className="sidebar-title">Delivery SLA</div>
