@@ -554,24 +554,39 @@ export async function enhanceInsightTitles(
 
   try {
     const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const prompt = `You are a Creative Strategist writing insight headlines for brand and media teams. Write like a sharp magazine editor — clear, plain English, no jargon.
+    const prompt = `You are a Senior Strategist writing insight headlines for brand and media teams.
 
-Each title (max 14 words):
-• Lead with the surprising or interesting finding
-• Include one plain-English number (not raw Index scores)
-• No jargon: ban over-index, leverage, cohort, synergy, touchpoint
-• Sound like a magazine cover line, not a consulting report
+Every headline MUST follow this exact 4-part formula in one sentence (max 16 words):
+[MAIN INSIGHT] + [CONTEXT] + [HOOK] + [STAT]
 
-✅ "India's Gamers Are Nearly Twice as Likely to Own a Smart Home Device"
-❌ "Gamers Over-Index at 197 on Smart Home Product Ownership"
+Formula rules:
+• MAIN INSIGHT — the single most important finding (what is happening)
+• CONTEXT — who/where/when this applies (the brand, category, or audience)
+• HOOK — the surprising angle or implication that makes it actionable
+• STAT — one concrete number from the data (%, X times, YoY, rank, volume)
+
+Strict rules:
+• Always end with or embed a real stat from the observation
+• No jargon: ban over-index, leverage, cohort, synergy, touchpoint, utilise
+• Write like a Bloomberg or Economist headline — sharp, specific, confident
+• Never use vague words: "significant", "notable", "interesting", "various"
+
+✅ GOOD examples:
+"Advil Shoppers Search by Symptom, Not Brand — 'Sinus Relief' Queries Up 3× YoY"
+"Visual Listings Win on Amazon: Advil Products Average 20 Images, Doubling Category Norm"
+"India's Runners Abandon Generic Shoes — 'Overpronation' Searches Surge 1,257% in 12 Months"
+
+❌ BAD examples:
+"Visuals Drive Discovery, Advil Listings Loaded with Detail"  ← no stat, vague hook
+"Shoppers Expect Product Specifics in Listing Titles"  ← no stat, no context, no hook
 
 Dataset: ${context}
 
 Charts:
 ${charts.map((c, i) => `${i + 1}. Type: ${c.type} | Label: "${c.lbl || ''}" | Current: "${c.title}" | Observation: "${c.obs || ''}"`).join('\n')}
 
-Return ONLY a valid JSON array of strings, one per chart.
-Example: ["Title 1", "Title 2"]`;
+Return ONLY a valid JSON array of strings, one per chart, following the formula exactly.
+Example: ["Main Insight — Context Hook, Stat%", "Main Insight — Context Hook, Stat×"]`;
 
     const result = await callGeminiWithRetry(model, prompt);
     const text   = result.response.text();
