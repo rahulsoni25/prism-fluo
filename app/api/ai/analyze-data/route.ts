@@ -47,6 +47,8 @@ function suggestChart(rowCount: number, rows: DataSlot['rows']): DataSlot['chart
 }
 
 // ── Build insight slots from raw rows ─────────────────────────
+// Returns ALL slots (one per question group), sorted by Index signal strength.
+// Caller decides how many to send per Gemini batch.
 function buildInsightSlots(rows: any[]): DataSlot[] {
   // 1. Group by question
   const groups: Record<string, any[]> = {};
@@ -60,7 +62,7 @@ function buildInsightSlots(rows: any[]): DataSlot[] {
     groups[q].push(row);
   }
 
-  // 2. For each question compute top rows by Index
+  // 2. For each question compute rows sorted by Index (high signal first)
   const questions = Object.entries(groups).map(([question, qRows]) => {
     const parsed = qRows
       .map(r => ({
@@ -77,35 +79,49 @@ function buildInsightSlots(rows: any[]): DataSlot[] {
       question,
       bucket: questionBucket(question),
       maxIndex: parsed[0]?.index ?? 0,
-      topRows: parsed.slice(0, 7),
+      // Send top 10 rows per slot (was 7) for richer Gemini context
+      topRows: parsed.slice(0, 10),
       rowCount: parsed.length,
     };
   }).filter(q => q.topRows.length >= 2);
 
-  // 3. Pick top 2 per bucket by maxIndex
+  // 3. Sort ALL questions by signal strength (maxIndex) — no bucket cap
+  // Preserve at least 1 slot per bucket if available, then fill with highest-index
   const byBucket: Record<string, typeof questions> = {};
   for (const q of questions) {
     if (!byBucket[q.bucket]) byBucket[q.bucket] = [];
     byBucket[q.bucket].push(q);
   }
 
-  const slots: DataSlot[] = [];
+  // Guarantee minimum coverage: 2 per bucket (if available)
+  const guaranteed: typeof questions = [];
   for (const bucket of ['content', 'commerce', 'communication', 'culture'] as const) {
-    const best = (byBucket[bucket] ?? [])
-      .sort((a, b) => b.maxIndex - a.maxIndex)
-      .slice(0, 2);
-
-    for (const q of best) {
-      slots.push({
-        bucket,
-        question: q.question,
-        chartSuggestion: suggestChart(q.rowCount, q.topRows),
-        rows: q.topRows,
-      });
-    }
+    const sorted = (byBucket[bucket] ?? []).sort((a, b) => b.maxIndex - a.maxIndex);
+    guaranteed.push(...sorted.slice(0, 2));
   }
 
-  return slots;
+  // Add remaining questions not already included, sorted by maxIndex
+  const guaranteedKeys = new Set(guaranteed.map(q => q.question));
+  const remaining = questions
+    .filter(q => !guaranteedKeys.has(q.question))
+    .sort((a, b) => b.maxIndex - a.maxIndex);
+
+  // Return up to 20 slots total (covers all 19 GWI sheets + some overlap)
+  return [...guaranteed, ...remaining].slice(0, 20).map(q => ({
+    bucket: q.bucket,
+    question: q.question,
+    chartSuggestion: suggestChart(q.rowCount, q.topRows),
+    rows: q.topRows,
+  }));
+}
+
+// Split slots into batches of batchSize for parallel Gemini calls
+function chunkSlots(slots: DataSlot[], batchSize: number): DataSlot[][] {
+  const batches: DataSlot[][] = [];
+  for (let i = 0; i < slots.length; i += batchSize) {
+    batches.push(slots.slice(i, i + batchSize));
+  }
+  return batches;
 }
 
 // ── Route ─────────────────────────────────────────────────────
@@ -123,18 +139,37 @@ export async function POST(req: NextRequest) {
     const context = [fileNames?.join(' + ') || sheetName].filter(Boolean).join(' ');
 
     // GWI-shaped data → structured slot path (exact numbers, anti-hallucination)
+    // For large GWI files (19 sheets), batch into groups of 6 and run in parallel
+    // so we get full coverage without hitting the 60s Vercel timeout.
     if (slots.length > 0) {
       const gwiContext = `${context} — India 18–64 Gen Pop`;
       const toolLabel  = fileNames?.[0]?.toLowerCase().includes('household') ? 'GWI HOUSEHOLD' : 'GWI';
+
       try {
-        const insights = await analyzeDataForPRISM(slots, gwiContext, toolLabel);
+        // Batch size of 6: ~6 cards per call, 3 parallel calls for 18 slots
+        const BATCH_SIZE = 6;
+        const batches    = chunkSlots(slots, BATCH_SIZE);
+
+        // Run all batches in parallel — each resolves independently
+        const batchResults = await Promise.allSettled(
+          batches.map(batch => analyzeDataForPRISM(batch, gwiContext, toolLabel))
+        );
+
+        // Merge successful results, log failures without crashing
+        const insights = batchResults.flatMap((result, i) => {
+          if (result.status === 'fulfilled') return result.value;
+          console.warn(`[analyze-data] Batch ${i + 1}/${batches.length} failed:`, result.reason?.message);
+          return [];
+        });
+
         if (insights.length === 0) {
           return NextResponse.json(
-            { error: 'Gemini returned an empty insight array for the GWI slots. The model may be overloaded — try again.', path: 'gwi-slots', slotCount: slots.length },
+            { error: 'All Gemini batches returned empty. Model may be overloaded — try again.', path: 'gwi-slots', slotCount: slots.length },
             { status: 422 },
           );
         }
-        return NextResponse.json({ insights, slots, path: 'gwi-slots' });
+
+        return NextResponse.json({ insights, slots, path: 'gwi-slots', totalSlots: slots.length, batches: batches.length });
       } catch (err: any) {
         return NextResponse.json(
           { error: `Gemini failed on GWI slots: ${err.message}`, path: 'gwi-slots', slotCount: slots.length },
