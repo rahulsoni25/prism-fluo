@@ -52,6 +52,11 @@ async function callGeminiWithRetry(model: any, prompt: string): Promise<any> {
       lastErr = err;
       const msg    = String(err?.message ?? err);
       const status = (err?.status ?? err?.response?.status ?? 0) as number;
+      // 404 = model deprecated/unavailable → clear cache so next call re-probes
+      if (status === 404 || /no longer available|model.*not found|404/i.test(msg)) {
+        invalidateModelCache();
+        throw err; // propagate immediately — retrying won't help
+      }
       const transient =
         status === 429 || status === 503 || status === 504 ||
         /overloaded|rate ?limit|temporar|timeout|ECONNRESET|ETIMEDOUT|fetch failed/i.test(msg);
@@ -68,16 +73,21 @@ async function callGeminiWithRetry(model: any, prompt: string): Promise<any> {
  * run a tiny ping, and fall back if it fails. The result is cached so
  * we only do this once per process.
  *
- * Order: stable 2.5 → 2.0 → 1.5. Skip preview tags (e.g.
- * gemini-2.5-flash-preview-04-17) — those expire and silently break
- * production.
+ * Order: latest preview → lite fallback → 1.5 last-resort.
+ * NOTE: gemini-2.0-flash and gemini-2.5-flash (stable) are deprecated/
+ * unavailable to new users as of May 2026 — use preview or lite variants.
  */
-const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const MODEL_CANDIDATES = [
+  'gemini-2.5-flash-preview-05-20', // latest, fastest for structured output
+  'gemini-2.0-flash-lite',           // still available, lower quota cost
+  'gemini-1.5-flash',                // ultimate fallback
+];
 let _resolvedModelName: string | null = null;
 
 async function getModel(genAI: any): Promise<{ name: string; model: any }> {
   if (_resolvedModelName) {
-    return { name: _resolvedModelName, model: genAI.getGenerativeModel({ model: _resolvedModelName }) };
+    const m = genAI.getGenerativeModel({ model: _resolvedModelName });
+    return { name: _resolvedModelName, model: m };
   }
   let lastErr: Error | null = null;
   for (const name of MODEL_CANDIDATES) {
@@ -86,6 +96,7 @@ async function getModel(genAI: any): Promise<{ name: string; model: any }> {
       // Tiny smoke ping — a single token request — to validate the name resolves.
       await m.generateContent('ok');
       _resolvedModelName = name;
+      console.log(`[Gemini] resolved model: ${name}`);
       return { name, model: m };
     } catch (err) {
       lastErr = err as Error;
@@ -93,6 +104,13 @@ async function getModel(genAI: any): Promise<{ name: string; model: any }> {
     }
   }
   throw new Error(`No Gemini model available. Last error: ${lastErr?.message ?? 'unknown'}`);
+}
+
+/** Call this when a previously-resolved model returns a 404 / deprecation error
+ *  so the next request re-runs the cascade instead of hammering a dead model. */
+function invalidateModelCache() {
+  console.warn('[Gemini] Clearing model cache — will re-probe on next call');
+  _resolvedModelName = null;
 }
 
 // ── Types ──────────────────────────────────────────────────────
@@ -806,7 +824,7 @@ export async function enhanceInsightTitles(
   if (!genAI || charts.length === 0) return charts.map(c => c.title);
 
   try {
-    const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const { model } = await getModel(genAI);
     const prompt = `You are a world-class Brand Strategist and editorial writer crafting insight headlines for senior marketing teams.
 
 Every headline uses these 5 elements:
@@ -894,7 +912,7 @@ export async function enhanceInsightNarratives(
     return charts.map(c => ({ obs: c.obs || '', rec: c.rec || '' }));
 
   try {
-    const model  = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const { model } = await getModel(genAI);
     const prompt = `You are a Senior Brand Strategist writing insight cards for marketing teams.
 
 ━━━ STEP 1 — READ THE INSIGHT, IDENTIFY ITS NATURE, PICK THE RIGHT PATTERN ━━━
