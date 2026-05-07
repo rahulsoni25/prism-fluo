@@ -69,6 +69,9 @@ export default function Navbar() {
         <Link href="/culture" className={`nav-link ${pathname === '/culture' ? 'active' : ''}`}>
           Culture
         </Link>
+        <Link href="/analyze" className={`nav-link ${pathname === '/analyze' ? 'active' : ''}`} style={{ textDecoration: 'none' }}>
+          ⚡ Analyze
+        </Link>
       </div>
 
       <div className="nav-user">

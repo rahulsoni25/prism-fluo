@@ -11,7 +11,7 @@
  */
 
 import { useState, useRef } from 'react';
-import Link from 'next/link';
+import Navbar from '@/components/Navbar';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -306,7 +306,7 @@ export default function AnalyzePage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F8FAFC', fontFamily: 'Inter, sans-serif' }}>
+    <div className="screen fade-in">
 
       {/* ── Shimmer animation ── */}
       <style>{`
@@ -315,41 +315,11 @@ export default function AnalyzePage() {
         .analyze-card { animation: fadeIn 0.4s ease both; }
       `}</style>
 
-      {/* ── Nav ── */}
-      <nav style={{
-        background: '#0F172A', padding: '0 24px', height: 52,
-        display: 'flex', alignItems: 'center', gap: 24,
-        position: 'sticky', top: 0, zIndex: 50,
-        boxShadow: '0 1px 0 rgba(255,255,255,0.06)',
-      }}>
-        <Link href="/dashboard" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{
-            width: 28, height: 28, borderRadius: 7,
-            background: 'linear-gradient(135deg,#3B82F6,#8B5CF6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, fontWeight: 900, color: '#fff',
-          }}>P</span>
-          <span style={{ color: '#fff', fontWeight: 800, fontSize: 15, letterSpacing: '-.3px' }}>PRISM</span>
-        </Link>
-
-        {[
-          { href: '/dashboard',     label: '← My Briefs' },
-          { href: '/presentations', label: '📊 Presentations' },
-          { href: '/culture',       label: '🌍 Culture' },
-          { href: '/analyze',       label: '⚡ Analyze', active: true },
-        ].map(({ href, label, active }) => (
-          <Link key={href} href={href} style={{
-            textDecoration: 'none',
-            fontSize: 13, fontWeight: active ? 700 : 500,
-            color: active ? '#fff' : 'rgba(255,255,255,0.55)',
-            padding: '4px 10px', borderRadius: 6,
-            background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
-          }}>{label}</Link>
-        ))}
-      </nav>
+      <Navbar />
 
       {/* ── Main content ── */}
-      <main style={{ maxWidth: 960, margin: '0 auto', padding: '40px 24px' }}>
+      <div className="main">
+      <main className="container" style={{ maxWidth: 960 }}>
 
         {/* Page title */}
         <div style={{ marginBottom: 32 }}>
@@ -547,6 +517,7 @@ export default function AnalyzePage() {
           </div>
         )}
       </main>
+      </div>
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
