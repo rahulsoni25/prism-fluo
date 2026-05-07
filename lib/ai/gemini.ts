@@ -396,6 +396,179 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
   }
 }
 
+// ── Social Listening / Share of Voice analysis ────────────────
+
+/**
+ * Analyses pre-aggregated social listening data (sentiment breakdown,
+ * platform distribution, top themes, volume-over-time).
+ *
+ * Receives rows produced by lib/social/parser.ts — NOT raw posts.
+ * Each row has: { dimension, value, count, pct, ... }
+ *
+ * Returns PRISM insight cards focused on brand perception, platform strategy,
+ * content themes, and audience engagement signals.
+ */
+export async function analyzeSocialListeningForPRISM(
+  rows:      any[],
+  context:   string,
+  toolLabel: string = 'Social Listening',
+): Promise<GeminiInsightCard[]> {
+  const genAI = await getGenAI();
+  if (!genAI) throw new Error('GEMINI_API_KEY is not set');
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const { model } = await getModel(genAI);
+
+  // Separate row types for a clean prompt structure
+  const overview        = rows.find(r => r.dimension === '_overview') ?? {};
+  const sentimentRows   = rows.filter(r => r.dimension === 'Sentiment');
+  const platformRows    = rows.filter(r => r.dimension === 'Platform');
+  const crossRows       = rows.filter(r => r.dimension === 'Platform×Sentiment').slice(0, 12);
+  const allThemes       = rows.filter(r => r.dimension === 'Top Theme (All)').slice(0, 10);
+  const posThemes       = rows.filter(r => r.dimension === 'Top Theme (Positive)').slice(0, 8);
+  const negThemes       = rows.filter(r => r.dimension === 'Top Theme (Negative)').slice(0, 8);
+  const topPosPosts     = rows.filter(r => r.dimension === 'Top Positive Post').slice(0, 2);
+  const topNegPosts     = rows.filter(r => r.dimension === 'Top Negative Post').slice(0, 2);
+  const volumeRows      = rows.filter(r => r.dimension === 'Volume Over Time');
+
+  const totalPosts = overview.total_posts ?? rows.reduce((s: number, r: any) =>
+    r.dimension === 'Sentiment' ? s + (r.count || 0) : s, 0);
+
+  const sentimentBlock  = sentimentRows.map(r =>
+    `  • ${r.value}: ${r.count} posts (${r.pct}% of total)`).join('\n') || '  (no data)';
+
+  const platformBlock   = platformRows.slice(0, 8).map(r =>
+    `  • ${r.value}: ${r.count} posts (${r.pct}%)`).join('\n') || '  (no data)';
+
+  const crossBlock      = crossRows.map(r =>
+    `  • ${r.value}: ${r.count} posts (${r.pct}%)`).join('\n') || '  (no data)';
+
+  const allThemeBlock   = allThemes.map(r =>
+    `  • "${r.value}" — mentioned ${r.count}× across all posts`).join('\n') || '  (no data)';
+
+  const posThemeBlock   = posThemes.map(r =>
+    `  • "${r.value}" — ${r.count}× in positive posts`).join('\n') || '  (no data)';
+
+  const negThemeBlock   = negThemes.map(r =>
+    `  • "${r.value}" — ${r.count}× in negative posts`).join('\n') || '  (no data)';
+
+  const topPostsBlock   = [...topPosPosts, ...topNegPosts].map(r =>
+    `  • [${r.dimension}] @${r.value} (${r.followers?.toLocaleString()} followers): "${(r.message ?? '').slice(0, 120)}..."`
+  ).join('\n') || '  (no data)';
+
+  const volumeBlock     = volumeRows.slice(0, 12).map(r =>
+    `  • ${r.value}: ${r.count} posts`).join('\n') || '  (no trend data)';
+
+  const prompt = `You are a senior Creative Strategist and Brand Intelligence analyst at PRISM, advising brand managers and media planners in India.
+
+You have received pre-aggregated social listening data for: "${context}"
+Total posts analysed: ${totalPosts.toLocaleString()}
+Source tool: ${toolLabel}
+
+━━ SENTIMENT BREAKDOWN ━━
+${sentimentBlock}
+
+━━ PLATFORM DISTRIBUTION ━━
+${platformBlock}
+
+━━ SENTIMENT × PLATFORM CROSS-TAB ━━
+${crossBlock}
+
+━━ TOP THEMES ACROSS ALL POSTS ━━
+${allThemeBlock}
+
+━━ TOP THEMES IN POSITIVE POSTS ━━
+${posThemeBlock}
+
+━━ TOP THEMES IN NEGATIVE POSTS ━━
+${negThemeBlock}
+
+━━ TOP POSTS BY REACH ━━
+${topPostsBlock}
+
+━━ VOLUME OVER TIME ━━
+${volumeBlock}
+
+━━ YOUR TASK ━━
+Write 8 PRISM insight cards — 2 per bucket (Content · Commerce · Communication · Culture).
+
+Each card must answer: "So what does this mean for the brand's strategy?"
+Use ONLY the numbers and themes above — no invented statistics.
+
+━━ BUCKET ASSIGNMENT FOR SOCIAL DATA ━━
+• content       — what formats/platforms drive the most conversation, content themes that resonate
+• commerce      — purchase intent signals in messages, product mentions, price/availability chatter
+• communication — brand tone, crisis signals, negative theme management, positive amplification
+• culture       — who is talking (platform signals), lifestyle themes, identity signals in language
+
+━━ TONE ━━
+Write like a smart agency strategist — plain English, short sentences, active voice.
+Banned words: over-index, leverage, synergy, touchpoint, holistic, robust, utilize, paradigm, seamless, volatility, momentum, dominance.
+Use: people, fans, critics, buyers, conversations, 1 in 3, nearly twice, here's the thing.
+
+━━ CARD FORMAT ━━
+TITLE (max 14 words): magazine cover line — surprising finding + one plain-English number.
+OBSERVATION (3 sentences): hook → exact numbers from the data above → strategic so-what.
+STAT: one crisp plain-English number that summarises the most important finding in this card.
+RECOMMENDATION: one sentence to a creative director. Name a specific Indian platform (Instagram, Twitter/X, YouTube, Facebook, Hotstar), a specific format (Reel, Stories response, comment reply, ORM campaign, influencer brief), and a specific creative angle.
+
+━━ CHART DATA ━━
+Use actual counts/percentages from the data blocks above.
+For sentiment breakdown → pie chart (chartLabels: ["Positive","Negative","Neutral"], chartValues: [pct, pct, pct])
+For platform breakdown → bar chart
+For themes → hbar chart (word: count)
+For volume over time → bar chart (month: count)
+
+Return ONLY valid JSON — no markdown, no fences, no explanation:
+[
+  {
+    "title": "string",
+    "bucket": "content|commerce|communication|culture",
+    "type": "hbar|bar|pie|scatter",
+    "conviction": 88,
+    "obs": "string",
+    "stat": "string",
+    "rec": "string",
+    "chartLabels": ["label1","label2"],
+    "chartValues": [12.5, 8.3],
+    "chartValues2": []
+  }
+]`;
+
+  try {
+    const result  = await callGeminiWithRetry(model, prompt);
+    const rawText = result.response.text().trim();
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const match   = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('No JSON array in social listening Gemini response');
+
+    const parsed: any[] = JSON.parse(match[0]);
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
+
+    const validBuckets = ['content','commerce','communication','culture'];
+    const validTypes   = ['hbar','bar','pie','scatter'];
+
+    return parsed.slice(0, 8).map(c => ({
+      title:        String(c.title || 'Insight'),
+      bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'communication') as GeminiInsightCard['bucket'],
+      type:         (validTypes.includes(c.type)     ? c.type   : 'bar')           as GeminiInsightCard['type'],
+      conviction:   Number(c.conviction) || 85,
+      obs:          String(c.obs  || ''),
+      stat:         String(c.stat || ''),
+      rec:          String(c.rec  || ''),
+      toolLabel,
+      chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
+      chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
+      chartValues2: Array.isArray(c.chartValues2) && (c.chartValues2 as any[]).length > 0
+        ? c.chartValues2.map(Number) : undefined,
+    }));
+
+  } catch (err) {
+    console.error('[Gemini] analyzeSocialListeningForPRISM failed:', (err as Error).message);
+    throw err;
+  }
+}
+
 // ── Executive Summary Generation (SMART Framework) ────
 
 /**

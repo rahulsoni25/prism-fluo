@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeDataForPRISM, analyzeGenericTabularForPRISM } from '@/lib/ai/gemini';
+import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM } from '@/lib/ai/gemini';
 import type { DataSlot } from '@/lib/ai/gemini';
 
 // Vercel Hobby plan default timeout is 10 s — Gemini 2.5 routinely takes 15-40 s.
@@ -184,12 +184,41 @@ export async function POST(req: NextRequest) {
     // like a stock-market terminal, which is wrong for our audience.
     const firstName  = fileNames?.[0] ?? sheetName ?? 'data';
     const lower      = firstName.toLowerCase();
-    const toolLabel  = lower.includes('amazon')   ? 'AMAZON'
-                     : lower.includes('helium')   ? 'HELIUM10'
-                     : lower.includes('flipkart') ? 'FLIPKART'
-                     : lower.includes('meesho')   ? 'MEESHO'
+    // Detect tool type from filename OR from row column names
+    const colKeys    = rows.length > 0 ? Object.keys(rows[0]).map(k => k.toLowerCase()) : [];
+    const hasSocialCols = colKeys.some(k => k.includes('sentiment')) &&
+                          (colKeys.some(k => k.includes('mediatype') || k.includes('platform')) ||
+                           colKeys.some(k => k.includes('message')));
+    const hasSocialFilename = /sentiment|shareofvoice|share.of.voice|social.listening|brandwatch|meltwater|talkwalker|konnect/i.test(lower);
+
+    const toolLabel  = (hasSocialCols || hasSocialFilename)  ? 'SOCIAL_LISTENING'
+                     : lower.includes('keyword')             ? 'KEYWORD_PLANNER'
+                     : lower.includes('amazon')              ? 'AMAZON'
+                     : lower.includes('helium')              ? 'HELIUM10'
+                     : lower.includes('flipkart')            ? 'FLIPKART'
+                     : lower.includes('meesho')              ? 'MEESHO'
                      : 'TABULAR';
 
+    // ── Social Listening path — uses pre-aggregated sentiment/platform rows ──
+    if (toolLabel === 'SOCIAL_LISTENING') {
+      try {
+        const insights = await analyzeSocialListeningForPRISM(rows, context, 'Social Listening');
+        if (insights.length === 0) {
+          return NextResponse.json(
+            { error: 'Gemini returned no insights for social listening data. Try re-uploading the file.', path: 'social-listening' },
+            { status: 422 },
+          );
+        }
+        return NextResponse.json({ insights, slots: [], path: 'social-listening' });
+      } catch (err: any) {
+        return NextResponse.json(
+          { error: `Social listening Gemini call failed: ${err.message}`, path: 'social-listening' },
+          { status: 502 },
+        );
+      }
+    }
+
+    // ── Generic tabular path (Helium10, Keywords, Amazon, etc.) ──
     try {
       const insights = await analyzeGenericTabularForPRISM(rows, context, toolLabel);
       if (insights.length === 0) {

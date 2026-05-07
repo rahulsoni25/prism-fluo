@@ -28,8 +28,11 @@ import { parseHelium10 }                      from '@/lib/helium10/parser';
 import { isGoogleTrendsFormat } from '@/lib/trends/detector';
 import { parseGoogleTrends }    from '@/lib/trends/parser';
 
-import { isKonnectFormat } from '@/lib/konnect/detector';
-import { parseKonnect }    from '@/lib/konnect/parser';
+import { isKonnectFormat }         from '@/lib/konnect/detector';
+import { parseKonnect }            from '@/lib/konnect/parser';
+
+import { isSocialListeningFormat } from '@/lib/social/detector';
+import { parseSocialListening }    from '@/lib/social/parser';
 
 import { parseGenericSheet } from '@/lib/generic/parser';
 import { parsePdf }          from '@/lib/pdf/parser';
@@ -257,14 +260,15 @@ function parseGwiCore(
 
 function toolLabel(toolType: string): string {
   const MAP: Record<string, string> = {
-    helium10_cerebro:  'Helium10 Cerebro',
-    helium10_magnet:   'Helium10 Magnet',
-    helium10_blackbox: 'Helium10 Black Box',
-    helium10_generic:  'Helium10',
-    google_trends:     'Google Trends',
-    konnect_insights:  'Konnect Insights',
-    pdf_extract:       'PDF Data',
-    generic:           'Data',
+    helium10_cerebro:   'Helium10 Cerebro',
+    helium10_magnet:    'Helium10 Magnet',
+    helium10_blackbox:  'Helium10 Black Box',
+    helium10_generic:   'Helium10',
+    google_trends:      'Google Trends',
+    konnect_insights:   'Konnect Insights',
+    social_listening:   'Social Listening',
+    pdf_extract:        'PDF Data',
+    generic:            'Data',
   };
   return MAP[toolType] || 'Data';
 }
@@ -496,6 +500,22 @@ async function handleExcelUpload(
           description: `${rows.length} rows from Konnect export`,
         };
         logger.info('upload:konnect_sheet', { sheetName, rows: rows.length });
+      }
+
+    } else if (isSocialListeningFormat(headers)) {
+      // ── Social Listening / Share of Voice (Brandwatch, Meltwater, Talkwalker, etc.) ──
+      // Pre-aggregates 1000s of raw post rows into sentiment/platform summaries
+      // so Gemini can write accurate insight cards grounded in real percentages.
+      type = 'generic_table';
+      const rows = parseSocialListening(uploadId, sheetName, worksheet);
+      if (rows.length > 0) {
+        await bulkInsertToolData(rows);
+        meta = {
+          sheetName, type,
+          question:    `Social Listening — ${sheetName}`,
+          description: `${rows.length} aggregated insights from social export`,
+        };
+        logger.info('upload:social_listening_sheet', { sheetName, rows: rows.length });
       }
 
     } else if (headers.length > 0) {
