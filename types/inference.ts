@@ -6,7 +6,12 @@ export interface Schema {
   allHeaders: string[];
 }
 
-export type ChartType = 'bar' | 'line' | 'hbar' | 'pie' | 'area' | 'scatter' | 'bubble' | 'radar';
+export type ChartType =
+  | 'bar' | 'hbar' | 'line' | 'area'
+  | 'pie' | 'doughnut'
+  | 'scatter' | 'bubble' | 'radar'
+  | 'combo' | 'histogram'
+  | 'waterfall' | 'funnel';
 
 export interface ChartSpec {
   id: string;

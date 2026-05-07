@@ -95,20 +95,28 @@ function buildGeminiChartData(
 ) {
   const bg     = BUCKET_CHART_COLORS[bucket]  || 'rgba(37,99,235,0.85)';
   const border = BUCKET_CHART_BORDERS[bucket] || 'rgba(37,99,235,1)';
+  const PIE_COLORS = ['#1E3A8A','#4C1D95','#065F46','#78350F','#1D4ED8','#7C3AED','#059669','#D97706'];
 
-  if (type === 'pie') {
+  // ── SVG-based charts: store labels + values directly ─────────────
+  // ChartWaterfall and ChartFunnel accept { labels, values } not datasets
+  if (type === 'waterfall' || type === 'funnel') {
+    return { labels, values };
+  }
+
+  // ── Pie / Doughnut ────────────────────────────────────────────────
+  if (type === 'pie' || type === 'doughnut') {
     return {
       labels,
       datasets: [{
         data: values,
-        backgroundColor: ['#1E3A8A','#4C1D95','#065F46','#78350F','#1D4ED8','#7C3AED','#059669','#D97706'],
+        backgroundColor: PIE_COLORS,
         borderWidth: 2, borderColor: '#fff',
       }],
     };
   }
 
+  // ── Scatter ───────────────────────────────────────────────────────
   if (type === 'scatter' && values2 && values2.length === values.length) {
-    // X = Audience %, Y = Index multiplier
     return {
       datasets: [{
         label: 'Audience % vs Likelihood',
@@ -120,11 +128,71 @@ function buildGeminiChartData(
     };
   }
 
-  // bar / hbar
+  // ── Combo: two datasets (bar primary + line secondary) ───────────
+  if (type === 'combo') {
+    const values2Clean = Array.isArray(values2) && values2.length === values.length ? values2 : [];
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Volume',
+          data: values,
+          backgroundColor: bg,
+          borderColor: border,
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+        ...(values2Clean.length > 0 ? [{
+          label: 'Trend',
+          data: values2Clean,
+          backgroundColor: 'transparent',
+          borderColor: 'rgba(5,150,105,1)',
+          borderWidth: 2.5,
+          pointRadius: 3,
+          tension: 0.4,
+          fill: false,
+        }] : []),
+      ],
+    };
+  }
+
+  // ── Line / Area ──────────────────────────────────────────────────
+  if (type === 'line' || type === 'area') {
+    return {
+      labels,
+      datasets: [{
+        label: 'Value',
+        data: values,
+        borderColor: border,
+        backgroundColor: `${border.replace('1)', '0.15)')}`,
+        borderWidth: 2.5,
+        tension: 0.4,
+        fill: type === 'area',
+        pointRadius: labels.length <= 12 ? 3 : 0,
+      }],
+    };
+  }
+
+  // ── Radar ─────────────────────────────────────────────────────────
+  if (type === 'radar') {
+    return {
+      labels,
+      datasets: [{
+        label: 'Score',
+        data: values,
+        backgroundColor: bg.replace('0.85)', '0.2)'),
+        borderColor: border,
+        borderWidth: 2,
+        pointBackgroundColor: border,
+      }],
+    };
+  }
+
+  // ── bar / hbar / histogram — standard bar format ─────────────────
   return {
     labels,
     datasets: [{
-      label: 'Audience %',
+      label: 'Value',
       data: values,
       backgroundColor: bg,
       borderColor: border,

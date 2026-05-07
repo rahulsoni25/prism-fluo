@@ -5,8 +5,10 @@ import GenerateDeckModal from '@/app/components/GenerateDeckModal';
 import Navbar from '@/components/Navbar';
 import Copilot from '@/components/Copilot';
 import {
-  ChartBar, ChartLine, ChartPie, ChartScatter, ChartHBar,
-  Heatmap, Scorecard,
+  ChartBar, ChartLine, ChartPie, ChartDoughnut, ChartScatter, ChartHBar,
+  ChartArea, ChartCombo, ChartHistogram, ChartRadar,
+  ChartWaterfall, ChartFunnel,
+  Heatmap, Scorecard, PALETTE,
 } from '@/components/charts/AppChart';
 import { ID, HM_DATA, SCATTER_COLORS, SCATTER_LABELS, PLATFORMS_DATA } from '@/lib/data';
 
@@ -363,14 +365,22 @@ function InsightChart({ ins }) {
     );
   }
   const extra = ins.chartExtra || {};
+  const cd    = ins.chartData;
   switch (ins.chartType) {
-    case 'bar':     return <ChartBar    data={ins.chartData} extraOptions={extra} />;
-    case 'line':    return <ChartLine   data={ins.chartData} extraOptions={extra} />;
-    case 'pie':     return <ChartPie    data={ins.chartData} extraOptions={extra} />;
-    case 'hbar':    return <ChartHBar   data={ins.chartData} extraOptions={extra} />;
+    case 'bar':       return <ChartBar       data={cd} extraOptions={extra} />;
+    case 'hbar':      return <ChartHBar      data={cd} extraOptions={extra} />;
+    case 'line':      return <ChartLine      data={cd} extraOptions={extra} />;
+    case 'area':      return <ChartArea      data={cd} extraOptions={extra} />;
+    case 'pie':       return <ChartPie       data={cd} extraOptions={extra} />;
+    case 'doughnut':  return <ChartDoughnut  data={cd} extraOptions={extra} />;
+    case 'combo':     return <ChartCombo     data={cd} extraOptions={extra} />;
+    case 'histogram': return <ChartHistogram data={cd} extraOptions={extra} />;
+    case 'radar':     return <ChartRadar     data={cd} extraOptions={extra} />;
+    case 'waterfall': return <ChartWaterfall labels={cd?.labels ?? []} values={cd?.values ?? []} />;
+    case 'funnel':    return <ChartFunnel    labels={cd?.labels ?? []} values={cd?.values ?? []} />;
     case 'scatter': return (
       <>
-        <ChartScatter data={ins.chartData} extraOptions={extra} />
+        <ChartScatter data={cd} extraOptions={extra} />
         <div className="scatter-legend">
           {SCATTER_LABELS.map((l, j) => (
             <div key={j} className="sl-item">
@@ -510,7 +520,10 @@ function NikeInsights() {
 
   const ins  = ID[activeBucket] || [];
   const meta = BUCKET_META[activeBucket];
-  const totalInsights = Object.values(ID).reduce((sum, arr) => sum + arr.length, 0);
+  const totalInsights  = Object.values(ID).reduce((sum, arr) => sum + arr.length, 0);
+  const demoChartTypes = [...new Set(
+    Object.values(ID).flat().map(c => c.chartType).filter(Boolean)
+  )].length;
 
   return (
     <div className="screen fade-in">
@@ -539,7 +552,7 @@ function NikeInsights() {
               </button>
             ))}
           </div>
-          <div className="ins-meta">✅ {totalInsights} insights · 5 chart types · 7 data sources</div>
+          <div className="ins-meta">✅ {totalInsights} insights · {demoChartTypes} chart types · 7 data sources</div>
         </div>
       </div>
 
@@ -596,13 +609,17 @@ function NikeInsights() {
 /* ─── Guard: returns true only when chart data has real points ─── */
 function chartHasContent(data) {
   if (!data) return false;
+  // SVG charts (waterfall / funnel) store { labels, values }
+  if (Array.isArray(data.values)) {
+    return data.values.length >= 2 && data.values.some(v => Number(v) !== 0);
+  }
   const datasets = data.datasets;
   if (!Array.isArray(datasets) || datasets.length === 0) return false;
   const ds = datasets[0];
   if (!ds || !Array.isArray(ds.data) || ds.data.length < 2) return false;
   // Scatter: data is array of {x,y} objects
   if (typeof ds.data[0] === 'object' && ds.data[0] !== null) return ds.data.length >= 2;
-  // Bar / line / pie: require at least one non-zero value
+  // Bar / line / pie / etc.: require at least one non-zero value
   return ds.data.some(v => Number(v) > 0);
 }
 
@@ -611,12 +628,19 @@ function ApiChartRenderer({ chart }) {
   const data = chart.computedChartData;
   if (!chartHasContent(data)) return null;
   switch (chart.type) {
-    case 'bar':     return <ChartBar     data={data} />;
-    case 'line':    return <ChartLine    data={data} />;
-    case 'hbar':    return <ChartHBar    data={data} />;
-    case 'pie':     return <ChartPie     data={data} />;
-    case 'scatter': return <ChartScatter data={data} />;
-    default:        return null;
+    case 'bar':       return <ChartBar       data={data} />;
+    case 'hbar':      return <ChartHBar      data={data} />;
+    case 'line':      return <ChartLine      data={data} />;
+    case 'area':      return <ChartArea      data={data} />;
+    case 'pie':       return <ChartPie       data={data} />;
+    case 'doughnut':  return <ChartDoughnut  data={data} />;
+    case 'scatter':   return <ChartScatter   data={data} />;
+    case 'combo':     return <ChartCombo     data={data} />;
+    case 'histogram': return <ChartHistogram data={data} />;
+    case 'radar':     return <ChartRadar     data={data} />;
+    case 'waterfall': return <ChartWaterfall labels={data?.labels ?? []} values={data?.values ?? []} />;
+    case 'funnel':    return <ChartFunnel    labels={data?.labels ?? []} values={data?.values ?? []} />;
+    default:          return null;
   }
 }
 
@@ -942,6 +966,7 @@ function AnalysisDetail({ id }) {
 function InsightsInner() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
+  if (id === 'demo') return <NikeInsights />;
   return id ? <AnalysisDetail id={id} /> : <AnalysesList />;
 }
 

@@ -97,10 +97,16 @@ async function getModel(genAI: any): Promise<{ name: string; model: any }> {
 
 // ── Types ──────────────────────────────────────────────────────
 
+export type ChartType =
+  | 'hbar' | 'bar' | 'line' | 'area'
+  | 'pie' | 'doughnut'
+  | 'scatter' | 'combo' | 'histogram' | 'radar'
+  | 'waterfall' | 'funnel';
+
 export interface GeminiInsightCard {
   title:        string;
   bucket:       'content' | 'commerce' | 'communication' | 'culture';
-  type:         'hbar' | 'bar' | 'pie' | 'scatter';
+  type:         ChartType;
   conviction:   number;
   obs:          string;
   stat:         string;
@@ -122,7 +128,7 @@ export interface ExecutiveSummary {
 export interface DataSlot {
   bucket:          'content' | 'commerce' | 'communication' | 'culture';
   question:        string;
-  chartSuggestion: 'hbar' | 'bar' | 'pie' | 'scatter';
+  chartSuggestion: ChartType;
   rows: Array<{
     attr:        string;
     audiencePct: number;
@@ -222,14 +228,34 @@ Name a specific creative angle (real Indian homes, confident buyers, family mome
 • chartLabels: use the exact attribute names from THIS slot (up to 8)
 • chartValues: use exact Audience % values from THIS slot
 • For scatter: chartLabels = attribute names, chartValues = Audience % (X axis), chartValues2 = Index scores converted to multipliers (Y axis, e.g. Index 197 → 1.97)
-• type: match the chartSuggestion from THIS slot unless a different type is clearly better
+• type: start with the chartSuggestion from THIS slot — override only if a better type is obvious
+
+CHART TYPE GUIDE (choose the best visual for this insight):
+• hbar       → ranked lists, long category names (5–12 items) — default for audience data
+• bar        → short-label comparisons (3–8 items, vertical)
+• line       → trends over time with 10+ continuous data points
+• area       → cumulative volumes or stacked trends over time
+• pie        → proportional splits, 2–6 segments only (e.g. Yes/No, sentiment)
+• doughnut   → cleaner pie for dashboards (2–6 segments)
+• scatter    → two numeric axes — Audience% (X) vs Index multiplier (Y)
+• combo      → two metrics on one chart: bar (primary) + line overlay (secondary trend)
+• histogram  → how values spread across ranges / frequency distribution
+• radar      → compare 3–8 attributes simultaneously for 1–3 items
+• waterfall  → how +/− components add up to a total (bridge/waterfall chart)
+• funnel     → conversion or dropout flow (Awareness → Consideration → Purchase)
+
+━━ CHART VARIETY — MANDATORY ━━
+Across all ${slots.length} cards you MUST use at least 4 DIFFERENT chart types.
+NEVER assign the same type to more than 2 consecutive cards.
+If your current card would create a third repetition in a row, override with a different type that still fits the data.
+Distribution target: use hbar/bar for at most 3 cards total — fill remaining cards with area, doughnut, scatter, radar, funnel, waterfall, or combo wherever data supports it.
 
 Return ONLY valid JSON — no markdown, no fences, no explanation:
 [
   {
     "title": "string",
     "bucket": "content|commerce|communication|culture",
-    "type": "hbar|bar|pie|scatter",
+    "type": "hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel",
     "conviction": 90,
     "obs": "string",
     "stat": "string",
@@ -251,12 +277,15 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content','commerce','communication','culture'];
-    const validTypes   = ['hbar','bar','pie','scatter'];
+    const validTypes: ChartType[] = [
+      'hbar','bar','line','area','pie','doughnut',
+      'scatter','combo','histogram','radar','waterfall','funnel',
+    ];
 
     return parsed.slice(0, 8).map(c => ({
       title:        String(c.title || 'Insight'),
       bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'content') as GeminiInsightCard['bucket'],
-      type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as GeminiInsightCard['type'],
+      type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as ChartType,
       conviction:   Number(c.conviction) || 88,
       obs:          String(c.obs  || ''),
       stat:         String(c.stat || ''),
@@ -344,14 +373,35 @@ RECOMMENDATION: one sentence to a creative director. Name a specific Indian plat
 Write EXACTLY 8 cards. No two cards may share the same opening sentence, the same stat, or the same recommendation platform+format combo.
 
 ━━ CHART DATA ━━
-For each card, pick a small set of labels + values from the sample (up to 8 items). Use the actual values from the rows. If a chart doesn't make sense for a card, return chartLabels: [] and chartValues: [].
+Pick labels + values from the sample rows (up to 8 items). Use actual values.
+If a chart doesn't make sense for a card, return chartLabels: [] and chartValues: [].
+
+CHART TYPE GUIDE — pick the most informative and visually striking type:
+• hbar       → ranked lists, long labels (5–12 items) — great for top-10 comparisons
+• bar        → short-label category comparisons (3–8 items, vertical)
+• line       → trends over time with 8+ continuous points
+• area       → cumulative volumes, stacked time-series
+• pie        → proportional splits, 2–6 segments (sentiment, category share)
+• doughnut   → cleaner pie for dashboards (2–6 segments)
+• scatter    → correlation between two numeric columns (X vs Y)
+• combo      → bar (primary metric) + line overlay (secondary trend) on same axes
+• histogram  → frequency distribution, value-range bucketing
+• radar      → 3–8 attributes compared simultaneously for 1–3 entities
+• waterfall  → how +/− items build to a total (bridge chart, revenue waterfall)
+• funnel     → stepwise conversion or dropout (Awareness → Trial → Purchase)
+
+━━ CHART VARIETY — MANDATORY ━━
+Across all 8 cards you MUST use at least 5 DIFFERENT chart types.
+NEVER assign hbar or bar to more than 3 cards total.
+NEVER assign the same type to more than 2 consecutive cards.
+Where the data supports it, prefer the richer types: area (for time-series), doughnut (for proportions), funnel (for conversion data), radar (for multi-attribute profiles), waterfall (for component breakdowns), combo (for two-metric comparisons).
 
 Return ONLY valid JSON — no markdown, no fences, no explanation:
 [
   {
     "title": "string",
     "bucket": "content|commerce|communication|culture",
-    "type": "hbar|bar|pie|scatter",
+    "type": "hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel",
     "conviction": 88,
     "obs": "string",
     "stat": "string",
@@ -373,12 +423,15 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content','commerce','communication','culture'];
-    const validTypes   = ['hbar','bar','pie','scatter'];
+    const validTypes: ChartType[] = [
+      'hbar','bar','line','area','pie','doughnut',
+      'scatter','combo','histogram','radar','waterfall','funnel',
+    ];
 
     return parsed.slice(0, 8).map(c => ({
       title:        String(c.title || 'Insight'),
       bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'content') as GeminiInsightCard['bucket'],
-      type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as GeminiInsightCard['type'],
+      type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as ChartType,
       conviction:   Number(c.conviction) || 88,
       obs:          String(c.obs  || ''),
       stat:         String(c.stat || ''),
@@ -514,17 +567,41 @@ RECOMMENDATION: one sentence to a creative director. Name a specific Indian plat
 
 ━━ CHART DATA ━━
 Use actual counts/percentages from the data blocks above.
-For sentiment breakdown → pie chart (chartLabels: ["Positive","Negative","Neutral"], chartValues: [pct, pct, pct])
-For platform breakdown → bar chart
-For themes → hbar chart (word: count)
-For volume over time → bar chart (month: count)
+Guidelines by data type:
+• Sentiment breakdown → doughnut (3 segments: Positive, Negative, Neutral)
+• Platform distribution → bar or hbar (platform name vs post count)
+• Top themes → hbar (word/phrase vs mention count)
+• Volume over time → area (month vs count — fill makes the trend pop visually)
+• Sentiment × Platform cross-tab → combo (bar=volume, line=positive%)
+• If data shows a funnel (e.g. Awareness→Engagement→Purchase intent) → funnel
+• Month-on-month swings → waterfall
+• Multi-platform attribute comparison → radar
+
+CHART TYPE GUIDE:
+• hbar       → ranked word/phrase lists (5–12 items)
+• bar        → platform/channel comparisons (3–8 items)
+• line       → volume trends over time (10+ months)
+• area       → cumulative or stacked volumes — MORE VISUAL than line
+• pie        → 2–6 segment proportional splits (use sparingly)
+• doughnut   → cleaner than pie for dashboards (sentiment split)
+• scatter    → two numeric variables (X vs Y)
+• combo      → bar (volume) + line (rate/%) on same axes
+• radar      → compare 3–8 brand/platform attributes at once
+• waterfall  → month-on-month sentiment change adding to total
+• funnel     → conversion or engagement dropoff stages
+
+━━ CHART VARIETY — MANDATORY ━━
+Across all 8 cards you MUST use at least 5 DIFFERENT chart types.
+NEVER use hbar or bar for more than 3 cards total.
+NEVER repeat the same type in consecutive cards.
+Sentiment data → doughnut. Volume trends → area. Any conversion/funnel data → funnel. Multi-attribute → radar. Two-metric → combo.
 
 Return ONLY valid JSON — no markdown, no fences, no explanation:
 [
   {
     "title": "string",
     "bucket": "content|commerce|communication|culture",
-    "type": "hbar|bar|pie|scatter",
+    "type": "hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel",
     "conviction": 88,
     "obs": "string",
     "stat": "string",
@@ -546,12 +623,15 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content','commerce','communication','culture'];
-    const validTypes   = ['hbar','bar','pie','scatter'];
+    const validTypes: ChartType[] = [
+      'hbar','bar','line','area','pie','doughnut',
+      'scatter','combo','histogram','radar','waterfall','funnel',
+    ];
 
     return parsed.slice(0, 8).map(c => ({
       title:        String(c.title || 'Insight'),
       bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'communication') as GeminiInsightCard['bucket'],
-      type:         (validTypes.includes(c.type)     ? c.type   : 'bar')           as GeminiInsightCard['type'],
+      type:         (validTypes.includes(c.type)     ? c.type   : 'bar')           as ChartType,
       conviction:   Number(c.conviction) || 85,
       obs:          String(c.obs  || ''),
       stat:         String(c.stat || ''),

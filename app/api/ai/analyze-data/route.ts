@@ -37,12 +37,52 @@ function questionBucket(q: string): DataSlot['bucket'] {
 }
 
 // ── Suggest best chart type for this question's data ─────────
-function suggestChart(rowCount: number, rows: DataSlot['rows']): DataSlot['chartSuggestion'] {
-  if (rowCount <= 4) return 'pie';
-  // If there are at least 4 rows with both audiencePct and index, scatter is great
+// Uses both the question semantics AND data shape to pick the right visual.
+function suggestChart(
+  rowCount: number,
+  rows:     DataSlot['rows'],
+  question: string = '',
+): DataSlot['chartSuggestion'] {
+  const q = question.toLowerCase();
+
+  // ── Semantic overrides (question topic takes priority) ──────────────────
+
+  // Purchase / conversion journey  → funnel (stages narrowing to outcome)
+  if (/purchas|funnel|convert|journey|path.*buy|awareness.*intent|stage/i.test(q) && rowCount <= 8)
+    return 'funnel';
+
+  // Temporal / trend data → area (richer fill than bare line)
+  if (/week|month|quarter|season|over time|trend|yearly|annual|growth|longitudinal/i.test(q))
+    return 'area';
+
+  // Multi-attribute profile / attitude / lifestyle → radar
+  if (/attitude|value|lifestyle|personalit|psycho|dimension|profile|attribute|habit|charact/i.test(q)
+      && rowCount >= 3 && rowCount <= 8)
+    return 'radar';
+
+  // Revenue / spend / budget component breakdown → waterfall
+  if (/revenue|spend|budget|breakdown|bridge|contribut|cost.*break|decompos/i.test(q)
+      && rowCount >= 3 && rowCount <= 10)
+    return 'waterfall';
+
+  // Distribution / frequency across ranges → histogram
+  if (/distribut|frequenc|range|bucket|bracket|spread/i.test(q) && rowCount >= 4)
+    return 'histogram';
+
+  // ── Data-shape overrides ─────────────────────────────────────────────────
+
+  // Very small set → doughnut (cleaner than pie for 3–5)
+  if (rowCount <= 3) return 'pie';
+  if (rowCount <= 5) return 'doughnut';
+
+  // Good scatter signal: both audiencePct and index available on 4+ rows
   const hasGoodScatter = rows.filter(r => r.audiencePct > 0 && r.index > 80).length >= 4;
   if (hasGoodScatter && rowCount >= 6) return 'scatter';
+
+  // Medium set → bar (vertical, clean)
   if (rowCount <= 7) return 'bar';
+
+  // Large set with long category labels → horizontal bar
   return 'hbar';
 }
 
@@ -110,7 +150,7 @@ function buildInsightSlots(rows: any[]): DataSlot[] {
   return [...guaranteed, ...remaining].slice(0, 20).map(q => ({
     bucket: q.bucket,
     question: q.question,
-    chartSuggestion: suggestChart(q.rowCount, q.topRows),
+    chartSuggestion: suggestChart(q.rowCount, q.topRows, q.question),
     rows: q.topRows,
   }));
 }
