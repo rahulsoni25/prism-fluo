@@ -28,40 +28,96 @@ interface GeneratePresentationRequest {
 type PrismBucket = 'content' | 'commerce' | 'communication' | 'culture';
 
 interface RawChart {
-  bucket?:       string;
-  title?:        string;
-  obs?:          string;
-  rec?:          string;
-  stat?:         string;
-  source?:       string;
-  toolLabel?:    string;
-  conviction?:   number;
+  bucket?:           string;
+  title?:            string;
+  lbl?:              string;   // alternate title field used by older analyses
+  obs?:              string;
+  rec?:              string;
+  stat?:             string;
+  source?:           string;
+  toolLabel?:        string;
+  conviction?:       number;
   // Chart rendering data (stored in results_json.charts by the analysis pipeline)
-  type?:         string;
-  chartLabels?:  string[];
-  chartValues?:  number[];
-  chartValues2?: number[];
+  type?:             string;
+  chartLabels?:      string[];
+  chartValues?:      number[];
+  chartValues2?:     number[];
+  // Older analyses store Chart.js-formatted data here instead of raw arrays
+  computedChartData?: any;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Extract plain labels + values arrays from any chart data format.
+ * Handles both the new {chartLabels, chartValues} format AND the older
+ * {computedChartData} Chart.js / SVG format stored in the DB.
+ */
+function extractChartArrays(c: RawChart): {
+  labels?: string[]; values?: number[]; values2?: number[];
+} {
+  // ── New format: raw arrays already present ──────────────────────────────
+  if (Array.isArray(c.chartLabels) && Array.isArray(c.chartValues) && c.chartValues.length) {
+    return {
+      labels:  c.chartLabels,
+      values:  c.chartValues.map(Number),
+      values2: Array.isArray(c.chartValues2) ? c.chartValues2.map(Number) : undefined,
+    };
+  }
+
+  // ── Old format: extract from computedChartData ──────────────────────────
+  const cd = c.computedChartData;
+  if (!cd) return {};
+
+  // SVG-based charts (waterfall / funnel) store {labels, values}
+  if (Array.isArray(cd.values) && cd.values.length) {
+    return {
+      labels: Array.isArray(cd.labels) ? cd.labels.map(String) : [],
+      values: cd.values.map(Number),
+    };
+  }
+
+  // Chart.js format: {labels, datasets: [{data:[...]}, ...]}
+  if (Array.isArray(cd.labels) && Array.isArray(cd.datasets) && cd.datasets[0]) {
+    const ds0 = cd.datasets[0];
+    const ds1 = cd.datasets[1];
+
+    // Scatter datasets store [{x, y}] objects — extract y values
+    if (ds0.data && typeof ds0.data[0] === 'object' && 'y' in ds0.data[0]) {
+      return {
+        labels: cd.labels.map(String),
+        values: ds0.data.map((p: any) => Number(p.y ?? p.x ?? 0)),
+      };
+    }
+
+    const values  = Array.isArray(ds0.data) ? ds0.data.map(Number) : [];
+    const values2 = ds1 && Array.isArray(ds1.data) ? ds1.data.map(Number) : undefined;
+    return { labels: cd.labels.map(String), values, values2 };
+  }
+
+  return {};
+}
 
 /** Build PillarData for a given bucket from the raw charts array */
 function buildPillar(charts: RawChart[], bucket: PrismBucket): PillarData {
   const insights: InsightCard[] = charts
     .filter(c => c.bucket === bucket)
-    .map(c => ({
-      title:        (c.title  || '').trim(),
-      obs:          (c.obs    || '').trim(),
-      rec:          (c.rec    || '').trim(),
-      stat:         c.stat       ? c.stat.trim()       : undefined,
-      source:       c.toolLabel  ? c.toolLabel.trim()  : (c.source ? c.source.trim() : undefined),
-      conviction:   c.conviction ?? undefined,
-      // Pass chart data for native PPTX chart rendering
-      chartType:    c.type       ?? undefined,
-      chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels  : undefined,
-      chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : undefined,
-      chartValues2: Array.isArray(c.chartValues2) ? c.chartValues2.map(Number) : undefined,
-    }))
+    .map(c => {
+      const { labels, values, values2 } = extractChartArrays(c);
+      return {
+        title:        (c.title || c.lbl || '').trim(),
+        obs:          (c.obs   || '').trim(),
+        rec:          (c.rec   || '').trim(),
+        stat:         c.stat      ? c.stat.trim()      : undefined,
+        source:       c.toolLabel ? c.toolLabel.trim() : (c.source ? c.source.trim() : undefined),
+        conviction:   c.conviction ?? undefined,
+        // Chart data — works for both old and new analysis formats
+        chartType:    c.type    ?? undefined,
+        chartLabels:  labels,
+        chartValues:  values,
+        chartValues2: values2,
+      };
+    })
     .filter(ins => ins.title || ins.obs || ins.rec);
   return { insights };
 }
