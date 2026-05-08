@@ -69,18 +69,18 @@ async function callGeminiWithRetry(model: any, prompt: string): Promise<any> {
 
 /**
  * Cascading model selection. `getGenerativeModel` doesn't validate the
- * name — invalid models only fail on generateContent(). So we try one,
- * run a tiny ping, and fall back if it fails. The result is cached so
- * we only do this once per process.
+ * name — invalid models only fail on generateContent(). So we try each,
+ * run a real content smoke test (not just an empty ping), and cache the
+ * first that returns non-empty text. Re-probes on next call after any
+ * 404 / empty-response cache invalidation.
  *
- * Order: latest preview → lite fallback → 1.5 last-resort.
- * NOTE: gemini-2.0-flash and gemini-2.5-flash (stable) are deprecated/
- * unavailable to new users as of May 2026 — use preview or lite variants.
+ * Order: gemini-2.0-flash-lite (confirmed stable) → 2.5 preview → pro preview.
+ * Removed: gemini-1.5-flash (404 as of May 2026), gemini-2.0-flash (deprecated).
  */
 const MODEL_CANDIDATES = [
-  'gemini-2.5-flash-preview-05-20', // latest, fastest for structured output
-  'gemini-2.0-flash-lite',           // still available, lower quota cost
-  'gemini-1.5-flash',                // ultimate fallback
+  'gemini-2.0-flash-lite',           // confirmed available, fast, low quota cost
+  'gemini-2.5-flash-preview-05-20',  // latest preview — use if lite fails
+  'gemini-2.5-pro-preview-05-06',    // pro preview — last resort
 ];
 let _resolvedModelName: string | null = null;
 
@@ -93,8 +93,11 @@ async function getModel(genAI: any): Promise<{ name: string; model: any }> {
   for (const name of MODEL_CANDIDATES) {
     try {
       const m = genAI.getGenerativeModel({ model: name });
-      // Tiny smoke ping — a single token request — to validate the name resolves.
-      await m.generateContent('ok');
+      // Smoke test: require actual non-empty text back — not just no 404.
+      // This catches models that exist but silently return empty for real prompts.
+      const testResult = await m.generateContent('Respond with the single word: ready');
+      const testText   = testResult?.response?.text?.()?.trim() ?? '';
+      if (!testText) throw new Error(`${name} smoke test returned empty text`);
       _resolvedModelName = name;
       console.log(`[Gemini] resolved model: ${name}`);
       return { name, model: m };
@@ -106,9 +109,9 @@ async function getModel(genAI: any): Promise<{ name: string; model: any }> {
   throw new Error(`No Gemini model available. Last error: ${lastErr?.message ?? 'unknown'}`);
 }
 
-/** Call this when a previously-resolved model returns a 404 / deprecation error
- *  so the next request re-runs the cascade instead of hammering a dead model. */
-function invalidateModelCache() {
+/** Call this when a previously-resolved model returns a 404, deprecation error,
+ *  or empty response so the next request re-runs the cascade fresh. */
+export function invalidateModelCache() {
   console.warn('[Gemini] Clearing model cache — will re-probe on next call');
   _resolvedModelName = null;
 }
@@ -286,10 +289,19 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 
   try {
     const result  = await callGeminiWithRetry(model, prompt);
-    const rawText = result.response.text().trim();
+    const rawText = result?.response?.text?.()?.trim() ?? '';
+    // Empty text = model silently blocked or unavailable → invalidate cache so
+    // the next call re-probes for a working model instead of hammering the same one.
+    if (!rawText) {
+      invalidateModelCache();
+      throw new Error('Gemini returned empty text — model may be blocked or rate-limited');
+    }
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
-    if (!match) throw new Error('No JSON array in Gemini response');
+    if (!match) {
+      invalidateModelCache();
+      throw new Error('No JSON array in Gemini response — model returned non-JSON output');
+    }
 
     const parsed: any[] = JSON.parse(match[0]);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
@@ -432,10 +444,17 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 
   try {
     const result  = await callGeminiWithRetry(model, prompt);
-    const rawText = result.response.text().trim();
+    const rawText = result?.response?.text?.()?.trim() ?? '';
+    if (!rawText) {
+      invalidateModelCache();
+      throw new Error('Gemini returned empty text — model may be blocked or rate-limited');
+    }
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
-    if (!match) throw new Error('No JSON array in Gemini generic response');
+    if (!match) {
+      invalidateModelCache();
+      throw new Error('No JSON array in Gemini generic response');
+    }
 
     const parsed: any[] = JSON.parse(match[0]);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
@@ -632,10 +651,17 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 
   try {
     const result  = await callGeminiWithRetry(model, prompt);
-    const rawText = result.response.text().trim();
+    const rawText = result?.response?.text?.()?.trim() ?? '';
+    if (!rawText) {
+      invalidateModelCache();
+      throw new Error('Gemini returned empty text — model may be blocked or rate-limited');
+    }
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
-    if (!match) throw new Error('No JSON array in social listening Gemini response');
+    if (!match) {
+      invalidateModelCache();
+      throw new Error('No JSON array in social listening Gemini response');
+    }
 
     const parsed: any[] = JSON.parse(match[0]);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
