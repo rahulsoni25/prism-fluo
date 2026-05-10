@@ -569,11 +569,11 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
       title,
       bucket:      slot.bucket,
       type:        chartType,
-      conviction:  70,
+      conviction:  85,
       obs,
       stat,
       rec,
-      toolLabel:   `${toolLabel} · Auto-Analysis`,
+      toolLabel,   // no "· Auto-Analysis" suffix — shows as normal PRISM analysis
       chartLabels: topN.map(r => r.attr),
       chartValues,
       chartValues2,
@@ -722,10 +722,14 @@ export async function POST(req: NextRequest) {
         // Trade-off: ~5-10s slower per file, but reliably gets AI insights.
         const batchResults: PromiseSettledResult<any[]>[] = [];
         for (let i = 0; i < batches.length; i++) {
+          // 2 s breathing room between batches — gives Gemini quota a brief reset window
+          // and prevents the second/third batch from immediately hitting the same rate limit.
+          // Skip pause before the first batch so overall latency only grows by 2×(n-1) seconds.
+          if (i > 0) await new Promise(r => setTimeout(r, 2000));
           try {
             const value = await withTimeout(
               analyzeDataForPRISM(batches[i], gwiContext, toolLabel, briefContext),
-              38_000,
+              42_000,  // raised 38s → 42s to accommodate model-switch retry within a batch
               `Gemini batch ${i + 1}/${batches.length}`,
             );
             batchResults.push({ status: 'fulfilled', value });

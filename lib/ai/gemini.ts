@@ -33,43 +33,51 @@ function stratifiedSample<T>(rows: T[], n: number): T[] {
 }
 
 /**
- * Call generateContent with bounded retry on transient failures.
- * Retries on 429 (rate limit), 503 (overloaded), and ECONNRESET/timeout
- * with exponential backoff: 1s → 3s → 7s. Hard caps total wait at ~12s
- * so we still finish within the 60s function budget on Vercel Hobby.
+ * Call generateContent with bounded retry + automatic model switching.
  *
- * Non-retryable errors (400, 401, 403, 404, JSON shape errors) propagate
- * immediately so we don't waste budget on permanent failures.
+ * KEY IMPROVEMENT over the old version:
+ *   Old: passed `model` as a parameter → retried the SAME rate-limited model 3×
+ *   New: accepts `genAI` and calls `getModel()` at the START of each attempt.
+ *        On 429 (rate limit) we call `invalidateModelCache()` so the NEXT attempt
+ *        automatically picks the next candidate (gemini-2.0-flash, etc.) instead
+ *        of hammering the same quota-exhausted model.
+ *
+ * Retry budget: 4 attempts = can cycle through up to 4 model candidates.
+ * Non-retryable errors (400, 401, 403) propagate immediately.
  */
-async function callGeminiWithRetry(model: any, prompt: string): Promise<any> {
-  const MAX_ATTEMPTS = 3;
-  // 429 (rate limit) needs a longer wait — Gemini quota windows are ~60s.
-  // Standard delays: 5s → 15s for rate limits; 2s → 5s for server errors.
+async function callGeminiWithRetry(genAI: any, prompt: string): Promise<any> {
+  const MAX_ATTEMPTS = 4;  // 4 candidates available; one attempt each
   let lastErr: any = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
-      return await model.generateContent(prompt);
+      // Re-resolve model on every attempt — after invalidation this picks the next candidate
+      const { model: _m } = await getModel(genAI);
+      return await _m.generateContent(prompt);
     } catch (err: any) {
       lastErr = err;
       const msg    = String(err?.message ?? err);
       const status = (err?.status ?? err?.response?.status ?? 0) as number;
-      // 404 = model deprecated → blacklist it so the cascade advances immediately
+      // 404 = model deprecated → blacklist + try next candidate immediately (no wait)
       if (status === 404 || /no longer available|model.*not found|404/i.test(msg)) {
         invalidateModelCache(_resolvedModelName ?? undefined);
-        throw err; // propagate immediately — retrying won't help
+        continue;
       }
       const isRateLimit = status === 429 || /rate ?limit|quota/i.test(msg);
       const transient =
         isRateLimit || status === 503 || status === 504 ||
         /overloaded|temporar|timeout|ECONNRESET|ETIMEDOUT|fetch failed/i.test(msg);
       if (!transient || attempt === MAX_ATTEMPTS - 1) throw err;
-      // Rate limits need longer waits — use 5s + 15s to allow quota to reset.
-      // Server errors use shorter 2s + 5s backoff.
-      const delay = isRateLimit
-        ? [5000, 15000][attempt] ?? 15000
-        : [2000, 5000][attempt] ?? 5000;
-      console.warn(`[Gemini] attempt ${attempt + 1} failed (${status || 'transient'}) — retrying in ${delay / 1000}s`);
-      await new Promise(r => setTimeout(r, delay));
+      if (isRateLimit) {
+        // Switch to the NEXT model candidate — don't waste retries on the same quota-limited model
+        invalidateModelCache(_resolvedModelName ?? undefined);
+        console.warn(`[Gemini] attempt ${attempt + 1}: rate-limited — switching model (1.5 s cooldown)`);
+        await new Promise(r => setTimeout(r, 1500));
+      } else {
+        // Server error — brief backoff then retry same (or new) model
+        const delay = [2000, 5000, 8000][attempt] ?? 8000;
+        console.warn(`[Gemini] attempt ${attempt + 1} failed (${status || 'transient'}) — retrying in ${delay / 1000}s`);
+        await new Promise(r => setTimeout(r, delay));
+      }
     }
   }
   throw lastErr;
@@ -202,7 +210,7 @@ export async function analyzeDataForPRISM(
   if (!genAI) throw new Error('GEMINI_API_KEY is not set');
   if (slots.length === 0) return [];
 
-  const { model } = await getModel(genAI);
+  await getModel(genAI); // warm model cache; actual model resolved inside callGeminiWithRetry
 
   // Build structured slot block — exact numbers, clearly labelled
   const slotBlock = slots.map((slot, i) => {
@@ -363,7 +371,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 ]`;
 
   try {
-    const result  = await callGeminiWithRetry(model, prompt);
+    const result  = await callGeminiWithRetry(genAI, prompt);
     const rawText = result?.response?.text?.()?.trim() ?? '';
     // Empty text = model silently blocked or unavailable → invalidate cache so
     // the next call re-probes for a working model instead of hammering the same one.
@@ -427,7 +435,7 @@ export async function analyzeGenericTabularForPRISM(
   if (!genAI) throw new Error('GEMINI_API_KEY is not set');
   if (!Array.isArray(rows) || rows.length === 0) return [];
 
-  const { model } = await getModel(genAI);
+  await getModel(genAI); // warm model cache; actual model resolved inside callGeminiWithRetry
 
   // Sample to keep token use bounded. For large datasets we take a stratified
   // sample (head + middle + tail) rather than only the first N rows so we don't
@@ -568,7 +576,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 ]`;
 
   try {
-    const result  = await callGeminiWithRetry(model, prompt);
+    const result  = await callGeminiWithRetry(genAI, prompt);
     const rawText = result?.response?.text?.()?.trim() ?? '';
     if (!rawText) {
       invalidateModelCache(_resolvedModelName ?? undefined);
@@ -635,7 +643,7 @@ export async function analyzeSocialListeningForPRISM(
   if (!genAI) throw new Error('GEMINI_API_KEY is not set');
   if (!Array.isArray(rows) || rows.length === 0) return [];
 
-  const { model } = await getModel(genAI);
+  await getModel(genAI); // warm model cache; actual model resolved inside callGeminiWithRetry
 
   // Separate row types for a clean prompt structure
   const overview        = rows.find(r => r.dimension === '_overview') ?? {};
@@ -793,7 +801,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 ]`;
 
   try {
-    const result  = await callGeminiWithRetry(model, prompt);
+    const result  = await callGeminiWithRetry(genAI, prompt);
     const rawText = result?.response?.text?.()?.trim() ?? '';
     if (!rawText) {
       invalidateModelCache(_resolvedModelName ?? undefined);
@@ -860,7 +868,7 @@ export async function generateExecutiveSummary(
     };
   }
 
-  const { model } = await getModel(genAI);
+  await getModel(genAI); // warm model cache; actual model resolved inside callGeminiWithRetry
 
   // Build a summary of the insight cards for context
   const cardSummary = cards.map((c, i) =>
@@ -941,7 +949,7 @@ Return ONLY a valid JSON object with these four fields. No markdown, no extra te
 }`;
 
   try {
-    const result = await callGeminiWithRetry(model, prompt);
+    const result = await callGeminiWithRetry(genAI, prompt);
     const rawText = result.response.text().trim();
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match = cleaned.match(/\{[\s\S]*\}/);
@@ -993,7 +1001,7 @@ export async function enhanceInsightTitles(
   if (!genAI || charts.length === 0) return charts.map(c => c.title);
 
   try {
-    const { model } = await getModel(genAI);
+    await getModel(genAI); // warm model cache; actual model resolved inside callGeminiWithRetry
     const prompt = `You are a world-class Brand Strategist and editorial writer crafting insight headlines for senior marketing teams.
 
 Every headline uses these 5 elements:
@@ -1058,7 +1066,7 @@ For each chart: read the observation carefully, pick the pattern that fits the n
 Return ONLY a valid JSON array of strings, one title per chart — no pattern labels, just the headlines.
 Example: ["headline 1", "headline 2", "headline 3"]`;
 
-    const result = await callGeminiWithRetry(model, prompt);
+    const result = await callGeminiWithRetry(genAI, prompt);
     const text   = result.response.text();
     const match  = text.match(/\[[\s\S]*?\]/);
     if (match) {
@@ -1081,7 +1089,7 @@ export async function enhanceInsightNarratives(
     return charts.map(c => ({ obs: c.obs || '', rec: c.rec || '' }));
 
   try {
-    const { model } = await getModel(genAI);
+    await getModel(genAI); // warm model cache; actual model resolved inside callGeminiWithRetry
     const prompt = `You are a Senior Brand Strategist writing insight cards for marketing teams.
 
 ━━━ STEP 1 — READ THE INSIGHT, IDENTIFY ITS NATURE, PICK THE RIGHT PATTERN ━━━
@@ -1154,7 +1162,7 @@ For each chart: read the data, pick the pattern that fits, then write obs and re
 Return ONLY a valid JSON array, one object per chart:
 [{"obs": "2-3 sentences — pattern-matched, stat + context + reason + tension/question when warranted", "rec": "2-3 sentences — action + context + stat + reason + outcome + timeframe + tension/question when warranted", "stat": "one punchy highlight stat (e.g. '1,257% YoY' or '3× category norm')"}, ...]`;
 
-    const result = await callGeminiWithRetry(model, prompt);
+    const result = await callGeminiWithRetry(genAI, prompt);
     const text   = result.response.text();
     const match  = text.match(/\[[\s\S]*?\]/);
     if (match) {
@@ -1183,7 +1191,7 @@ export async function analyzeTextForPRISM(
   if (!genAI) throw new Error('GEMINI_API_KEY is not set');
   if (!text.trim()) return [];
 
-  const { model } = await getModel(genAI);
+  await getModel(genAI); // warm model cache; actual model resolved inside callGeminiWithRetry
 
   // Truncate to ~12 000 chars to stay within token budget
   const excerpt = text.length > 12000 ? text.slice(0, 12000) + '\n…[truncated]' : text;
@@ -1244,7 +1252,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 ]`;
 
   try {
-    const result  = await callGeminiWithRetry(model, prompt);
+    const result  = await callGeminiWithRetry(genAI, prompt);
     const rawText = result.response.text().trim();
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
