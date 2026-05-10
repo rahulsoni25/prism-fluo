@@ -72,6 +72,25 @@ export default function Dashboard() {
       });
   }, []);
 
+  async function handleDelete(briefId) {
+    try {
+      const res = await fetch(`/api/briefs/${briefId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || 'Delete failed. Please try again.');
+        return;
+      }
+      // Optimistically remove from list and update stats
+      setBriefs(prev => prev.filter(b => b.id !== briefId));
+      setStats(prev => ({
+        ...prev,
+        total: Math.max(0, prev.total - 1),
+      }));
+    } catch {
+      alert('Delete failed. Please try again.');
+    }
+  }
+
   const FILTERS = ['All Briefs', 'Ready', 'Processing', 'Waiting', 'Draft'];
   const FILTER_TO_STATUS = {
     'Ready':      'ready',
@@ -225,6 +244,7 @@ export default function Dashboard() {
                   tags={buildTags(brief)}
                   footerItems={brief.status !== 'draft' ? footer : undefined}
                   isDraft={brief.status === 'draft'}
+                  onDelete={() => handleDelete(brief.id)}
                 />
               );
             })}

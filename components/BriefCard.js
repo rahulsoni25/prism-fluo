@@ -61,8 +61,10 @@ export default function BriefCard({
   status = 'draft',
   slaText,
   category,
+  onDelete,
 }) {
-  const [hover, setHover] = useState(false);
+  const [hover,    setHover]    = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const ss    = STATUS_STYLE[status] || DEFAULT_STYLE;
   const color = CATEGORY_COLOR[category] || DEFAULT_COLOR;
 
@@ -107,23 +109,55 @@ export default function BriefCard({
               border:'1px solid rgba(255,255,255,.2)',
             }}>{icon || '📋'}</div>
 
-            {/* Status pill */}
-            <div style={{
-              display:'flex', alignItems:'center', gap:5,
-              padding:'4px 10px', borderRadius:20,
-              background: ss.pill.bg,
-              border:`1px solid ${ss.pill.dot}40`,
-              backdropFilter:'blur(4px)',
-            }}>
-              <span style={{
-                width:6, height:6, borderRadius:'50%',
-                background: ss.pill.dot,
-                display:'inline-block',
-                animation: ss.pulse ? 'bcpulse 1.5s ease-in-out infinite' : 'none',
-              }} />
-              <span style={{ fontSize:10, fontWeight:800, color: ss.pill.color, letterSpacing:'.06em', textTransform:'uppercase' }}>
-                {ss.label}
-              </span>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              {/* Status pill */}
+              <div style={{
+                display:'flex', alignItems:'center', gap:5,
+                padding:'4px 10px', borderRadius:20,
+                background: ss.pill.bg,
+                border:`1px solid ${ss.pill.dot}40`,
+                backdropFilter:'blur(4px)',
+              }}>
+                <span style={{
+                  width:6, height:6, borderRadius:'50%',
+                  background: ss.pill.dot,
+                  display:'inline-block',
+                  animation: ss.pulse ? 'bcpulse 1.5s ease-in-out infinite' : 'none',
+                }} />
+                <span style={{ fontSize:10, fontWeight:800, color: ss.pill.color, letterSpacing:'.06em', textTransform:'uppercase' }}>
+                  {ss.label}
+                </span>
+              </div>
+
+              {/* Delete button — only shown when onDelete prop is provided */}
+              {onDelete && (
+                <button
+                  onClick={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (deleting) return;
+                    if (!window.confirm(`Delete "${brand}"? This cannot be undone.`)) return;
+                    setDeleting(true);
+                    onDelete();
+                  }}
+                  title="Delete brief"
+                  style={{
+                    width:26, height:26, borderRadius:8,
+                    background: deleting ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.15)',
+                    border:'1px solid rgba(255,255,255,.25)',
+                    color:'rgba(255,255,255,.8)',
+                    fontSize:13, fontWeight:700,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    cursor: deleting ? 'not-allowed' : 'pointer',
+                    transition:'all .15s',
+                    backdropFilter:'blur(4px)',
+                    flexShrink:0,
+                    lineHeight:1,
+                  }}
+                >
+                  {deleting ? '…' : '×'}
+                </button>
+              )}
             </div>
           </div>
 

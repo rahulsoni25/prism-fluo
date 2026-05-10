@@ -74,3 +74,27 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+/**
+ * DELETE /api/briefs/[id]
+ * Permanently deletes the brief (and its linked analyses/uploads via CASCADE).
+ * Only the owner can delete their own brief.
+ */
+export async function DELETE(_req, { params }) {
+  const { id } = await params;
+  try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+
+    const { rowCount } = await db.query(
+      'DELETE FROM briefs WHERE id = $1 AND user_id = $2',
+      [id, session.userId],
+    );
+    if (rowCount === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    cache.del(`dashboard:overview:${session.userId}`);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
