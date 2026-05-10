@@ -21,103 +21,143 @@ function fmtTs(ts) {
 }
 
 /**
- * BriefContextStrip — replaces the raw filename dump under the report title.
- * When a brief is linked: shows objective, audience pills, competitor tags.
- * When no brief: falls back to the source badge + time ago (original behaviour).
+ * BriefContextStrip — clean, organized brief summary card under the report title.
+ * Three-section layout: meta row → objective → audience + competitors side-by-side.
+ * Falls back to source badge + time ago when no brief is linked.
  */
 function BriefContextStrip({ brief, sourceBadge, createdAt }) {
-  // ── Pill helper ─────────────────────────────────────────────
-  const Pill = ({ icon, label, subtle }) => (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '3px 10px', borderRadius: 20,
-      fontSize: 11, fontWeight: 600,
-      background: subtle ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.14)',
-      color: 'rgba(255,255,255,0.88)',
-      border: '1px solid rgba(255,255,255,0.14)',
-      whiteSpace: 'nowrap',
-    }}>
-      {icon && <span style={{ fontSize: 12 }}>{icon}</span>}
-      {label}
-    </span>
-  );
 
-  // ── No brief linked — minimal fallback ─────────────────────
+  // ── No brief linked — simple fallback ──────────────────────
   if (!brief?.brand) {
     return (
-      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-        <Pill icon="📊" label={sourceBadge} subtle />
-        <Pill icon="🕐" label={timeAgo(createdAt)} subtle />
+      <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        <span style={{
+          padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+          background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)',
+          border: '1px solid rgba(255,255,255,0.12)',
+        }}>📊 {sourceBadge}</span>
+        <span style={{
+          padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+          background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.55)',
+          border: '1px solid rgba(255,255,255,0.1)',
+        }}>🕐 {timeAgo(createdAt)}</span>
       </div>
     );
   }
 
-  // ── Build audience pills ────────────────────────────────────
-  const audiencePills = [];
-  if (brief.age_ranges)  audiencePills.push({ icon: '👥', label: brief.age_ranges });
-  if (brief.gender)      audiencePills.push({ icon: '⚥',  label: brief.gender });
-  if (brief.sec)         audiencePills.push({ icon: '🏷',  label: `SEC ${brief.sec}` });
-  if (brief.geography)   audiencePills.push({ icon: '📍', label: brief.geography });
-  else if (brief.market) audiencePills.push({ icon: '🌐', label: brief.market });
+  // ── Parse audience + competitors ───────────────────────────
+  const audience = [
+    brief.age_ranges && { label: brief.age_ranges },
+    brief.gender     && { label: brief.gender },
+    brief.sec        && { label: `SEC ${brief.sec}` },
+    (brief.geography || brief.market) && { label: brief.geography || brief.market },
+  ].filter(Boolean);
 
-  // ── Competitors ─────────────────────────────────────────────
-  const competitorList = brief.competitors
-    ? brief.competitors.split(/[,;·|]+/).map(s => s.trim()).filter(Boolean).slice(0, 4)
+  const competitors = brief.competitors
+    ? brief.competitors.split(/[,;·|\/]+/).map(s => s.trim()).filter(Boolean).slice(0, 5)
     : [];
 
+  const sectionLabel = {
+    fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em',
+    textTransform: 'uppercase', color: 'rgba(255,255,255,0.38)',
+    marginBottom: 5,
+  };
+
+  const chip = (bg, border, color) => ({
+    display: 'inline-flex', alignItems: 'center',
+    padding: '3px 10px', borderRadius: 20,
+    fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+    background: bg, border: `1px solid ${border}`, color,
+  });
+
   return (
-    <div style={{ marginTop: 10 }}>
-      {/* Row 1 — brand + category badge */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5,
-          padding: '3px 12px', borderRadius: 20,
-          fontSize: 11.5, fontWeight: 700,
-          background: 'rgba(99,102,241,0.25)',
-          color: '#C7D2FE',
-          border: '1px solid rgba(99,102,241,0.4)',
-        }}>
-          🏢 {brief.brand}{brief.category ? ` · ${brief.category}` : ''}
-        </span>
-        <Pill icon="📊" label={sourceBadge} subtle />
-        <Pill icon="🕐" label={timeAgo(createdAt)} subtle />
+    <div style={{
+      marginTop: 12,
+      background: 'rgba(255,255,255,0.05)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      borderRadius: 14,
+      padding: '14px 18px',
+      maxWidth: 700,
+    }}>
+
+      {/* ── TOP ROW: brand · category  |  source · time ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        {/* Brand + category */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={chip('rgba(99,102,241,0.22)', 'rgba(99,102,241,0.4)', '#C7D2FE')}>
+            🏢 {brief.brand}
+          </span>
+          {brief.category && (
+            <span style={chip('rgba(255,255,255,0.08)', 'rgba(255,255,255,0.12)', 'rgba(255,255,255,0.65)')}>
+              {brief.category}
+            </span>
+          )}
+        </div>
+        {/* Source + time — pushed right */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <span style={chip('rgba(255,255,255,0.07)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0.5)')}>
+            📊 {sourceBadge}
+          </span>
+          <span style={chip('rgba(255,255,255,0.05)', 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.38)')}>
+            {timeAgo(createdAt)}
+          </span>
+        </div>
       </div>
 
-      {/* Row 2 — objective (1 line, truncated) */}
+      {/* ── DIVIDER ── */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginBottom: 12 }} />
+
+      {/* ── OBJECTIVE ── */}
       {brief.objective && (
-        <div style={{
-          fontSize: 12.5, fontWeight: 500, color: 'rgba(255,255,255,0.82)',
-          lineHeight: 1.45, marginBottom: 9,
-          display: '-webkit-box', WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical', overflow: 'hidden',
-          maxWidth: 640,
-        }}>
-          🎯 {brief.objective}
+        <div style={{ marginBottom: 12 }}>
+          <div style={sectionLabel}>Objective</div>
+          <div style={{
+            fontSize: 12.5, fontWeight: 500, lineHeight: 1.55,
+            color: 'rgba(255,255,255,0.85)',
+            display: '-webkit-box', WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          }}>
+            {brief.objective}
+          </div>
         </div>
       )}
 
-      {/* Row 3 — audience pills */}
-      {audiencePills.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
-          {audiencePills.map((p, i) => <Pill key={i} icon={p.icon} label={p.label} />)}
-        </div>
-      )}
+      {/* ── BOTTOM ROW: audience left | competitors right ── */}
+      {(audience.length > 0 || competitors.length > 0) && (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
 
-      {/* Row 4 — competitors */}
-      {competitorList.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>
-          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', fontWeight: 600, marginRight: 2 }}>
-            VS
-          </span>
-          {competitorList.map((c, i) => (
-            <span key={i} style={{
-              padding: '2px 9px', borderRadius: 20,
-              fontSize: 10.5, fontWeight: 600,
-              background: 'rgba(239,68,68,0.15)',
-              color: 'rgba(252,165,165,0.95)',
-              border: '1px solid rgba(239,68,68,0.25)',
-            }}>{c}</span>
-          ))}
+          {/* Audience */}
+          {audience.length > 0 && (
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={sectionLabel}>Target Audience</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {audience.map((a, i) => (
+                  <span key={i} style={chip('rgba(16,185,129,0.12)', 'rgba(16,185,129,0.25)', 'rgba(167,243,208,0.9)')}>
+                    {a.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Vertical divider between audience and competitors */}
+          {audience.length > 0 && competitors.length > 0 && (
+            <div style={{ width: 1, background: 'rgba(255,255,255,0.08)', alignSelf: 'stretch', flexShrink: 0 }} />
+          )}
+
+          {/* Competitors */}
+          {competitors.length > 0 && (
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={sectionLabel}>Competing Against</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {competitors.map((c, i) => (
+                  <span key={i} style={chip('rgba(239,68,68,0.12)', 'rgba(239,68,68,0.28)', 'rgba(252,165,165,0.9)')}>
+                    {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
