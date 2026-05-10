@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { callOpenRouterText } from '@/lib/ai/openrouter';
 import { cache } from '@/lib/cache';
 import { getSession } from '@/lib/auth/server';
 
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   const { keyword, timeline, topQueries, risingQueries, relatedTopics, peakWeek, peakValue, trend, brandContext } = body;
 
   if (!keyword) return NextResponse.json({ error: 'keyword required' }, { status: 400 });
-  if (!process.env.GEMINI_API_KEY) return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 503 });
+  if (!process.env.OPENROUTER_API_KEY) return NextResponse.json({ error: 'OPENROUTER_API_KEY not set' }, { status: 503 });
 
   // Cache hit
   const key    = hashTrends(keyword + (brandContext || ''), trend);
@@ -62,9 +62,6 @@ export async function POST(req: NextRequest) {
     `  • "${q.query}" — ${q.isBreakout ? '🔥 BREAKOUT' : `+${q.value}%`}`).join('\n') || '  (none)';
   const topicsStr  = relatedTopics.slice(0, 5).map(t =>
     `  • ${t.topic} (${t.type}) — ${t.value === 5000 ? 'BREAKOUT' : `+${t.value}%`}`).join('\n') || '  (none)';
-
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const prompt = `You are a senior Brand Strategist at PRISM writing Google Trends intelligence for the brand team working on: "${brandContext || keyword}"
 
@@ -116,10 +113,9 @@ Return ONLY valid JSON array:
 ]`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text   = result.response.text().trim();
-    const match  = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').match(/\[[\s\S]*\]/);
-    if (!match) throw new Error('No JSON in Gemini response');
+    const raw   = await callOpenRouterText(prompt, 1500);
+    const match = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('No JSON in Gemma response');
 
     const cards = JSON.parse(match[0]);
     if (!Array.isArray(cards)) throw new Error('Not an array');
@@ -142,6 +138,6 @@ Return ONLY valid JSON array:
     return NextResponse.json(payload);
 
   } catch (err: any) {
-    return NextResponse.json({ error: `Gemini failed: ${err.message}` }, { status: 502 });
+    return NextResponse.json({ error: `Gemma failed: ${err.message}` }, { status: 502 });
   }
 }

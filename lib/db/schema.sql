@@ -248,3 +248,46 @@ CREATE INDEX IF NOT EXISTS idx_presentations_user_created ON presentations(user_
 CREATE INDEX IF NOT EXISTS idx_presentations_user_status ON presentations(user_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analyses_user_brief ON analyses(user_id, brief_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_briefs_user_status ON briefs(user_id, status, created_at DESC);
+
+-- ============================================================
+-- PAGES — WordPress-style publish / draft system
+-- Controls which screens appear in the navigation.
+-- status = 'published' → visible in nav + accessible
+-- status = 'draft'     → hidden from nav (admin panel only)
+-- protected = true     → cannot be unpublished (login, dashboard)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS pages (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    slug         TEXT NOT NULL UNIQUE,
+    description  TEXT    NOT NULL DEFAULT '',
+    icon         TEXT    NOT NULL DEFAULT '',
+    status       TEXT    NOT NULL DEFAULT 'draft'
+                     CHECK (status IN ('draft', 'published')),
+    show_in_nav  BOOLEAN NOT NULL DEFAULT false,
+    protected    BOOLEAN NOT NULL DEFAULT false,
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_pages_status ON pages(status);
+CREATE INDEX IF NOT EXISTS idx_pages_nav    ON pages(show_in_nav, status, sort_order);
+
+-- Admin role on users (additive — safe to re-run)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+
+-- Seed default pages — all published so existing users keep full access.
+-- ON CONFLICT DO NOTHING means re-running the migration is safe.
+INSERT INTO pages (id, name, slug, description, icon, status, show_in_nav, protected, sort_order) VALUES
+  ('login',         'Login',         '/login',         'User authentication page',          '🔐', 'published', false, true,  0),
+  ('signup',        'Sign Up',       '/signup',        'New user registration',             '📝', 'published', false, false, 1),
+  ('dashboard',     'Dashboard',     '/dashboard',     'Campaign briefs overview',          '📊', 'published', false, true,  2),
+  ('upload',        'Data Mapper',   '/upload',        'Upload research files for AI',      '⬆️', 'published', false, false, 3),
+  ('insights',      'Insights',      '/insights',      'PRISM Intelligence Reports',        '💡', 'published', false, false, 4),
+  ('analyze',       'Analyze',       '/analyze',       'Culture & Media Analyzer',          '⚡', 'published', true,  false, 5),
+  ('culture',       'Culture',       '/culture',       'Culture Intelligence feed',         '🌍', 'published', true,  false, 6),
+  ('presentations', 'Presentations', '/presentations', 'AI-generated slide decks',          '🎨', 'published', true,  false, 7),
+  ('brief-new',     'New Brief',     '/brief/new',     'Create a new campaign brief',       '📋', 'published', false, false, 8)
+ON CONFLICT (id) DO NOTHING;

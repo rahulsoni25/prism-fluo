@@ -1,12 +1,11 @@
 /**
  * POST /api/gemini/deep
- * ~1000 Gemini tokens per call — full analysis for ONE section, lazy-loaded on expand.
- * Cached 24h in-memory (key = hash of input + section).
- * TOKEN AUDIT: system=80, user=220, response=700 ≈ 1000 total
+ * ~1000 tokens per call — full analysis for ONE section, lazy-loaded on expand.
+ * Powered by OpenRouter / Gemma. Cached 24h in-memory.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { callOpenRouterText } from '@/lib/ai/openrouter';
 import { cache } from '@/lib/cache';
 import { getSession } from '@/lib/auth/server';
 
@@ -60,17 +59,13 @@ export async function POST(req: NextRequest) {
   if (!input?.trim()) return NextResponse.json({ error: 'input required' }, { status: 400 });
   if (!SECTION_PROMPTS[section]) return NextResponse.json({ error: 'invalid section' }, { status: 400 });
 
+  if (!process.env.OPENROUTER_API_KEY)
+    return NextResponse.json({ error: 'OPENROUTER_API_KEY not set' }, { status: 503 });
+
   // ── Cache hit (24h TTL) ───────────────────────────────────────
   const cacheKey = hashInput(input, section);
   const cached = cache.get<object>(cacheKey);
   if (cached) return NextResponse.json({ ...cached, cached: true });
-
-  if (!process.env.GEMINI_API_KEY)
-    return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 503 });
-
-  // ── Gemini call — ~1000 tokens ────────────────────────────────
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const prompt = `You are a senior brand strategist analyzing: "${input}"
 
@@ -79,9 +74,9 @@ ${SECTION_PROMPTS[section]}
 CRITICAL: Return ONLY a valid JSON array. No markdown, no explanation. Use real stats and numbers.`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    const match = text.match(/\[[\s\S]*\]/);
+    const text  = await callOpenRouterText(prompt, 2000);
+    const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const match = clean.match(/\[[\s\S]*\]/);
     if (!match) throw new Error('No JSON array in response');
 
     const cards = JSON.parse(match[0]);
@@ -98,11 +93,10 @@ CRITICAL: Return ONLY a valid JSON array. No markdown, no explanation. Use real 
       input,
     };
 
-    // Cache 24h
     cache.set(cacheKey, payload, 86400);
     return NextResponse.json(payload);
 
   } catch (err: any) {
-    return NextResponse.json({ error: `Gemini failed: ${err.message}` }, { status: 502 });
+    return NextResponse.json({ error: `Gemma failed: ${err.message}` }, { status: 502 });
   }
 }

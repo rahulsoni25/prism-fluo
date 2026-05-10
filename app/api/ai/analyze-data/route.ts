@@ -10,7 +10,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM } from '@/lib/ai/gemini';
-import type { DataSlot } from '@/lib/ai/gemini';
+import { analyzeWithOpenRouter } from '@/lib/ai/openrouter';
+import type { DataSlot, GeminiInsightCard } from '@/lib/ai/gemini';
 
 // Vercel Hobby plan default timeout is 10 s — Gemini 2.5 routinely takes 15-40 s.
 // Setting maxDuration = 60 (the Hobby-plan maximum) prevents premature timeouts.
@@ -164,6 +165,252 @@ function chunkSlots(slots: DataSlot[], batchSize: number): DataSlot[][] {
   return batches;
 }
 
+// ── Pure-data fallback: no Gemini, grounded in actual slot numbers ────────────
+// Matches the prototype card style exactly:
+//   Title  → stat-led headline, plain number, active language
+//   Obs    → 3 sentences: punchy finding · second signal · strategic so-what
+//   Stat   → pull-quote, plain English, no raw "Index N"
+//   Rec    → specific Indian platform + format + creative angle
+// conviction = 70 (lower than Gemini's 88–90) signals auto-analysis to the UI.
+
+function cap(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+/** audience% → plain-English fraction  e.g. 48.6 → "nearly 1 in 2" */
+function pctToWords(pct: number): string {
+  if (pct >= 80) return 'more than 4 in 5';
+  if (pct >= 70) return 'about 7 in 10';
+  if (pct >= 60) return 'more than 3 in 5';
+  if (pct >= 55) return 'more than half';
+  if (pct >= 48) return 'nearly 1 in 2';
+  if (pct >= 40) return 'about 2 in 5';
+  if (pct >= 33) return 'about 1 in 3';
+  if (pct >= 25) return 'about 1 in 4';
+  if (pct >= 20) return 'about 1 in 5';
+  if (pct >= 16) return 'roughly 1 in 6';
+  if (pct >= 13) return 'roughly 1 in 7';
+  if (pct >= 10) return 'about 1 in 10';
+  return `${pct.toFixed(0)}%`;
+}
+
+/** GWI index → plain-English multiplier  e.g. 167 → "nearly 70% more likely than" */
+function indexToWords(index: number): string {
+  const m = index / 100;
+  if (m >= 4.0) return `nearly ${Math.floor(m)} times more likely than`;
+  if (m >= 3.0) return `more than three times as likely as`;
+  if (m >= 2.5) return `more than twice as likely as`;
+  if (m >= 2.0) return `twice as likely as`;
+  if (m >= 1.75) return `nearly twice as likely as`;
+  if (m >= 1.5)  return `one and a half times more likely than`;
+  if (m >= 1.3)  return `about ${Math.round((m - 1) * 100)}% more likely than`;
+  if (m >= 1.1)  return `around ${Math.round((m - 1) * 100)}% more likely than`;
+  return `slightly more likely than`;
+}
+
+/**
+ * Strip GWI attribute text into natural English:
+ *   "I am using social media less than I used to" → "using social media less than before"
+ *   "Challenging myself, (Important to me)"       → "challenging myself"
+ *   "Other home/lifestyle interests"               → "home/lifestyle interests"
+ */
+function cleanAttrText(attr: string): string {
+  return attr
+    .replace(/,?\s*\([^)]*\)/g, '')   // remove "(Important to me)" etc.
+    .replace(/^I am /i, '')            // "I am using…" → "using…"
+    .replace(/^I /i,   '')             // "I prefer…"   → "prefer…"
+    .replace(/^My /i,  '')             // "My income…"  → "income…"
+    .replace(/^Other /i, '')           // "Other home…" → "home…"
+    .replace(/ than I used to$/i, ' than before')
+    .trim();
+}
+
+/**
+ * Build a stat-led title matching the prototype style.
+ * e.g. "29.5% of This Audience Are Using Social Media Less Than Before — a Shift Brands Need to Plan Around"
+ * e.g. "Young Parents Make Up 4.1% of This Audience — More Than the National Average Suggests"
+ */
+function buildTitle(attr: string, pctNum: string | null, multFmt: string): string {
+  const clean   = cleanAttrText(attr);
+  const short   = clean.length > 48 ? clean.slice(0, 45) + '…' : clean;
+  const wasIAm  = /^I am /i.test(attr);
+  const wasVerb = /^I (am |)(using|watch|buy|prefer|trust|worry|think|feel|read|listen|spend|value|choos|believ|driv|own|follow|support|creat|shar|post|play|cook|exercis|travel)/i.test(attr);
+
+  if (wasIAm || wasVerb) {
+    return pctNum
+      ? `${pctNum} of This Audience Are ${cap(short)} — a Signal Worth Building Into the Brief`
+      : `A Key Segment of This Audience Is ${cap(short)} — Stronger Than the National Average Suggests`;
+  }
+
+  // Persona (title-case, ≤ 3 words, e.g. "Young Parent", "Social Media Scroller")
+  const words = attr.trim().split(/\s+/);
+  if (words.length <= 3 && /^[A-Z]/.test(words[0])) {
+    return pctNum
+      ? `${attr}s Make Up ${pctNum} of This Audience — Disproportionately High vs the National Average`
+      : `${attr}s Are More Prevalent in This Audience Than Brands Typically Assume`;
+  }
+
+  // Topic / interest
+  return pctNum
+    ? `${pctNum} of This Audience Prioritise ${cap(short)} — ${multFmt} the National Average`
+    : `${cap(short)} Is ${multFmt} More Common Here Than in the General Indian Population`;
+}
+
+/**
+ * Write observation S1 — the punchy opening fact, active voice, no raw Index numbers.
+ */
+function buildS1(attr: string, pctNum: string | null, pctFrac: string | null, multFmt: string): string {
+  const clean  = cleanAttrText(attr);
+  const wasIAm = /^I am /i.test(attr);
+  const wasVerb = /^I (am |)(using|watch|buy|prefer|trust|worry|think|feel|read|listen|spend|value|choos|believ|driv|own|follow|support|creat|shar|post|play|cook|exercis|travel)/i.test(attr);
+
+  if ((wasIAm || wasVerb) && pctNum && pctFrac) {
+    return `${pctNum} of this audience — ${pctFrac} — are ${clean}, a rate ${multFmt} the national average and a clear indicator of where this group's attention is heading.`;
+  }
+  if ((wasIAm || wasVerb) && pctFrac) {
+    return `${cap(pctFrac)} of this audience are ${clean} — ${multFmt} the national average, and a pattern that runs consistently across this group.`;
+  }
+  if (pctNum && pctFrac) {
+    return `${pctNum} of this audience — ${pctFrac} — prioritise ${clean}, placing this group ${multFmt} the national average and making it one of the strongest signals in this dataset.`;
+  }
+  if (pctFrac) {
+    return `${cap(pctFrac)} of this audience lean strongly towards ${clean} — ${multFmt} the national average, and a signal that holds up across multiple data cuts.`;
+  }
+  return `${cap(clean)} is the leading signal in this category — ${multFmt} the national average, and consistently the top-ranked attribute in this audience profile.`;
+}
+
+/**
+ * Write observation S2 — second different attribute, different angle, concrete numbers.
+ */
+function buildS2(attr1: string, attr2: string, pct2Raw: number, index2: number): string {
+  if (attr2 === attr1) {
+    return `This pattern holds consistently across multiple attributes in this category, suggesting a deliberate audience orientation rather than an isolated data point.`;
+  }
+  const clean2  = cleanAttrText(attr2);
+  const wasIAm2 = /^I am /i.test(attr2);
+  const wasVerb2 = /^I /i.test(attr2);
+  const pct2Str = pct2Raw > 0 ? `${pct2Raw.toFixed(1)}%` : null;
+  const mult2   = `${(index2 / 100).toFixed(1)}×`;
+
+  if ((wasIAm2 || wasVerb2) && pct2Str) {
+    return `The same audience also shows a strong lean towards ${clean2}: ${pct2Str} exhibit this behaviour (${mult2} the national rate), reinforcing a consistent picture of how this group thinks and acts.`;
+  }
+  if (pct2Str) {
+    return `${cap(clean2)} is the next strongest signal at ${pct2Str} (${mult2} the national average) — confirming this is a consistent audience orientation, not a one-off finding.`;
+  }
+  return `${cap(clean2)} follows closely at ${mult2} the national average, confirming that this audience has a clear and consistent lean in this category.`;
+}
+
+/**
+ * Write a platform-specific recommendation matching prototype style:
+ * names a specific Indian platform, a specific format, and a specific creative angle.
+ */
+function buildRec(slot: DataSlot, topAttr: string, pctNum: string | null): string {
+  const q    = slot.question.toLowerCase();
+  const attr = cleanAttrText(topAttr).toLowerCase();
+
+  if (/stream|ott|netflix|hotstar|prime|jio.*cinema|zee5/i.test(q + attr))
+    return `Shift 60–65% of video budget to JioCinema and Hotstar pre-rolls — this audience spends a disproportionate amount of screen time inside these apps and will reward brands that show up in relevant, in-moment placements.`;
+
+  if (/social media|using.*less|spend.*time.*social|worry.*social|instagram|facebook/i.test(attr + q))
+    return `Build a "less is more" content strategy — fewer, higher-quality short-form videos on Instagram Reels and YouTube. This audience is already pulling back from volume content; brands that respect their attention will earn more of it.`;
+
+  if (/device|smartphone|phone|laptop|tablet|gadget|smart/i.test(q + attr))
+    return `Run YouTube bumper ads and connected TV pre-rolls on Hotstar that show technology fitting naturally into everyday Indian home life — utility-led creative outperforms aspirational messaging with this group by a significant margin.`;
+
+  if (/purchas|buy|shop|price|store|retail|ecomm|discount|full.price/i.test(q + attr))
+    return `Integrate Instagram Shopping tags and Flipkart in-app placements into the media plan. This audience researches heavily before buying — invest in retargeting sequences that bridge social discovery to purchase, and prioritise DTC trust signals over discount-led creative.`;
+
+  if (/challeng|aspir|ambiti|goal|learn|grow|improv|achiev/i.test(attr))
+    return `Run 15-second Instagram Reels and YouTube pre-rolls built around personal progress moments — real Indians setting and hitting goals, not aspirational models. This audience responds to creative that mirrors their own ambitions rather than selling a lifestyle.`;
+
+  if (/family|household|children|parent|home|domestic/i.test(q + attr))
+    return `Place CTV pre-rolls on Hotstar family content in the 7–10pm slot — this audience is most receptive during family viewing time. Creative should feature warm, realistic Indian family moments rather than idealised imagery.`;
+
+  if (/employ|work|career|income|profession|job/i.test(q + attr))
+    return `Target LinkedIn sponsored content and YouTube pre-rolls with career-aspiration messaging that acknowledges this audience's professional identity. They respond to brands that see them as capable and ambitious, not just consumers.`;
+
+  if (/news|inform|read|current|aware/i.test(q + attr))
+    return `Build content partnerships with news and editorial platforms — Times of India, Scroll, and YouTube news channels. This audience actively seeks information and will engage with brand stories that feel editorial and well-sourced rather than promotional.`;
+
+  // Bucket-level defaults that still name specific platforms and actions
+  if (slot.bucket === 'commerce')
+    return `Allocate a meaningful share of commerce spend to Meesho and Flipkart in-app placements — this audience is purchase-ready but trust-sensitive. Lead creative with social proof and value clarity, not discount depth.`;
+  if (slot.bucket === 'communication')
+    return `Shift 40–50% of paid social spend to creator-led Instagram Reels and YouTube Shorts. This audience trusts peer recommendations over polished brand content — brief creators with the insight, not the script.`;
+  if (slot.bucket === 'culture')
+    return `Build regional-language creative for Moj and Josh in addition to Hindi-first platforms. This audience's cultural identity is a real strategic signal — campaigns that acknowledge it will outperform those that flatten it.`;
+
+  // content default
+  return `Prioritise short-form video on Instagram Reels and YouTube — 15-second formats that lead with the insight rather than the brand. This audience rewards creative that reflects their actual life, not a brand-polished version of it.`;
+}
+
+function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsightCard[] {
+  const cards: GeminiInsightCard[] = [];
+
+  for (const slot of slots) {
+    if (slot.rows.length < 2) continue;
+
+    const topN   = slot.rows.slice(0, 6);
+    const top    = topN[0];
+    // Pick a genuinely different second attribute
+    const second = topN.find(r => r.attr !== top.attr) ?? topN[1];
+
+    // Plain-English values
+    const pctRaw  = top.audiencePct > 0 ? top.audiencePct : top.dataPct;
+    const hasPct  = pctRaw > 0;
+    const pctNum  = hasPct ? `${pctRaw.toFixed(1)}%` : null;
+    const pctFrac = hasPct ? pctToWords(pctRaw) : null;
+    const multFmt = `${(top.index / 100).toFixed(1)}×`;
+
+    // ── TITLE ────────────────────────────────────────────────────────────────
+    const title = buildTitle(top.attr, pctNum, multFmt);
+
+    // ── OBSERVATION ──────────────────────────────────────────────────────────
+    const s1 = buildS1(top.attr, pctNum, pctFrac, multFmt);
+
+    const s2pct = second.audiencePct > 0 ? second.audiencePct : second.dataPct;
+    const s2    = buildS2(top.attr, second.attr, s2pct, second.index);
+
+    const s3map: Record<string, string> = {
+      content:       'For brands in this space, reflecting this behaviour in content strategy — not just targeting — will deliver meaningfully stronger engagement with this group.',
+      commerce:      'Messaging that acknowledges how this audience actually makes purchase decisions will consistently outperform generic category creative.',
+      communication: 'Media spend aligned to the platforms and formats this audience actively uses will deliver higher earned attention and more efficient CPMs.',
+      culture:       'Campaigns that genuinely connect with these cultural values will feel authentic to this group — and they have a sharp radar for brands that do it well vs. brands that appropriate.',
+    };
+    const s3 = s3map[slot.bucket] ?? 'This is a clear strategic signal worth building into the next campaign brief.';
+
+    const obs = `${s1} ${s2} ${s3}`;
+
+    // ── STAT — pull-quote style, no raw Index numbers ─────────────────────
+    const stat = hasPct
+      ? `${pctNum} of this audience — ${pctFrac} — ${/^I (am |)/i.test(top.attr) ? 'are ' + cleanAttrText(top.attr) : 'prioritise ' + cleanAttrText(top.attr)} (${multFmt} the national average)`
+      : `${cleanAttrText(top.attr)} is ${multFmt} more prevalent here than in the general Indian population — the strongest signal in this category`;
+
+    // ── RECOMMENDATION ───────────────────────────────────────────────────────
+    const rec = buildRec(slot, top.attr, pctNum);
+
+    // ── CHART ────────────────────────────────────────────────────────────────
+    const useAudiencePct = topN.some(r => r.audiencePct > 0);
+    const chartValues    = topN.map(r => useAudiencePct ? r.audiencePct : r.index);
+    const chartValues2   = slot.chartSuggestion === 'scatter' ? topN.map(r => r.index) : undefined;
+
+    cards.push({
+      title,
+      bucket:      slot.bucket,
+      type:        slot.chartSuggestion,
+      conviction:  70,
+      obs,
+      stat,
+      rec,
+      toolLabel:   `${toolLabel} · Auto-Analysis`,
+      chartLabels: topN.map(r => r.attr),
+      chartValues,
+      chartValues2,
+    });
+  }
+
+  return cards;
+}
+
 // ── Route ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
@@ -179,18 +426,18 @@ export async function POST(req: NextRequest) {
     const context = [fileNames?.join(' + ') || sheetName].filter(Boolean).join(' ');
 
     // GWI-shaped data → structured slot path (exact numbers, anti-hallucination)
-    // For large GWI files (19 sheets), batch into groups of 6 and run in parallel
-    // so we get full coverage without hitting the 60s Vercel timeout.
+    // Cap at 18 slots (3 batches of 6) — covers all key GWI questions while keeping
+    // parallel API calls at ≤ 3, which fits within the free-tier 15 RPM rate limit.
     if (slots.length > 0) {
       const gwiContext = `${context} — India 18–64 Gen Pop`;
       const toolLabel  = fileNames?.[0]?.toLowerCase().includes('household') ? 'GWI HOUSEHOLD' : 'GWI';
 
       try {
-        // Batch size of 6: ~6 cards per call, 3 parallel calls for 18 slots
         const BATCH_SIZE = 6;
-        const batches    = chunkSlots(slots, BATCH_SIZE);
+        // Limit to 18 slots max → always exactly 3 parallel calls, never 4+
+        const batches    = chunkSlots(slots.slice(0, 18), BATCH_SIZE);
 
-        // Run all batches in parallel — each resolves independently
+        // Run up to 3 batches in parallel — each resolves independently
         const batchResults = await Promise.allSettled(
           batches.map(batch => analyzeDataForPRISM(batch, gwiContext, toolLabel))
         );
@@ -203,8 +450,46 @@ export async function POST(req: NextRequest) {
         });
 
         if (insights.length === 0) {
+          console.warn('[analyze-data] All Gemini batches failed — trying OpenRouter fallback');
+
+          // ── Tier 2: OpenRouter (free LLM models, same prompt) ──────────
+          if (process.env.OPENROUTER_API_KEY) {
+            try {
+              const orCards = await analyzeWithOpenRouter(slots, gwiContext, toolLabel);
+              if (orCards.length > 0) {
+                console.log(`[analyze-data] OpenRouter returned ${orCards.length} cards`);
+                return NextResponse.json({
+                  insights:   orCards,
+                  slots,
+                  path:       'gwi-slots',
+                  totalSlots: slots.length,
+                  batches:    batches.length,
+                  fallback:   'openrouter',
+                });
+              }
+            } catch (orErr: any) {
+              console.warn('[analyze-data] OpenRouter fallback failed:', orErr.message);
+            }
+          } else {
+            console.warn('[analyze-data] OPENROUTER_API_KEY not set — skipping OpenRouter fallback');
+          }
+
+          // ── Tier 3: Pure-data auto-analysis (no AI, grounded in slot numbers) ──
+          console.warn('[analyze-data] Using pure-data auto-analysis as last resort');
+          const fallbackCards = generateFallbackCards(slots, toolLabel);
+          if (fallbackCards.length > 0) {
+            return NextResponse.json({
+              insights:   fallbackCards,
+              slots,
+              path:       'gwi-slots',
+              totalSlots: slots.length,
+              batches:    batches.length,
+              fallback:   'auto',
+            });
+          }
+          // Nothing worked and data has no index scores — genuine failure
           return NextResponse.json(
-            { error: 'All Gemini batches returned empty. Model may be overloaded — try again.', path: 'gwi-slots', slotCount: slots.length },
+            { error: 'No insights could be generated — data may not contain index scores.', path: 'gwi-slots', slotCount: slots.length },
             { status: 422 },
           );
         }

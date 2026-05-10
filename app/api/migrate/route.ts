@@ -127,6 +127,37 @@ const STATEMENTS = [
   // Make presentations.user_id nullable so rows can be saved even when the
   // session falls back to a generated UUID that isn't in the users table.
   `ALTER TABLE presentations ALTER COLUMN user_id DROP NOT NULL`,
+
+  // ── Pages: WordPress-style publish/draft system ──────────────────
+  `CREATE TABLE IF NOT EXISTS pages (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    slug        TEXT NOT NULL UNIQUE,
+    description TEXT    NOT NULL DEFAULT '',
+    icon        TEXT    NOT NULL DEFAULT '',
+    status      TEXT    NOT NULL DEFAULT 'draft'
+                    CHECK (status IN ('draft','published')),
+    show_in_nav BOOLEAN NOT NULL DEFAULT false,
+    protected   BOOLEAN NOT NULL DEFAULT false,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW())`,
+  `CREATE INDEX IF NOT EXISTS idx_pages_status ON pages(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_pages_nav    ON pages(show_in_nav, status, sort_order)`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false`,
+
+  // Seed default pages — ON CONFLICT DO NOTHING is safe to re-run
+  `INSERT INTO pages (id,name,slug,description,icon,status,show_in_nav,protected,sort_order) VALUES
+    ('login','Login','/login','User authentication','🔐','published',false,true,0),
+    ('signup','Sign Up','/signup','New user registration','📝','published',false,false,1),
+    ('dashboard','Dashboard','/dashboard','Campaign briefs overview','📊','published',false,true,2),
+    ('upload','Data Mapper','/upload','Upload research files for AI','⬆️','published',false,false,3),
+    ('insights','Insights','/insights','PRISM Intelligence Reports','💡','published',false,false,4),
+    ('analyze','Analyze','/analyze','Culture & Media Analyzer','⚡','published',true,false,5),
+    ('culture','Culture','/culture','Culture Intelligence feed','🌍','published',true,false,6),
+    ('presentations','Presentations','/presentations','AI-generated slide decks','🎨','published',true,false,7),
+    ('brief-new','New Brief','/brief/new','Create a new campaign brief','📋','published',false,false,8)
+   ON CONFLICT (id) DO NOTHING`,
 ];
 
 /** Convert pooler URL (port 6543) → direct Supabase URL (port 5432) for DDL */

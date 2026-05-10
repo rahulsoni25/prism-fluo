@@ -1,12 +1,11 @@
 /**
  * POST /api/gemini/basic
- * ~200 Gemini tokens per call — returns top 3 bullets per section + overall score.
- * Cached 24h in-memory (key = hash of input).
- * TOKEN AUDIT: system=40, user=80, response=80 ≈ 200 total
+ * ~200 tokens per call — returns top 3 bullets per section + overall score.
+ * Powered by OpenRouter / Gemma. Cached 24h in-memory.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { callOpenRouterText } from '@/lib/ai/openrouter';
 import { cache } from '@/lib/cache';
 import { getSession } from '@/lib/auth/server';
 
@@ -28,18 +27,13 @@ export async function POST(req: NextRequest) {
   const { input } = await req.json();
   if (!input?.trim()) return NextResponse.json({ error: 'input required' }, { status: 400 });
 
+  if (!process.env.OPENROUTER_API_KEY)
+    return NextResponse.json({ error: 'OPENROUTER_API_KEY not set' }, { status: 503 });
+
   // ── Cache hit (24h TTL) ───────────────────────────────────────
   const cacheKey = hashInput(input.trim().toLowerCase());
   const cached = cache.get<object>(cacheKey);
   if (cached) return NextResponse.json({ ...cached, cached: true });
-
-  if (!process.env.GEMINI_API_KEY)
-    return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 503 });
-
-  // ── Gemini call — ~200 tokens ─────────────────────────────────
-  // System: 40 tokens | User prompt: 80 tokens | Response: 80 tokens
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
   const prompt = `Analyze this for a brand strategist: "${input}"
 
@@ -55,9 +49,8 @@ Return ONLY valid JSON, no markdown:
 Each bullet: max 12 words. Be specific, use numbers where possible.`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    const match = text.match(/\{[\s\S]*\}/);
+    const text  = await callOpenRouterText(prompt, 600);
+    const match = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').match(/\{[\s\S]*\}/);
     if (!match) throw new Error('No JSON in response');
 
     const data = JSON.parse(match[0]);
@@ -71,11 +64,10 @@ Each bullet: max 12 words. Be specific, use numbers where possible.`;
       input,
     };
 
-    // Cache 24h
     cache.set(cacheKey, payload, 86400);
     return NextResponse.json(payload);
 
   } catch (err: any) {
-    return NextResponse.json({ error: `Gemini failed: ${err.message}` }, { status: 502 });
+    return NextResponse.json({ error: `Gemma failed: ${err.message}` }, { status: 502 });
   }
 }

@@ -52,9 +52,9 @@ async function callGeminiWithRetry(model: any, prompt: string): Promise<any> {
       lastErr = err;
       const msg    = String(err?.message ?? err);
       const status = (err?.status ?? err?.response?.status ?? 0) as number;
-      // 404 = model deprecated/unavailable → clear cache so next call re-probes
+      // 404 = model deprecated → blacklist it so the cascade advances immediately
       if (status === 404 || /no longer available|model.*not found|404/i.test(msg)) {
-        invalidateModelCache();
+        invalidateModelCache(_resolvedModelName ?? undefined);
         throw err; // propagate immediately — retrying won't help
       }
       const transient =
@@ -68,51 +68,66 @@ async function callGeminiWithRetry(model: any, prompt: string): Promise<any> {
 }
 
 /**
- * Cascading model selection. `getGenerativeModel` doesn't validate the
- * name — invalid models only fail on generateContent(). So we try each,
- * run a real content smoke test (not just an empty ping), and cache the
- * first that returns non-empty text. Re-probes on next call after any
- * 404 / empty-response cache invalidation.
+ * Cascading model selection — singleton + no smoke test.
  *
- * Order: gemini-2.0-flash-lite (confirmed stable) → 2.5 preview → pro preview.
- * Removed: gemini-1.5-flash (404 as of May 2026), gemini-2.0-flash (deprecated).
+ * WHY NO SMOKE TEST:
+ *   Parallel uploads trigger 4+ simultaneous batches, each probing 3 candidates
+ *   = 12+ extra API calls before any real work. On the free tier (15 RPM) this
+ *   exhausts quota instantly and ALL batches fail → fallback triggers every time.
+ *
+ * FIX — two changes:
+ *   1. No smoke test: pick the first non-blacklisted candidate immediately.
+ *      Real 404s / empty responses are caught in callGeminiWithRetry and add
+ *      the model to _failedModels, which drives the cascade on the next call.
+ *   2. Singleton promise: parallel batches that all hit getModel() at the same
+ *      time share ONE selection instead of each launching their own.
+ *
+ * Order: gemini-2.0-flash-lite (stable, cheap) → 2.5-flash preview → 2.5-pro preview.
  */
 const MODEL_CANDIDATES = [
-  'gemini-2.0-flash-lite',           // confirmed available, fast, low quota cost
-  'gemini-2.5-flash-preview-05-20',  // latest preview — use if lite fails
-  'gemini-2.5-pro-preview-05-06',    // pro preview — last resort
+  'gemini-2.0-flash-lite',
+  'gemini-2.5-flash-preview-05-20',
+  'gemini-2.5-pro-preview-05-06',
 ];
 let _resolvedModelName: string | null = null;
+const _failedModels   = new Set<string>();   // blacklisted for this instance lifetime
+let _probePromise: Promise<{ name: string; model: any }> | null = null;
 
 async function getModel(genAI: any): Promise<{ name: string; model: any }> {
+  // ── Warm path: reuse cached working model ──────────────────────────────
   if (_resolvedModelName) {
-    const m = genAI.getGenerativeModel({ model: _resolvedModelName });
-    return { name: _resolvedModelName, model: m };
+    return { name: _resolvedModelName, model: genAI.getGenerativeModel({ model: _resolvedModelName }) };
   }
-  let lastErr: Error | null = null;
-  for (const name of MODEL_CANDIDATES) {
-    try {
-      const m = genAI.getGenerativeModel({ model: name });
-      // Smoke test: require actual non-empty text back — not just no 404.
-      // This catches models that exist but silently return empty for real prompts.
-      const testResult = await m.generateContent('Respond with the single word: ready');
-      const testText   = testResult?.response?.text?.()?.trim() ?? '';
-      if (!testText) throw new Error(`${name} smoke test returned empty text`);
-      _resolvedModelName = name;
-      console.log(`[Gemini] resolved model: ${name}`);
-      return { name, model: m };
-    } catch (err) {
-      lastErr = err as Error;
-      console.warn(`[Gemini] model ${name} unavailable: ${(err as Error).message}`);
+
+  // ── Singleton path: parallel batches share one selection promise ────────
+  if (_probePromise) return _probePromise;
+
+  // ── Cold path: pick first non-blacklisted candidate, no smoke test ──────
+  _probePromise = (async () => {
+    let candidates = MODEL_CANDIDATES.filter(n => !_failedModels.has(n));
+    if (candidates.length === 0) {
+      // All candidates have been blacklisted — reset and try again
+      _failedModels.clear();
+      candidates = [...MODEL_CANDIDATES];
     }
-  }
-  throw new Error(`No Gemini model available. Last error: ${lastErr?.message ?? 'unknown'}`);
+    const name  = candidates[0];
+    _resolvedModelName = name;
+    console.log(`[Gemini] selected model: ${name} (${candidates.length} candidate(s) available)`);
+    return { name, model: genAI.getGenerativeModel({ model: name }) };
+  })().finally(() => { _probePromise = null; });
+
+  return _probePromise;
 }
 
-/** Call this when a previously-resolved model returns a 404, deprecation error,
- *  or empty response so the next request re-runs the cascade fresh. */
-export function invalidateModelCache() {
-  console.warn('[Gemini] Clearing model cache — will re-probe on next call');
+/** Call this when a model returns 404 / deprecation / empty response.
+ *  Adds it to the blacklist and clears the cache so the next call
+ *  automatically advances to the next candidate. */
+export function invalidateModelCache(modelName?: string) {
+  if (modelName ?? _resolvedModelName) {
+    _failedModels.add((modelName ?? _resolvedModelName)!);
+    console.warn(`[Gemini] blacklisted model: ${modelName ?? _resolvedModelName}`);
+  }
+  console.warn('[Gemini] clearing model cache — will re-probe on next call');
   _resolvedModelName = null;
 }
 
@@ -293,13 +308,13 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     // Empty text = model silently blocked or unavailable → invalidate cache so
     // the next call re-probes for a working model instead of hammering the same one.
     if (!rawText) {
-      invalidateModelCache();
+      invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('Gemini returned empty text — model may be blocked or rate-limited');
     }
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
     if (!match) {
-      invalidateModelCache();
+      invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('No JSON array in Gemini response — model returned non-JSON output');
     }
 
@@ -446,13 +461,13 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     const result  = await callGeminiWithRetry(model, prompt);
     const rawText = result?.response?.text?.()?.trim() ?? '';
     if (!rawText) {
-      invalidateModelCache();
+      invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('Gemini returned empty text — model may be blocked or rate-limited');
     }
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
     if (!match) {
-      invalidateModelCache();
+      invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('No JSON array in Gemini generic response');
     }
 
@@ -653,13 +668,13 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     const result  = await callGeminiWithRetry(model, prompt);
     const rawText = result?.response?.text?.()?.trim() ?? '';
     if (!rawText) {
-      invalidateModelCache();
+      invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('Gemini returned empty text — model may be blocked or rate-limited');
     }
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const match   = cleaned.match(/\[[\s\S]*\]/);
     if (!match) {
-      invalidateModelCache();
+      invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('No JSON array in social listening Gemini response');
     }
 

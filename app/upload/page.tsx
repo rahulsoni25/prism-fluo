@@ -291,6 +291,12 @@ function UploadDataInner() {
   const [errorMsg,    setErrorMsg]      = useState<string | null>(null);
   const [bucketPreview, setBucketPreview] = useState<Record<string, number>>({});
 
+  // ── Accumulated results across multiple upload batches ──
+  const [accumulatedCharts, setAccumulatedCharts] = useState<ChartSpec[]>([]);
+  const [firstUploadId,     setFirstUploadId]     = useState<string>('');
+  const [allFileNames,      setAllFileNames]       = useState<string[]>([]);
+  const [batchDone,         setBatchDone]          = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addLog = (msg: string) => setAgentLog(prev => [...prev, msg]);
 
@@ -333,8 +339,23 @@ function UploadDataInner() {
     if (briefId) formData.append('briefId', briefId);
     if (selectedSlaHours) formData.append('slaHours', String(selectedSlaHours));
     const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
+
+    // Vercel's platform (nginx) returns "Request Entity Too Large" as plain text
+    // for files > 4.5 MB — parse JSON only after checking status to avoid crash.
+    if (!upRes.ok) {
+      const errText = await upRes.text().catch(() => '');
+      if (upRes.status === 413 || errText.toLowerCase().includes('entity too large') || errText.toLowerCase().includes('request en')) {
+        const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+        throw new Error(
+          `"${file.name}" is ${sizeMB} MB — Vercel limits file uploads to 4.5 MB per file.\n` +
+          `Try exporting the data as Excel (.xlsx) or CSV instead, which are much smaller.`
+        );
+      }
+      let errBody: any = {};
+      try { errBody = JSON.parse(errText); } catch { /* non-JSON */ }
+      throw new Error(errBody.message ?? errText ?? `Upload failed (${upRes.status})`);
+    }
     const summary = await upRes.json();
-    if (!upRes.ok) throw new Error(summary.message ?? `Upload failed (${upRes.status})`);
 
     const { uploadId, sheets, rawText } = summary;
 
@@ -460,15 +481,19 @@ function UploadDataInner() {
         addLog(`⚠ Gemini returned ${aiRes.status}: ${geminiError}`);
         if (aiRes.status === 503) addLog('   ↳ GEMINI_API_KEY may not be set on the server');
       } else {
-        const { insights } = await aiRes.json();
+        const body = await aiRes.json();
+        const { insights, fallback } = body as { insights?: any[]; fallback?: 'openrouter' | 'auto' | boolean };
+        if (fallback === 'openrouter') addLog('⚡ Gemini unavailable — switched to OpenRouter (free LLM models, conviction 82)');
+        else if (fallback === 'auto' || fallback === true) addLog('⚡ AI unavailable — using auto-analysis from raw index data (conviction 70)');
         if (Array.isArray(insights) && insights.length > 0) {
-          addLog(`✨ Gemini generated ${insights.length} PRISM insights`);
+          const source = fallback === 'openrouter' ? 'OpenRouter' : fallback ? 'Auto-analysis' : 'Gemini';
+          addLog(`✨ ${source} generated ${insights.length} PRISM insights`);
           const charts: ChartSpec[] = insightsToCharts(insights, entryIdx);
           updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
-          addLog(`✅ "${file.name}" → ${charts.length} insights ready`);
+          addLog(`✅ "${file.name}" → ${charts.length} insights ready${fallback ? ` (${source.toLowerCase()})` : ''}`);
           return { charts, uploadId };
         } else {
-          geminiError = 'Gemini returned 0 insights';
+          geminiError = 'No insights returned';
           addLog(`⚠ ${geminiError}`);
         }
       }
@@ -490,67 +515,42 @@ function UploadDataInner() {
     return { charts: [], uploadId };
   }
 
-  // ── Process all files → merge → Gemini → save → redirect ──
-  async function processAll(entries: FileEntry[]) {
+  // ── Save accumulated charts + redirect (called by "Get Insights" button) ──
+  async function saveAndRedirect(charts: ChartSpec[], uploadId: string, fileNames: string[]) {
     setProcessing(true);
-    setAgentLog([]);
-    setErrorMsg(null);
+    addLog('💾 Saving PRISM Intelligence Report…');
 
     try {
-      const allCharts: ChartSpec[] = [];
-      let firstUploadId = '';
-
-      for (let i = 0; i < entries.length; i++) {
-        const { charts, uploadId } = await processFile(entries[i], i);
-        if (i === 0) firstUploadId = uploadId;
-        allCharts.push(...charts);
-      }
-
-      if (allCharts.length === 0) {
-        setErrorMsg('No data could be extracted from the uploaded files. Check that your files are not empty.');
-        setProcessing(false);
-        return;
-      }
-
-      // Preview bucket distribution
-      const preview: Record<string, number> = { content: 0, commerce: 0, communication: 0, culture: 0 };
-      allCharts.forEach(c => { const b = (c as any).bucket || 'content'; if (preview[b] !== undefined) preview[b]++; });
-      setBucketPreview(preview);
-      addLog(`📊 PRISM distribution — Content: ${preview.content} · Commerce: ${preview.commerce} · Comms: ${preview.communication} · Culture: ${preview.culture}`);
-
-      // Optional Gemini title enhancement — skip if charts already came from Gemini 2.5
-      let finalCharts = allCharts;
-      const fromGemini = allCharts.every(c => c.id?.startsWith('gemini_'));
-      if (fromGemini) {
-        addLog('✨ Gemini 2.5 insights used — skipping redundant enhance step.');
-      } else {
+      const fromGemini = charts.every(c => c.id?.startsWith('gemini_'));
+      let finalCharts = charts;
+      if (!fromGemini) {
         try {
-          addLog('🤖 Enhancing titles with Gemini AI…');
+          addLog('🤖 Enhancing titles with AI…');
           const eRes = await fetch('/api/ai/enhance', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              charts: allCharts.map(c => ({ title: c.title, type: c.type, obs: (c as any).obs })),
-              context: `PRISM multi-source analysis — ${entries.map(e => e.file.name).join(', ')}`,
+              charts: charts.map(c => ({ title: c.title, type: c.type, obs: (c as any).obs })),
+              context: `PRISM multi-source analysis — ${fileNames.join(', ')}`,
             }),
           });
           if (eRes.ok) {
             const { titles } = await eRes.json();
-            if (Array.isArray(titles) && titles.length === allCharts.length) {
-              finalCharts = allCharts.map((c, i) => ({ ...c, title: titles[i] || c.title }));
+            if (Array.isArray(titles) && titles.length === charts.length) {
+              finalCharts = charts.map((c, i) => ({ ...c, title: titles[i] || c.title }));
               addLog('✨ AI titles applied.');
             }
           }
-        } catch { addLog('⚡ Gemini unavailable — using auto titles.'); }
+        } catch { addLog('⚡ Using auto titles.'); }
+      } else {
+        addLog('✨ Gemini insights used — skipping enhance step.');
       }
 
-      // Save combined analysis (use uploadId from first file — no re-upload needed)
-      addLog('💾 Saving PRISM Intelligence Report…');
-      const combinedName = entries.length > 1
-        ? `PRISM Combined — ${entries.length} sources`
-        : entries[0].file.name.replace(/\.[^.]+$/, '');
+      const combinedName = fileNames.length > 1
+        ? `PRISM Combined — ${fileNames.length} sources`
+        : fileNames[0]?.replace(/\.[^.]+$/, '') ?? 'PRISM Analysis';
 
-      const domainValue = entries.length > 1
+      const domainValue = fileNames.length > 1
         ? 'multi-source'
         : ((finalCharts[0] as any)?.toolLabel ?? 'PRISM ANALYSIS');
 
@@ -558,21 +558,17 @@ function UploadDataInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          uploadId:  firstUploadId,
+          uploadId,
           sheetName: combinedName,
-          filename:  entries.map(e => e.file.name).join(' + '),
-          briefId,                  // when set, auto-flips brief to 'ready' + stamps actual_completed_at
-          slaHours: selectedSlaHours,  // pass user-selected SLA to brief
+          filename:  fileNames.join(' + '),
+          briefId,
+          slaHours: selectedSlaHours,
           results: {
             charts:         finalCharts,
             scorecards:     [],
             strategicBrief: null,
             anomalies:      [],
-            meta: {
-              domain: domainValue,
-              title:  combinedName,
-              cls:    'content',
-            },
+            meta: { domain: domainValue, title: combinedName, cls: 'content' },
           },
         }),
       });
@@ -580,11 +576,8 @@ function UploadDataInner() {
       if (saveRes.ok) {
         const { id } = await saveRes.json();
         if (id) {
-          addLog(`💾 Analysis saved. Now selecting SLA…`);
-          // Show SLA modal if not already selected
           if (!selectedSlaHours) {
             setShowSlaModal(true);
-            // Store the analysis ID so we can redirect after SLA is selected
             (window as any).__pendingAnalysisId = id;
           } else {
             addLog(`🚀 Redirecting to Intelligence Report…`);
@@ -594,6 +587,52 @@ function UploadDataInner() {
         }
       }
       throw new Error('Save failed — no ID returned');
+    } catch (err: any) {
+      addLog(`❌ ${err.message}`);
+      setErrorMsg(err.message);
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  // ── Process a batch of new files → accumulate results ──
+  async function processAll(entries: FileEntry[], existingOffset: number) {
+    setProcessing(true);
+    setBatchDone(false);
+    setErrorMsg(null);
+
+    try {
+      const batchCharts: ChartSpec[] = [];
+      let batchFirstUploadId = '';
+
+      for (let i = 0; i < entries.length; i++) {
+        const { charts, uploadId } = await processFile(entries[i], existingOffset + i);
+        if (i === 0) batchFirstUploadId = uploadId;
+        batchCharts.push(...charts);
+      }
+
+      if (batchCharts.length === 0 && entries.length > 0) {
+        setErrorMsg('No data could be extracted from the uploaded files. Check that your files are not empty.');
+        setProcessing(false);
+        return;
+      }
+
+      // Accumulate across batches
+      setAccumulatedCharts(prev => {
+        const next = [...prev, ...batchCharts];
+        // Update bucket preview with all accumulated charts
+        const preview: Record<string, number> = { content: 0, commerce: 0, communication: 0, culture: 0 };
+        next.forEach(c => { const b = (c as any).bucket || 'content'; if (preview[b] !== undefined) preview[b]++; });
+        setBucketPreview(preview);
+        addLog(`📊 Total insights — Content: ${preview.content} · Commerce: ${preview.commerce} · Comms: ${preview.communication} · Culture: ${preview.culture}`);
+        return next;
+      });
+
+      setAllFileNames(prev => [...prev, ...entries.map(e => e.file.name)]);
+      if (!firstUploadId && batchFirstUploadId) setFirstUploadId(batchFirstUploadId);
+
+      setBatchDone(true);
+      addLog(`✅ ${batchCharts.length} new insights added. Add more files or click "Get Insights".`);
 
     } catch (err: any) {
       addLog(`❌ ${err.message}`);
@@ -603,26 +642,29 @@ function UploadDataInner() {
     }
   }
 
-  // ── File picker handler ────────────────────────────────────
+  // ── File picker handler — appends to existing entries ─────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(e.target.files ?? []);
     if (!picked.length) return;
 
     const valid: FileEntry[] = [];
     const errors: string[]   = [];
+    // Vercel serverless hard limit is 4.5 MB per request.
+    // Allow up to 4 MB client-side to leave room for multipart overhead.
+    const VERCEL_MAX_MB = 4;
 
     for (const f of picked) {
       const ext    = f.name.split('.').pop()?.toLowerCase() ?? '';
-      // 20 MB limit aligns with backend MAX_FILE_SIZE_MB so users can upload
-      // realistic GWI / Helium10 / brand-tracking exports without hitting an
-      // arbitrary client-side cap that the server would have accepted.
-      const maxMB  = 20;
+      const sizeMB = f.size / 1024 / 1024;
       if (!['xlsx','xls','csv','pdf','pptx','ppt'].includes(ext)) {
         errors.push(`"${f.name}" — unsupported format (use xlsx, csv, pdf, pptx, or ppt)`);
         continue;
       }
-      if (f.size > maxMB * 1024 * 1024) {
-        errors.push(`"${f.name}" — exceeds ${maxMB} MB limit`);
+      if (sizeMB > VERCEL_MAX_MB) {
+        errors.push(
+          `"${f.name}" is ${sizeMB.toFixed(1)} MB — exceeds the ${VERCEL_MAX_MB} MB upload limit.\n` +
+          `Export as Excel (.xlsx) or CSV for smaller file sizes.`
+        );
         continue;
       }
       valid.push({ file: f, status: 'pending', chartsFound: 0 });
@@ -631,9 +673,13 @@ function UploadDataInner() {
     if (errors.length) setErrorMsg(errors.join('\n'));
     if (!valid.length) return;
 
-    setFileEntries(valid);
-    setBucketPreview({});
-    processAll(valid);
+    // Append new files to existing entries; track offset for correct chart IDs
+    setFileEntries(prev => {
+      const offset = prev.length;
+      // Kick off processing for the new batch after state update
+      setTimeout(() => processAll(valid, offset), 0);
+      return [...prev, ...valid];
+    });
 
     // Reset input so the same files can be re-picked
     e.target.value = '';
@@ -788,7 +834,7 @@ function UploadDataInner() {
               Drop files here or click to browse
             </p>
             <p style={{ fontSize:13, color:'#64748B', marginBottom:6 }}>
-              Excel · CSV · PDF &nbsp;·&nbsp; Multiple files supported &nbsp;·&nbsp; Max 10 MB
+              Excel · CSV · PDF &nbsp;·&nbsp; Multiple files supported &nbsp;·&nbsp; Max 4 MB per file
             </p>
             <p style={{ fontSize:12, color:'#94A3B8' }}>
               GWI · Google Keywords · Helium10 · Google Trends · Konnect Insights
@@ -811,9 +857,17 @@ function UploadDataInner() {
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
               <p style={{ fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'.12em', color:'#475569' }}>
                 Files ({fileEntries.length})
+                {accumulatedCharts.length > 0 && (
+                  <span style={{ marginLeft:10, color:'#059669', fontWeight:700 }}>
+                    · {accumulatedCharts.length} insights ready
+                  </span>
+                )}
               </p>
               {!processing && (
-                <button onClick={() => { setFileEntries([]); setAgentLog([]); setBucketPreview({}); }}
+                <button onClick={() => {
+                  setFileEntries([]); setAgentLog([]); setBucketPreview({});
+                  setAccumulatedCharts([]); setFirstUploadId(''); setAllFileNames([]); setBatchDone(false);
+                }}
                   style={{ fontSize:12, color:'#94A3B8', background:'none', border:'none', cursor:'pointer',
                     fontWeight:600, fontFamily:'inherit' }}>
                   Clear all
@@ -829,11 +883,9 @@ function UploadDataInner() {
                     background:'#fff', borderRadius:16, padding:'12px 16px',
                     border:'1.5px solid #F1F5F9',
                     boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
-                    {/* File icon */}
                     <div style={{ width:36, height:36, borderRadius:10, flexShrink:0,
                       background: e.file.name.endsWith('.pdf') ? '#FEF2F2' : '#EFF6FF',
-                      display:'flex', alignItems:'center', justifyContent:'center',
-                      fontSize:16 }}>
+                      display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>
                       {e.file.name.endsWith('.pdf') ? '📄' : '📊'}
                     </div>
                     <div style={{ flex:1, minWidth:0 }}>
@@ -845,22 +897,19 @@ function UploadDataInner() {
                         {(e.file.size / 1024 / 1024).toFixed(1)} MB
                       </p>
                     </div>
-                    {/* Status */}
                     <div style={{ display:'flex', alignItems:'center', gap:7, flexShrink:0 }}>
                       {(e.status === 'uploading' || e.status === 'analyzing') && (
                         <Loader2 size={13} style={{ color: cfg.color, animation:'upspin .7s linear infinite' }} />
                       )}
                       {e.status === 'done' && <CheckCircle size={13} style={{ color:'#059669' }} />}
                       <span style={{ fontSize:11, fontWeight:700,
-                        color: cfg.color, background: cfg.bg,
-                        padding:'3px 9px', borderRadius:20 }}>
+                        color: cfg.color, background: cfg.bg, padding:'3px 9px', borderRadius:20 }}>
                         {e.status === 'done' ? `${e.chartsFound} insights` : cfg.label}
                       </span>
                     </div>
                     {!processing && e.status !== 'done' && (
                       <button onClick={() => removeFile(i)} style={{
-                        color:'#CBD5E1', background:'none', border:'none', cursor:'pointer', padding:0,
-                        flexShrink:0,
+                        color:'#CBD5E1', background:'none', border:'none', cursor:'pointer', padding:0, flexShrink:0,
                       }}>
                         <X size={13} />
                       </button>
@@ -870,18 +919,42 @@ function UploadDataInner() {
               })}
             </div>
 
+            {/* ── Add More + Get Insights row ── */}
             {!processing && (
-              <button onClick={() => fileInputRef.current?.click()} style={{
-                width:'100%', marginTop:8, padding:'11px 0', borderRadius:14,
-                border:'2px dashed #E2E8F0', background:'transparent',
-                fontSize:13, fontWeight:600, color:'#94A3B8', cursor:'pointer',
-                fontFamily:'inherit', transition:'all .15s',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor='#6366F1'; (e.currentTarget as HTMLButtonElement).style.color='#6366F1'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor='#E2E8F0'; (e.currentTarget as HTMLButtonElement).style.color='#94A3B8'; }}>
-                + Add more files
-              </button>
+              <div style={{ display:'flex', gap:10, marginTop:12 }}>
+                {/* Add More */}
+                <button onClick={() => fileInputRef.current?.click()} style={{
+                  flex:1, padding:'13px 0', borderRadius:14,
+                  border:'2px dashed #C7D2FE', background:'#fff',
+                  fontSize:13, fontWeight:700, color:'#6366F1', cursor:'pointer',
+                  fontFamily:'inherit', transition:'all .15s',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:7,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor='#6366F1'; (e.currentTarget as HTMLButtonElement).style.background='#EEF2FF'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor='#C7D2FE'; (e.currentTarget as HTMLButtonElement).style.background='#fff'; }}>
+                  <span style={{ fontSize:16 }}>+</span> Add More
+                </button>
+
+                {/* Get Insights — only shown when there are accumulated charts */}
+                {accumulatedCharts.length > 0 && (
+                  <button
+                    onClick={() => saveAndRedirect(accumulatedCharts, firstUploadId, allFileNames)}
+                    style={{
+                      flex:2, padding:'13px 24px', borderRadius:14, border:'none', cursor:'pointer',
+                      background:'linear-gradient(135deg,#2563EB,#7C3AED)',
+                      color:'#fff', fontSize:14, fontWeight:800,
+                      fontFamily:'inherit', transition:'all .15s',
+                      display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                      boxShadow:'0 6px 20px rgba(99,102,241,.4)',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform='translateY(-1px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow='0 10px 28px rgba(99,102,241,.5)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform=''; (e.currentTarget as HTMLButtonElement).style.boxShadow='0 6px 20px rgba(99,102,241,.4)'; }}>
+                    ⚡ Get Insights ({accumulatedCharts.length} cards)
+                  </button>
+                )}
+              </div>
             )}
+
             <input ref={fileInputRef} type="file" multiple className="hidden"
               accept=".xlsx,.xls,.csv,.pdf,.pptx,.ppt" onChange={handleFileChange} />
           </div>

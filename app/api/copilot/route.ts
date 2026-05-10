@@ -2,7 +2,7 @@
  * POST /api/copilot
  *
  * Copilot AI assistant that provides deeper insights based on uploaded data.
- * Uses Grok API (xAI) to answer user questions constrained to the analysis data.
+ * Uses OpenRouter / Gemma to answer user questions constrained to the analysis data.
  *
  * Request body:
  * {
@@ -18,9 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/auth/server';
-
-const GROK_API_KEY = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
-const GROK_API_URL = 'https://api.x.ai/v1/chat/completions';
+import { callOpenRouterText } from '@/lib/ai/openrouter';
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
@@ -105,56 +103,25 @@ When answering:
       }
     ];
 
-    // ── Call Grok API ─────────────────────────────────────────────────
-    if (!GROK_API_KEY) {
-      logger.error('copilot:missing_api_key', { error: 'GROK_API_KEY or XAI_API_KEY not set' });
+    // ── Call OpenRouter / Gemma ───────────────────────────────────────
+    if (!process.env.OPENROUTER_API_KEY) {
+      logger.error('copilot:missing_api_key', { error: 'OPENROUTER_API_KEY not set' });
       return NextResponse.json(
         {
           error: 'CONFIG_ERROR',
-          message: 'Copilot API key not configured. Please add GROK_API_KEY or XAI_API_KEY to environment variables.'
+          message: 'Copilot API key not configured. Please add OPENROUTER_API_KEY to environment variables.'
         },
         { status: 500 }
       );
     }
 
-    const grokResponse = await fetch(GROK_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROK_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'grok-2-1212',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...messages
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-        top_p: 0.9
-      })
-    });
+    // Combine system prompt + conversation history + current question into one prompt
+    // (OpenRouter free models don't always honour system role, so we merge it)
+    const fullPrompt = `${systemPrompt}\n\n${
+      messages.map((m: any) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')
+    }`;
 
-    if (!grokResponse.ok) {
-      const errorData = await grokResponse.text();
-      logger.error('copilot:grok_api_error', {
-        status: grokResponse.status,
-        error: errorData,
-        analysisId,
-        userId: session.userId
-      });
-
-      return NextResponse.json(
-        {
-          error: 'GROK_ERROR',
-          message: 'Failed to generate insight. Please try again.'
-        },
-        { status: 500 }
-      );
-    }
-
-    const grokData = await grokResponse.json();
-    const answer = grokData.choices?.[0]?.message?.content || '';
+    const answer = await callOpenRouterText(fullPrompt, 2000);
 
     if (!answer) {
       logger.error('copilot:empty_response', { analysisId });
@@ -169,7 +136,8 @@ When answering:
       analysisId,
       userId: session.userId,
       questionLength: question.length,
-      answerLength: answer.length
+      answerLength: answer.length,
+      provider: 'openrouter/gemma',
     });
 
     return NextResponse.json({ answer }, { status: 200 });
