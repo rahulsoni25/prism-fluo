@@ -483,6 +483,7 @@ function UploadDataInner() {
           rows:      rawData,
           sheetName: preferredSheet.sheetName,
           fileNames: [file.name],
+          briefId:   briefId || null,
         }),
       });
 
@@ -631,11 +632,13 @@ function UploadDataInner() {
       // Accumulate across batches
       setAccumulatedCharts(prev => {
         const next = [...prev, ...batchCharts];
-        // Update bucket preview with all accumulated charts
-        const preview: Record<string, number> = { content: 0, commerce: 0, communication: 0, culture: 0 };
-        next.forEach(c => { const b = (c as any).bucket || 'content'; if (preview[b] !== undefined) preview[b]++; });
+        // Update bucket preview with all accumulated charts (all 9 PRISM buckets)
+        const allBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
+        const preview: Record<string, number> = Object.fromEntries(allBuckets.map(b => [b, 0]));
+        next.forEach(c => { const b = (c as any).bucket || 'content'; if (b in preview) preview[b]++; });
         setBucketPreview(preview);
-        addLog(`📊 Total insights — Content: ${preview.content} · Commerce: ${preview.commerce} · Comms: ${preview.communication} · Culture: ${preview.culture}`);
+        const nonEmpty = allBuckets.filter(b => preview[b] > 0).map(b => `${b}: ${preview[b]}`).join(' · ');
+        addLog(`📊 PRISM Distribution — ${nonEmpty || 'no insights yet'}`);
         return next;
       });
 
@@ -702,12 +705,17 @@ function UploadDataInner() {
   const hasFiles = fileEntries.length > 0;
 
   // ── Bucket display config ────────────────────────────────────
-  const BUCKET_CFG = {
+  const BUCKET_CFG: Record<string, { label: string; color: string; bg: string; border: string }> = {
     content:       { label:'📝 Content',       color:'#2563EB', bg:'#EFF6FF', border:'#BFDBFE' },
     commerce:      { label:'🛒 Commerce',      color:'#059669', bg:'#ECFDF5', border:'#A7F3D0' },
     communication: { label:'📢 Comms',         color:'#7C3AED', bg:'#F5F3FF', border:'#DDD6FE' },
     culture:       { label:'🌍 Culture',       color:'#D97706', bg:'#FFFBEB', border:'#FDE68A' },
-  } as const;
+    channel:       { label:'📡 Channel',       color:'#0891B2', bg:'#ECFEFF', border:'#A5F3FC' },
+    media:         { label:'🎬 Media',         color:'#EA580C', bg:'#FFF7ED', border:'#FED7AA' },
+    creative:      { label:'🎨 Creative',      color:'#C026D3', bg:'#FDF4FF', border:'#E9D5FF' },
+    pricing:       { label:'💰 Pricing',       color:'#DC2626', bg:'#FEF2F2', border:'#FECACA' },
+    search:        { label:'🔍 Search',        color:'#0D9488', bg:'#F0FDFA', border:'#99F6E4' },
+  };
 
   const FILE_STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
     pending:   { label:'Queued',    color:'#94A3B8', bg:'#F1F5F9' },
@@ -976,25 +984,30 @@ function UploadDataInner() {
           <div style={{ marginBottom:20 }}>
             <p style={{ fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'.12em',
               color:'#475569', marginBottom:12 }}>PRISM Distribution</p>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
-              {(['content','commerce','communication','culture'] as const).map(b => {
-                const cfg = BUCKET_CFG[b];
-                const count = bucketPreview[b] ?? 0;
-                const maxCount = Math.max(...Object.values(bucketPreview), 1);
-                return (
-                  <div key={b} style={{ background:cfg.bg, borderRadius:16, padding:'16px 14px',
-                    border:`1.5px solid ${cfg.border}`, textAlign:'center' }}>
-                    <div style={{ fontSize:22, fontWeight:900, color:cfg.color, marginBottom:4 }}>{count}</div>
-                    {/* Mini bar */}
-                    <div style={{ height:3, background:`${cfg.color}20`, borderRadius:2, marginBottom:6, overflow:'hidden' }}>
-                      <div style={{ height:'100%', borderRadius:2, background:cfg.color,
-                        width:`${maxCount > 0 ? (count/maxCount)*100 : 0}%`, transition:'width .5s ease' }} />
-                    </div>
-                    <div style={{ fontSize:10, fontWeight:700, color:cfg.color }}>{cfg.label}</div>
-                  </div>
-                );
-              })}
-            </div>
+            {(() => {
+              const activeBuckets = Object.keys(BUCKET_CFG).filter(b => (bucketPreview[b] ?? 0) > 0);
+              const maxCount = Math.max(...activeBuckets.map(b => bucketPreview[b] ?? 0), 1);
+              const cols = Math.min(activeBuckets.length, 5);
+              return (
+                <div style={{ display:'grid', gridTemplateColumns:`repeat(${cols || 4},1fr)`, gap:10 }}>
+                  {activeBuckets.map(b => {
+                    const cfg = BUCKET_CFG[b];
+                    const count = bucketPreview[b] ?? 0;
+                    return (
+                      <div key={b} style={{ background:cfg.bg, borderRadius:16, padding:'16px 14px',
+                        border:`1.5px solid ${cfg.border}`, textAlign:'center' }}>
+                        <div style={{ fontSize:22, fontWeight:900, color:cfg.color, marginBottom:4 }}>{count}</div>
+                        <div style={{ height:3, background:`${cfg.color}20`, borderRadius:2, marginBottom:6, overflow:'hidden' }}>
+                          <div style={{ height:'100%', borderRadius:2, background:cfg.color,
+                            width:`${(count/maxCount)*100}%`, transition:'width .5s ease' }} />
+                        </div>
+                        <div style={{ fontSize:10, fontWeight:700, color:cfg.color }}>{cfg.label}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         )}
 

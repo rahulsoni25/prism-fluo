@@ -25,6 +25,11 @@ const BUCKET_DEFS = [
   { icon: '🛒', name: 'Commerce',      color: 'linear-gradient(90deg,#059669,#34D399)' },
   { icon: '📢', name: 'Communication', color: 'linear-gradient(90deg,#7C3AED,#A78BFA)' },
   { icon: '🌍', name: 'Culture',       color: 'linear-gradient(90deg,#D97706,#FBBF24)' },
+  { icon: '📡', name: 'Channel',       color: 'linear-gradient(90deg,#0891B2,#22D3EE)' },
+  { icon: '🎬', name: 'Media',         color: 'linear-gradient(90deg,#EA580C,#FB923C)' },
+  { icon: '🎨', name: 'Creative',      color: 'linear-gradient(90deg,#C026D3,#E879F9)' },
+  { icon: '💰', name: 'Pricing',       color: 'linear-gradient(90deg,#DC2626,#F87171)' },
+  { icon: '🔍', name: 'Search',        color: 'linear-gradient(90deg,#0D9488,#2DD4BF)' },
 ];
 
 function ProcessingInner() {
@@ -34,7 +39,7 @@ function ProcessingInner() {
 
   const [brief, setBrief] = useState(null);
   const [widths, setWidths] = useState(PLATFORMS_DATA.map(p => p.pct));
-  const [bucketPcts, setBucketPcts] = useState([45, 28, 60, 15]);
+  const [bucketPcts, setBucketPcts] = useState([45, 28, 60, 15, 20, 18, 22, 12, 25]);
   const [expandedCard, setExpandedCard] = useState(null);
   const [elapsed, setElapsed] = useState(0);
 

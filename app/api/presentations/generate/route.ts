@@ -25,7 +25,7 @@ interface GeneratePresentationRequest {
   analysisId:  string;
 }
 
-type PrismBucket = 'content' | 'commerce' | 'communication' | 'culture';
+type PrismBucket = 'content' | 'commerce' | 'communication' | 'culture' | 'channel' | 'media' | 'creative' | 'pricing' | 'search';
 
 interface RawChart {
   bucket?:           string;
@@ -130,13 +130,14 @@ function buildPillarsFromFlat(
   observations: string[],
   recommendations: string[],
 ): Record<PrismBucket, PillarData> {
-  const buckets: PrismBucket[] = ['content', 'commerce', 'communication', 'culture'];
+  const buckets: PrismBucket[] = ['content', 'commerce', 'communication', 'culture', 'channel', 'media', 'creative', 'pricing', 'search'];
   const result = {} as Record<PrismBucket, PillarData>;
 
   buckets.forEach((bucket, i) => {
     // Distribute by modulo — ensures all obs/recs appear somewhere
-    const bucketObs  = observations.filter((_,  idx) => idx % 4 === i);
-    const bucketRecs = recommendations.filter((_, idx) => idx % 4 === i);
+    const mod = buckets.length;
+    const bucketObs  = observations.filter((_,  idx) => idx % mod === i);
+    const bucketRecs = recommendations.filter((_, idx) => idx % mod === i);
     const len = Math.max(bucketObs.length, bucketRecs.length);
     const insights: InsightCard[] = Array.from({ length: len }, (_, j) => ({
       title: bucketObs[j] || bucketRecs[j] || '',
@@ -285,7 +286,8 @@ export async function POST(req: NextRequest) {
     // Build 4 pillars from chart bucket data
     let pillars: Record<PrismBucket, PillarData>;
 
-    const hasBucketedCharts = charts.some(c => c.bucket && ['content','commerce','communication','culture'].includes(c.bucket));
+    const ALL_PRISM_BUCKETS: PrismBucket[] = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
+    const hasBucketedCharts = charts.some(c => c.bucket && ALL_PRISM_BUCKETS.includes(c.bucket as PrismBucket));
 
     if (hasBucketedCharts) {
       pillars = {
@@ -293,6 +295,11 @@ export async function POST(req: NextRequest) {
         commerce:      buildPillar(charts, 'commerce'),
         communication: buildPillar(charts, 'communication'),
         culture:       buildPillar(charts, 'culture'),
+        channel:       buildPillar(charts, 'channel'),
+        media:         buildPillar(charts, 'media'),
+        creative:      buildPillar(charts, 'creative'),
+        pricing:       buildPillar(charts, 'pricing'),
+        search:        buildPillar(charts, 'search'),
       };
     } else {
       // Fall back to distributing flat observations/recommendations

@@ -28,7 +28,7 @@ export interface ChartSpec {
   stat: string;
   rec: string;
   /** PRISM bucket this insight belongs to */
-  bucket?: 'content' | 'commerce' | 'communication' | 'culture';
+  bucket?: 'content' | 'commerce' | 'communication' | 'culture' | 'channel' | 'media' | 'creative' | 'pricing' | 'search';
   /** Human-readable tool/source label shown on the card */
   toolLabel?: string;
   _crossData?: [string, number][];

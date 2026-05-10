@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import GenerateDeckModal from '@/app/components/GenerateDeckModal';
 import Navbar from '@/components/Navbar';
@@ -341,6 +341,11 @@ const BUCKET_META = {
   commerce:      { label: '🛒 Commerce Insights',      cls: 'commerce' },
   communication: { label: '📢 Communication Insights', cls: 'communication' },
   culture:       { label: '🌍 Culture Insights',        cls: 'culture' },
+  channel:       { label: '📡 Channel Insights',       cls: 'channel' },
+  media:         { label: '🎬 Media Insights',          cls: 'media' },
+  creative:      { label: '🎨 Creative Insights',      cls: 'creative' },
+  pricing:       { label: '💰 Pricing Insights',       cls: 'pricing' },
+  search:        { label: '🔍 Search Insights',        cls: 'search' },
 };
 
 const BUCKET_TABS = [
@@ -348,7 +353,53 @@ const BUCKET_TABS = [
   { key: 'commerce',      label: '🛒 Commerce' },
   { key: 'communication', label: '📢 Communication' },
   { key: 'culture',       label: '🌍 Culture' },
+  { key: 'channel',       label: '📡 Channel' },
+  { key: 'media',         label: '🎬 Media' },
+  { key: 'creative',      label: '🎨 Creative' },
+  { key: 'pricing',       label: '💰 Pricing' },
+  { key: 'search',        label: '🔍 Search' },
 ];
+
+/* ─── Scroll-triggered card reveal ──────────────────────────────────────────
+ * Three layers of motion (mirrors the prototype):
+ *   1. Card fades + translates in (fadeInUp) when it enters the viewport
+ *   2. Card gently floats forever after (float-card CSS, defined in globals.css)
+ *   3. Chart.js draw animations play on mount (bars grow, doughnuts spin, etc.)
+ *
+ * On tab switch the key prop changes → component remounts → animations replay.
+ * ─────────────────────────────────────────────────────────────────────────── */
+function AnimatedCard({ index, bucketCls, children }) {
+  const ref    = useRef(null);
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    // Fallback: if IntersectionObserver unavailable (old browser / SSR), show immediately
+    if (!el || typeof IntersectionObserver === 'undefined') { setShown(true); return; }
+
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setShown(true); io.disconnect(); } },
+      // rootMargin: reveal cards 80px before they fully enter the viewport (smoother feel)
+      { threshold: 0.06, rootMargin: '0px 0px 80px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);  // empty deps → runs once per mount; re-mounts on key change auto-resets
+
+  return (
+    <div
+      ref={ref}
+      className={`insight-card ${bucketCls}`}
+      style={
+        shown
+          ? { animationDelay: `${index * 0.07}s` }           // let CSS float + fadeInUp run
+          : { animation: 'none', opacity: 0, transform: 'translateY(12px)' }  // hidden until in view
+      }
+    >
+      {children}
+    </div>
+  );
+}
 
 /* ─── chart dispatcher for demo insights ─── */
 function InsightChart({ ins }) {
@@ -542,7 +593,7 @@ function NikeInsights() {
         </div>
         <div className="bucket-tabs-bar">
           <div className="bucket-tabs">
-            {BUCKET_TABS.map(b => (
+            {BUCKET_TABS.filter(b => (ID[b.key] || []).length > 0).map(b => (
               <button
                 key={b.key}
                 className={`bucket-tab ${activeBucket === b.key ? 'active' : ''}`}
@@ -571,10 +622,10 @@ function NikeInsights() {
 
         <div className="insights-grid">
           {ins.map((insight, i) => (
-            <div
-              key={i}
-              className={`insight-card ${meta.cls}${insight.fullWidth ? ' full-width' : ''} fade-in`}
-              style={{ animationDelay: `${i * 0.08}s` }}
+            <AnimatedCard
+              key={`${activeBucket}-${i}`}
+              index={i}
+              bucketCls={`${meta.cls}${insight.fullWidth ? ' full-width' : ''}`}
             >
               <div className="ic-header">
                 <span className="ic-source">{insight.source}</span>
@@ -598,7 +649,7 @@ function NikeInsights() {
                 <div className="ic-label rec">💡 Recommendation</div>
                 <div className="ic-text">{insight.rec}</div>
               </div>
-            </div>
+            </AnimatedCard>
           ))}
         </div>
       </div>
@@ -689,7 +740,10 @@ const DOMAIN_TO_BUCKET = {
 /* Distribute charts using their pre-assigned chart.bucket field.
    Falls back to primaryBucket for any chart that has no bucket tag. */
 function assignChartsToBuckets(charts, primaryBucket) {
-  const result = { content: [], commerce: [], communication: [], culture: [] };
+  const result = {
+    content: [], commerce: [], communication: [], culture: [],
+    channel: [], media: [], creative: [], pricing: [], search: [],
+  };
   charts.forEach(c => {
     const b = c.bucket && result[c.bucket] !== undefined ? c.bucket : primaryBucket;
     result[b].push(c);
@@ -826,7 +880,7 @@ function AnalysisDetail({ id }) {
 
         <div className="bucket-tabs-bar">
           <div className="bucket-tabs">
-            {BUCKET_TABS.map(b => (
+            {BUCKET_TABS.filter(b => (bucketedCharts[b.key] || []).length > 0).map(b => (
               <button
                 key={b.key}
                 className={`bucket-tab ${currentBucket === b.key ? 'active' : ''}`}
@@ -880,11 +934,7 @@ function AnalysisDetail({ id }) {
                   const confidence = chart.conviction ?? (78 + (i * 3) % 15);
                   const cardSource = chart.toolLabel || sourceBadge;
                   return (
-                    <div
-                      key={i}
-                      className={`insight-card ${sectionMeta.cls} fade-in`}
-                      style={{ animationDelay: `${i * 0.08}s` }}
-                    >
+                    <AnimatedCard key={`${currentBucket}-${i}`} index={i} bucketCls={sectionMeta.cls}>
                       <div className="ic-header">
                         <span className="ic-source">{cardSource}</span>
                         <span className="ic-confidence">● {confidence}% confidence</span>
@@ -908,7 +958,7 @@ function AnalysisDetail({ id }) {
                           <div className="ic-text">{chart.rec}</div>
                         </div>
                       )}
-                    </div>
+                    </AnimatedCard>
                   );
                 })}
               </div>

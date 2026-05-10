@@ -34,7 +34,7 @@ const MODEL_CANDIDATES = [
   'meta-llama/llama-3.2-3b-instruct:free',
 ];
 
-const VALID_BUCKETS = ['content', 'commerce', 'communication', 'culture'] as const;
+const VALID_BUCKETS = ['content', 'commerce', 'communication', 'culture', 'channel', 'media', 'creative', 'pricing', 'search'] as const;
 const VALID_TYPES   = ['hbar','bar','line','area','pie','doughnut',
                        'scatter','combo','histogram','radar','waterfall','funnel'] as const;
 
@@ -55,11 +55,19 @@ ${rowLines}`;
 }
 
 // ── Full PRISM prompt (mirrors gemini.ts) ────────────────────────
-function buildPrompt(slots: DataSlot[], context: string): string {
+function buildPrompt(slots: DataSlot[], context: string, briefContext: string = ''): string {
   const slotBlock = buildSlotBlock(slots);
+  const briefBlock = briefContext ? `
+━━ CLIENT BRIEF — READ THIS BEFORE WRITING ANY CARD ━━
+These insights are being created for a specific brief. Every card you write MUST be directly relevant to this brand's objective.
+Do NOT produce generic audience observations — write insights a strategist for THIS brand can act on immediately.
+${briefContext}
+RELEVANCE RULE: Frame every observation, stat, and recommendation through this brief's specific objective and target audience. Skip data signals that have no bearing on this brand or campaign. If a slot's data is only weakly relevant, still connect it explicitly to the brand's challenge.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` : '';
   return `You are a brilliant Creative Strategist and Media Planner at PRISM, a top consumer intelligence firm in India.
 Your readers are brand managers and media planners who want clear, honest, human stories from consumer data — not jargon-heavy reports.
-
+${briefBlock}
 DATASET: ${context}
 
 ${slotBlock}
@@ -86,24 +94,39 @@ Write like a brilliant colleague explaining a finding over coffee — not a cons
 
 ━━ CARD FORMAT — follow exactly ━━
 
-TITLE (max 14 words):
-Write like a great magazine cover line. Lead with the surprising finding. Include one plain-English number.
-✅ "Almost Half of Urban Indian Families Still Prefer Buying at a Local Store"
-✅ "India's Full-Price Shoppers Are Nearly Twice as Common as Brands Think"
+TITLE (max 12 words — strictly enforced):
+Newspaper headline or magazine cover line. State the key finding with one number. Punchy and specific.
+✅ "1 in 3 Indian Shoppers Now Research on Instagram Before Buying"
+✅ "India's Full-Price Buyers Are Nearly Twice as Common as Brands Think"
+✅ "Purpose-Led Messaging Drives 41% Higher Brand Affinity in This Category"
+❌ "Consumers Over-Index on Full Price vs Sale Purchase Behaviour" (jargon)
+❌ "29% of This Audience Are Using Social Media Less — a Signal Worth Building Into the Brief" (filler ending)
+NEVER end with: "— Worth Planning Around", "— a Signal Worth Building Into the Brief", "— Worth Watching", "— Brands Need to Act".
 
-OBSERVATION — 3 sentences, precise and grounded in this slot's data only:
-• Sentence 1: Start with a punchy surprising fact drawn directly from the highest-index item in THIS slot.
-• Sentence 2: Give the exact numbers in plain English — reference the specific attributes, percentages, and multipliers from THIS slot.
-• Sentence 3: State the strategic so-what for a brand or media team in one clear, direct sentence.
+OBSERVATION — 2 to 3 rich sentences. Tell the full story, not just the data point.
+• Sentence 1 (hook): One short, punchy sentence — the most surprising number from THIS slot. Active voice.
+  ✅ "Almost 2 in 3 Indian 18–34s now exercise three or more times a week — up nearly a quarter in four years."
+  ✅ "73% of the target audience researches on Instagram or YouTube before visiting a brand website."
+• Sentence 2 (depth): A second finding from THIS slot that shows WHY this matters or what it tells us about how this audience thinks.
+  ✅ "They are not aspiring athletes — searches for home workout and running tips have grown 89% since 2022."
+  ✅ "The average purchase journey spans 4.7 touchpoints, with social as discovery and Amazon or Myntra as conversion."
+• Sentence 3 (so-what): One plain-English sentence on what this means for a brand or media team right now.
+  ✅ "Any brand still leading with elite sport performance is missing the person who actually buys the running shoes."
+RULE: Every number must come from THIS slot's data only. Do NOT invent benchmarks or comparisons.
 
-STAT — one crisp number that would make a room go quiet. Derived strictly from THIS slot's data.
-✅ "Nearly 2 in 3 Indian households in this group prefer local stores over big chains"
+STAT — one sentence. One number. The line a strategist would screenshot and send to their client.
+✅ "Full-price buyers are nearly twice as common here as in the average Indian household"
+✅ "Short-form video drives 4.2× more engagement here than static posts"
+✅ "3 in 4 in this group research on social before buying — more than double the national average"
+❌ "Index 168 · Full Price behaviour" (raw index number — never write this)
+❌ "21.8% of this audience (1.3× the national average)" (bracket-heavy, not memorable)
+Max 18 words. No brackets. No bullet points. No "Index" numbers. One crisp, memorable sentence only.
 
-RECOMMENDATION — one sentence written as a direct brief to a creative director or media buyer.
-Name a specific Indian platform or channel (YouTube, Instagram Reels, Hotstar, JioCinema, Meesho, Flipkart, etc.)
-Name a specific format (6-second bumper, 15-second Reel, CTV pre-roll, in-feed video, search ad, etc.)
-Name a specific creative angle (real Indian homes, confident buyers, family moments, aspiration, utility).
-✅ "Run 15-second Instagram Reels and YouTube pre-rolls showing real Indian families making confident purchases."
+RECOMMENDATION — 1 to 2 sentences. Direct brief to a creative director or media buyer.
+Must contain: ① a specific Indian platform, ② a specific format, ③ a specific creative angle.
+✅ "Shift 65% of content budget to 15-second Instagram Reels and YouTube Shorts showing real Indians on their own terms — personal milestones, not medals."
+✅ "Run a CTV pre-roll on Hotstar and JioCinema in the 7–10pm family slot — warm Indian home imagery, no discount messaging, pride of everyday smart choices."
+❌ "Consider digital advertising on social platforms to reach this audience" (too vague — not a brief)
 
 ━━ CHART DATA ━━
 • chartLabels: use the exact attribute names from THIS slot (up to 8)
@@ -119,7 +142,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 [
   {
     "title": "string",
-    "bucket": "content|commerce|communication|culture",
+    "bucket": "content|commerce|communication|culture|channel|media|creative|pricing|search",
     "type": "hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel",
     "conviction": 85,
     "obs": "string",
@@ -165,9 +188,10 @@ function parseCards(text: string, toolLabel: string): GeminiInsightCard[] {
  * to stay within free-tier rate limits.  Returns all cards merged.
  */
 export async function analyzeWithOpenRouter(
-  slots:     DataSlot[],
-  context:   string,
-  toolLabel: string,
+  slots:        DataSlot[],
+  context:      string,
+  toolLabel:    string,
+  briefContext: string = '',
 ): Promise<GeminiInsightCard[]> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error('OPENROUTER_API_KEY is not configured');
@@ -183,7 +207,7 @@ export async function analyzeWithOpenRouter(
 
   for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
     const batch  = batches[batchIdx];
-    const prompt = buildPrompt(batch, context);
+    const prompt = buildPrompt(batch, context, briefContext);
     let   batchSucceeded = false;
 
     for (const model of MODEL_CANDIDATES) {
@@ -333,9 +357,10 @@ function stratifiedSampleRows(rows: any[], n: number): any[] {
 }
 
 export async function analyzeGenericWithOpenRouter(
-  rows:      any[],
-  context:   string,
-  toolLabel: string,
+  rows:         any[],
+  context:      string,
+  toolLabel:    string,
+  briefContext: string = '',
 ): Promise<GeminiInsightCard[]> {
   if (!Array.isArray(rows) || rows.length === 0) return [];
 
@@ -350,7 +375,17 @@ export async function analyzeGenericWithOpenRouter(
     return o;
   });
 
+  const genericBriefBlock = briefContext ? `
+━━ CLIENT BRIEF — READ BEFORE WRITING ANY CARD ━━
+These insights are being created for a specific brief. Every card MUST be directly relevant to this brand's objective.
+Do NOT produce generic data observations — write insights a strategist for THIS brand can act on immediately.
+${briefContext}
+RELEVANCE RULE: Frame every observation, stat, and recommendation through this brief's specific objective and target audience. Skip data signals that have no bearing on this brand or campaign.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` : '';
+
   const prompt = `You are a senior Creative Strategist at PRISM, a consumer-intelligence firm advising brand managers and media planners in India.
+${genericBriefBlock}
 
 You will receive a tabular dataset. Your job is to read the columns and rows, infer what this data is about, and write 8 PRISM insight cards — 2 per bucket (Content · Commerce · Communication · Culture).
 
@@ -369,12 +404,17 @@ Use: people, shoppers, viewers, audiences, families, 1 in 3, nearly twice.
 Every number MUST come from the sample rows above. No invented statistics.
 
 ━━ BUCKET ASSIGNMENT ━━
-Spread your 8 cards evenly — aim for 2 per bucket. NEVER put more than 4 cards in one bucket.
+Spread your 8 cards across the most relevant buckets from the 9 below. NEVER put more than 3 cards in one bucket.
 • content       — media consumption, streaming, devices, screen time, gaming, content formats, listing quality, titles, A+ content.
-• commerce      — purchase intent, price, BSR/ranking, units sold, revenue, search volume, conversion, discount, subscription, consumer confidence, financial attitudes.
-• communication — brand awareness, brand trust, brand perception, reviews, ratings, ad recall, influencer reach, brand discovery, word of mouth, NPS, social mentions.
+• commerce      — purchase intent, price, BSR/ranking, units sold, revenue, conversion, discount, subscription, consumer confidence, financial attitudes.
+• communication — brand awareness, brand trust, brand perception, reviews, ratings, ad recall, influencer reach, NPS, word of mouth, social mentions.
 • culture       — demographics, lifestyle, attitudes, values, health, fitness, food, travel, fashion, sustainability, community, education, identity.
-RULE: price/rank/sales data → commerce. brand/review/rating data → communication. demographics/attitudes → culture. Do NOT default everything to content.
+• channel       — marketing channel mix (paid/owned/earned), channel ROI, attribution, media allocation, channel reach and frequency.
+• media         — media planning, media spend, ad placements, media mix modelling, platform-level media performance.
+• creative      — creative asset performance, ad creative testing, copy performance, visual identity, A/B test results.
+• pricing       — price elasticity, price point, premium vs value positioning, pricing perception, willingness to pay.
+• search        — keyword research, search volume, organic/paid search, SEO rankings, search intent, keyword gaps.
+RULE: price/rank/sales data → commerce or pricing. brand/review/rating → communication. keyword/SEO → search. channel attribution → channel. creative testing → creative. Do NOT default everything to content.
 
 ━━ CARD FORMAT ━━
 TITLE (max 14 words): magazine cover line — surprising finding + one plain-English number.
@@ -394,7 +434,7 @@ Use at least 5 DIFFERENT chart types across 8 cards. Never hbar or bar for more 
 Never assign the same chart type to consecutive cards.
 
 Return ONLY valid JSON — no markdown, no fences, no explanation:
-[{"title":"string","bucket":"content|commerce|communication|culture","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
+[{"title":"string","bucket":"content|commerce|communication|culture|channel|media|creative|pricing|search","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
 
   const text = await callOpenRouterText(prompt, 4000);
   return parseCards(text, toolLabel);
@@ -407,9 +447,10 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
  * Called when Gemini fails on social/sentiment/brandwatch uploads.
  */
 export async function analyzeSocialWithOpenRouter(
-  rows:      any[],
-  context:   string,
-  toolLabel: string = 'Social Listening',
+  rows:         any[],
+  context:      string,
+  toolLabel:    string = 'Social Listening',
+  briefContext: string = '',
 ): Promise<GeminiInsightCard[]> {
   if (!Array.isArray(rows) || rows.length === 0) return [];
 
@@ -432,8 +473,17 @@ export async function analyzeSocialWithOpenRouter(
   const negThemeBlock  = negThemes.map((r: any) => `  • "${r.value}" — ${r.count}× in negative posts`).join('\n') || '  (no data)';
   const volumeBlock    = volumeRows.slice(0, 12).map((r: any) => `  • ${r.value}: ${r.count} posts`).join('\n') || '  (no trend data)';
 
-  const prompt = `You are a Creative Strategist and Brand Intelligence analyst at PRISM, advising brand managers and media planners in India.
+  const socialBriefBlock = briefContext ? `
+━━ CLIENT BRIEF — READ BEFORE WRITING ANY CARD ━━
+These social insights are for a specific brand brief. Every card MUST be directly relevant.
+Do NOT write generic social media observations — write insights this brand's team can act on today.
+${briefContext}
+RELEVANCE RULE: Frame every insight through this brief's specific objective and brand challenge.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` : '';
 
+  const prompt = `You are a Creative Strategist and Brand Intelligence analyst at PRISM, advising brand managers and media planners in India.
+${socialBriefBlock}
 Social listening data for: "${context}"
 Total posts analysed: ${totalPosts.toLocaleString()}
 Source: ${toolLabel}
@@ -459,14 +509,19 @@ ${negThemeBlock}
 ━━ VOLUME OVER TIME ━━
 ${volumeBlock}
 
-Write 8 PRISM insight cards — 2 per bucket (Content · Commerce · Communication · Culture).
+Write 8 PRISM insight cards spread across the most relevant buckets.
 Use ONLY the numbers and themes above — no invented statistics.
 
-BUCKET ASSIGNMENT FOR SOCIAL DATA:
+BUCKET ASSIGNMENT FOR SOCIAL DATA (use up to 3 cards per bucket):
 • content       — formats/platforms driving conversation, content themes that resonate
 • commerce      — purchase intent signals, product mentions, price/availability chatter
 • communication — brand tone, crisis signals, negative theme management, positive amplification
-• culture       — who is talking (platform signals), lifestyle themes, identity in language
+• culture       — who is talking, lifestyle themes, identity in language
+• channel       — which channels generate most conversation, cross-channel sentiment
+• media         — media mentions, earned media signals, media coverage themes
+• creative      — messaging that resonates or falls flat, creative angles in conversation
+• pricing       — price chatter, value perception signals, discount/deal mentions
+• search        — top search terms mentioned, keyword themes in organic conversation
 
 TONE: Plain English, short sentences, active voice.
 Banned: over-index, leverage, synergy, touchpoint, holistic, robust, utilize, paradigm, seamless, volatility, momentum, dominance.
@@ -482,7 +537,7 @@ Never hbar or bar for more than 3 cards. Never same type in consecutive cards.
 Sentiment → doughnut. Volume trends → area. Conversion → funnel. Multi-attribute → radar.
 
 Return ONLY valid JSON — no markdown, no fences:
-[{"title":"string","bucket":"content|commerce|communication|culture","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
+[{"title":"string","bucket":"content|commerce|communication|culture|channel|media|creative|pricing|search","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
 
   const text = await callOpenRouterText(prompt, 4000);
   return parseCards(text, toolLabel);

@@ -103,7 +103,7 @@ Return ONLY valid JSON array:
 [
   {
     "title": "string",
-    "bucket": "content|commerce|communication|culture",
+    "bucket": "content|commerce|communication|culture|channel|media|creative|pricing|search",
     "obs": "string",
     "stat": "string",
     "rec": "string",
@@ -125,7 +125,7 @@ Return ONLY valid JSON array:
       trend,
       cards: cards.slice(0, 4).map((c: any) => ({
         title:       String(c.title   || ''),
-        bucket:      ['content','commerce','communication','culture'].includes(c.bucket) ? c.bucket : 'content',
+        bucket:      ['content','commerce','communication','culture','channel','media','creative','pricing','search'].includes(c.bucket) ? c.bucket : 'content',
         obs:         String(c.obs     || ''),
         stat:        String(c.stat    || ''),
         rec:         String(c.rec     || ''),

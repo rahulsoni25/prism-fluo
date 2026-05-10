@@ -56,8 +56,12 @@ const XA = { grid: { display: false }, border: { display: false },
   ticks: { font: { size: 10, family: 'Inter' }, color: MUTED } };
 const YA = { grid: { color: BORDER }, border: { display: false },
   ticks: { font: { size: 10, family: 'Inter' }, color: MUTED } };
-const BASE: any = { responsive: true, maintainAspectRatio: true,
-  plugins: { legend: { display: false }, tooltip: TIP } };
+const BASE: any = {
+  responsive: true, maintainAspectRatio: true,
+  plugins: { legend: { display: false }, tooltip: TIP },
+  // Chart.js entrance animation — bars grow from 0, lines draw in, etc.
+  animation: { duration: 900, easing: 'easeOutQuart' },
+};
 
 interface ChartProps { data: any; extraOptions?: any; title?: string; }
 
@@ -104,6 +108,8 @@ export function ChartArea({ data, extraOptions = {} }: ChartProps) {
 export function ChartPie({ data, extraOptions = {} }: ChartProps) {
   const options = {
     ...BASE, aspectRatio: 1.7, cutout: '60%',
+    // Spin + scale in from centre for pie/doughnut
+    animation: { animateRotate: true, animateScale: true, duration: 900, easing: 'easeOutQuart' },
     plugins: {
       legend: { display: true, position: 'right' as const,
         labels: { font: { size: 10, family: 'Inter' }, padding: 10, boxWidth: 10 } },
@@ -118,6 +124,8 @@ export function ChartPie({ data, extraOptions = {} }: ChartProps) {
 export function ChartDoughnut({ data, extraOptions = {} }: ChartProps) {
   const options = {
     ...BASE, aspectRatio: 1.6, cutout: '70%',
+    // Spin + scale in from centre
+    animation: { animateRotate: true, animateScale: true, duration: 900, easing: 'easeOutQuart' },
     plugins: {
       legend: { display: true, position: 'bottom' as const,
         labels: { font: { size: 10, family: 'Inter' }, padding: 12, boxWidth: 10 } },
@@ -157,6 +165,8 @@ export function ChartScatter({ data, extraOptions = {} }: ChartProps) {
 export function ChartRadar({ data, extraOptions = {} }: ChartProps) {
   const options = {
     ...BASE, aspectRatio: 1.4,
+    // Expand outward from centre
+    animation: { ...BASE.animation, animateScale: true },
     scales: { r: {
       ticks: { display: false, backdropColor: 'transparent' },
       grid:  { color: BORDER },
@@ -265,9 +275,11 @@ export function ChartWaterfall({ labels, values }: SvgProps) {
         const barBot  = toY(Math.min(base, base + val));
         const barH    = Math.max(2, barBot - barTop);
         const bx      = PAD_L + i * (innerW / labels.length) + 3;
+        // Staggered fade-in for each bar
+        const barStyle = { animation: `svgFadeIn 0.45s ease-out ${i * 0.07}s both` } as React.CSSProperties;
 
         return (
-          <g key={i}>
+          <g key={i} style={barStyle}>
             {/* Connector line to next bar */}
             {i < labels.length - 1 && (
               <line
@@ -314,9 +326,11 @@ export function ChartFunnel({ labels, values }: SvgProps) {
         const bx     = (W - barW) / 2;
         const by     = 8 + i * (STAGE_H + GAP);
         const color  = colours[i % colours.length];
+        // Each funnel stage slides in from left with stagger
+        const stageStyle = { animation: `svgSlideInLeft 0.45s ease-out ${i * 0.09}s both` } as React.CSSProperties;
 
         return (
-          <g key={i}>
+          <g key={i} style={stageStyle}>
             <rect x={bx} y={by} width={barW} height={STAGE_H}
               rx={6} fill={color} opacity={0.85 - i * 0.04} />
             {/* Stage label */}

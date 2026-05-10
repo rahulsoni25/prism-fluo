@@ -6,7 +6,7 @@ import { PLATFORMS_DATA } from '@/lib/data';
 
 const AGE_OPTIONS = ['13–17', '18–24', '25–34', '35–44', '45–54', '55+'];
 const GEO_OPTIONS = ['Metro Cities', 'Tier 1', 'Tier 2', 'Tier 3', 'Rural'];
-const BUCKET_OPTIONS = ['📝 Content', '🛒 Commerce', '📢 Communication', '🌍 Culture'];
+const BUCKET_OPTIONS = ['📝 Content', '🛒 Commerce', '📢 Communication', '🌍 Culture', '📡 Channel', '🎬 Media', '🎨 Creative', '💰 Pricing', '🔍 Search'];
 
 function NewBriefInner() {
   const router       = useRouter();
@@ -31,7 +31,7 @@ function NewBriefInner() {
   const [background, setBackground] = useState('');
   const [selectedAges, setSelectedAges] = useState(['18–24', '25–34']);
   const [selectedGeo, setSelectedGeo] = useState(['Metro Cities', 'Tier 1', 'Tier 2']);
-  const [selectedBuckets, setSelectedBuckets] = useState(['📝 Content', '🛒 Commerce', '📢 Communication', '🌍 Culture']);
+  const [selectedBuckets, setSelectedBuckets] = useState(['📝 Content', '🛒 Commerce', '📢 Communication', '🌍 Culture', '📡 Channel', '🎬 Media', '🎨 Creative', '💰 Pricing', '🔍 Search']);
 
   const toggleItem = (list, setList, item) =>
     setList(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);

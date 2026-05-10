@@ -60,8 +60,16 @@ const BUCKET_COLOR = {
   commerce:      'var(--success)',
   communication: 'var(--accent)',
   culture:       'var(--warning)',
+  channel:       '#0891B2',
+  media:         '#EA580C',
+  creative:      '#C026D3',
+  pricing:       '#DC2626',
+  search:        '#0D9488',
 };
-const BUCKET_ICON = { content: '📝', commerce: '🛒', communication: '📢', culture: '🌍' };
+const BUCKET_ICON = {
+  content: '📝', commerce: '🛒', communication: '📢', culture: '🌍',
+  channel: '📡', media: '🎬', creative: '🎨', pricing: '💰', search: '🔍',
+};
 
 function InsightCard({ card }) {
   const borderColor = BUCKET_COLOR[card.bucket] || 'var(--primary)';

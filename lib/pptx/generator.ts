@@ -56,11 +56,16 @@ export interface PresentationData {
   headline:        string;
   objective:       string;
   date?:           string;
-  // 4-pillar structured data (populated from results_json.charts)
+  // 9-pillar structured data (populated from results_json.charts)
   content:         PillarData;
   commerce:        PillarData;
   communication:   PillarData;
   culture:         PillarData;
+  channel?:        PillarData;
+  media?:          PillarData;
+  creative?:       PillarData;
+  pricing?:        PillarData;
+  search?:         PillarData;
   // Flat fallbacks (used for closing slide)
   observations:    string[];
   recommendations: string[];
@@ -80,9 +85,14 @@ const PILLARS: Record<string, PillarMeta> = {
   commerce:      { label: 'Commerce',      icon: '🛒', color: '059669', light: 'ECFDF5', dark: '064E3B' },
   communication: { label: 'Communication', icon: '📢', color: 'D97706', light: 'FFFBEB', dark: '78350F' },
   culture:       { label: 'Culture',       icon: '🌍', color: '7C3AED', light: 'F5F3FF', dark: '4C1D95' },
+  channel:       { label: 'Channel',       icon: '📡', color: '0891B2', light: 'ECFEFF', dark: '164E63' },
+  media:         { label: 'Media',         icon: '🎬', color: 'EA580C', light: 'FFF7ED', dark: '7C2D12' },
+  creative:      { label: 'Creative',      icon: '🎨', color: 'C026D3', light: 'FDF4FF', dark: '701A75' },
+  pricing:       { label: 'Pricing',       icon: '💰', color: 'DC2626', light: 'FEF2F2', dark: '7F1D1D' },
+  search:        { label: 'Search',        icon: '🔍', color: '0D9488', light: 'F0FDFA', dark: '134E4A' },
 };
 
-const PILLAR_ORDER: Array<keyof typeof PILLARS> = ['content', 'commerce', 'communication', 'culture'];
+const PILLAR_ORDER: Array<keyof typeof PILLARS> = ['content', 'commerce', 'communication', 'culture', 'channel', 'media', 'creative', 'pricing', 'search'];
 
 // ─── Presentation-level palette ───────────────────────────────────────────────
 interface Palette {

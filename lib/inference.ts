@@ -88,7 +88,7 @@ export function inferSchema(data: Record<string, unknown>[]): Schema {
 
 // ── PRISM Bucket Assignment ───────────────────────────────────
 
-type PrismBucket = 'content' | 'commerce' | 'communication' | 'culture';
+type PrismBucket = 'content' | 'commerce' | 'communication' | 'culture' | 'channel' | 'media' | 'creative' | 'pricing' | 'search';
 
 /** domain value → human-readable badge shown on insight cards */
 const META_TOOL_LABEL: Record<string, string> = {
@@ -114,7 +114,12 @@ const BUCKET_KW: Record<PrismBucket, RegExp> = {
   commerce:      /\b(sale|revenue|order|transact|purchas|price|cost|profit|margin|keyword|search.?volume|bid|cpc|tier|sku|inventory|stock|e.?commerce|brand.?search)\b/,
   communication: /\b(campaign|click|impression|ctr|reach|engagement|follow|mention|sentiment|social.?media|ad.?spend|reel|story|post|broadcast|pr\b)\b/,
   culture:       /\b(culture|lifestyle|trend|interest|leisure|activit|consumer|index|gwi|survey|demograph|audience|behav|psychograph|cohort|gen.?z|millennial)\b/,
-  content:       /\b(content|media|video|article|blog|view|watch|read|page|format|channel|creat)\b/,
+  content:       /\b(content|media|video|article|blog|view|watch|read|page|format|creat)\b/,
+  channel:       /\b(channel.?mix|channel.?roi|attrib|paid.?channel|owned.?channel|earned.?channel|omni.?channel|cross.?channel)\b/,
+  media:         /\b(media.?plan|media.?spend|media.?invest|media.?mix|media.?alloc|ad.?placement|media.?weight)\b/,
+  creative:      /\b(creative.?test|creative.?perform|ad.?creative|a.?b.?test|split.?test|copy.?test|creative.?asset)\b/,
+  pricing:       /\b(price.?elastic|price.?point|price.?strateg|willingness.?to.?pay|premium.?pric|value.?pric|price.?tier)\b/,
+  search:        /\b(seo|sem|search.?rank|search.?intent|organic.?search|paid.?search|search.?query|keyword.?gap)\b/,
 };
 
 function assignPrismBucket(
@@ -428,7 +433,7 @@ export function autoGenerateLayout(data: Record<string, unknown>[], schema: Sche
     : generateDashboardMeta(data, schema, charts);
 
   // Assign a PRISM bucket to every chart based on its content + domain
-  const domainCls = (meta.cls || 'content') as 'content' | 'commerce' | 'communication' | 'culture';
+  const domainCls = (meta.cls || 'content') as PrismBucket;
   const toolLabel = META_TOOL_LABEL[meta.domain] ?? meta.domain;
   const finalCharts = charts.slice(0, 8).map((c, idx) => ({
     ...c,
@@ -451,8 +456,8 @@ function generateDashboardMeta(
 
   const domains = [
     { keywords: ['revenue','sales','order','transaction','purchase','price','cost','profit','margin'], label: 'Sales & Revenue', icon: '💰', cls: 'commerce' },
-    { keywords: ['campaign','click','impression','ctr','cpc','cpm','ad','spend','reach','engagement'], label: 'Marketing & Performance', icon: '📢', cls: 'communication' },
-    { keywords: ['keyword','search','seo','rank','volume','traffic','pageview','session','organic'], label: 'Search & SEO', icon: '🔍', cls: 'content' },
+    { keywords: ['campaign','click','impression','ctr','cpc','cpm','ad','spend','reach','engagement'], label: 'Marketing & Performance', icon: '📢', cls: 'media' },
+    { keywords: ['keyword','search','seo','rank','volume','traffic','pageview','session','organic'], label: 'Search & SEO', icon: '🔍', cls: 'search' },
     { keywords: ['user','signup','churn','retention','active','dau','mau','cohort'], label: 'User & Product Analytics', icon: '👤', cls: 'culture' },
     { keywords: ['follower','like','share','comment','post','reel','story','view','subscriber'], label: 'Social Media Intelligence', icon: '📱', cls: 'content' },
     { keywords: ['content','article','video','blog','page','format','type','channel','media'], label: 'Content Performance', icon: '📝', cls: 'content' },

@@ -208,6 +208,11 @@ textarea {resize:vertical;min-height:80px}
 .insight-card.commerce {border-top-color:#059669}
 .insight-card.communication {border-top-color:#7C3AED}
 .insight-card.culture {border-top-color:#D97706}
+.insight-card.channel {border-top-color:#0891B2}
+.insight-card.media {border-top-color:#EA580C}
+.insight-card.creative {border-top-color:#C026D3}
+.insight-card.pricing {border-top-color:#DC2626}
+.insight-card.search {border-top-color:#0D9488}
 .insight-card.full-width {grid-column:1/-1}
 .ic-header {display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .ic-source {font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:#F1F5F9;color:#64748B;text-transform:uppercase;letter-spacing:.5px}
@@ -222,6 +227,11 @@ textarea {resize:vertical;min-height:80px}
 .insight-card.commerce .ic-stat {color:#059669;border-left-color:#059669}
 .insight-card.communication .ic-stat {color:#7C3AED;border-left-color:#7C3AED}
 .insight-card.culture .ic-stat {color:#D97706;border-left-color:#D97706}
+.insight-card.channel .ic-stat {color:#0891B2;border-left-color:#0891B2}
+.insight-card.media .ic-stat {color:#EA580C;border-left-color:#EA580C}
+.insight-card.creative .ic-stat {color:#C026D3;border-left-color:#C026D3}
+.insight-card.pricing .ic-stat {color:#DC2626;border-left-color:#DC2626}
+.insight-card.search .ic-stat {color:#0D9488;border-left-color:#0D9488}
 
 /* CHART WRAPPERS */
 .chart-wrap {background:#F8FAFC;border-radius:10px;padding:14px 12px 10px;margin-bottom:16px; min-height: 200px;}
@@ -281,6 +291,16 @@ textarea {resize:vertical;min-height:80px}
   transform: translateY(-8px) !important;
   box-shadow: 0 20px 48px rgba(37,99,235,0.13), var(--shadow);
   transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+/* ── SVG chart element animations (waterfall bars, funnel stages) ── */
+@keyframes svgFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes svgSlideInLeft {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 /* ══════════════════════════════════════════════════════════════

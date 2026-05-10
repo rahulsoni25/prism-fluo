@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM } from '@/lib/ai/gemini';
 import { analyzeWithOpenRouter, analyzeGenericWithOpenRouter, analyzeSocialWithOpenRouter } from '@/lib/ai/openrouter';
 import type { DataSlot, GeminiInsightCard } from '@/lib/ai/gemini';
+import { getPool } from '@/lib/db/client';
 
 // Vercel Hobby plan default timeout is 10 s — Gemini 2.5 routinely takes 15-40 s.
 // Setting maxDuration = 60 (the Hobby-plan maximum) prevents premature timeouts.
@@ -59,6 +60,37 @@ function questionBucket(q: string): DataSlot['bucket'] {
     /community|education|\bcareer|work.life|life.goal|parenting|identity|demograph|hobbi/.test(t) ||
     /luxury.attit|social.cause|personal.value|cultural.identity|self.image/.test(t)
   ) return 'culture';
+
+  // ── SEARCH — keyword research, SEO/SEM, search analytics ─────────────────
+  if (
+    /keyword|search.volume|search.rank|seo|sem|organic.search|paid.search/.test(t) ||
+    /search.intent|search.trend|search.query|search.traffic|bid.strateg/.test(t) ||
+    /google.search.consol|keyword.gap|keyword.research|search.optimis/.test(t)
+  ) return 'search';
+
+  // ── PRICING — price strategy, elasticity, pricing analytics ───────────────
+  if (
+    /price.elastic|price.point|price.strateg|price.optimis|price.percep/.test(t) ||
+    /willingness.to.pay|premium.pric|value.pric|price.tier|price.sensitiv/.test(t)
+  ) return 'pricing';
+
+  // ── CHANNEL — channel attribution, media mix, channel ROI ─────────────────
+  if (
+    /channel.mix|channel.roi|channel.attrib|channel.alloc|omni.channel/.test(t) ||
+    /cross.channel|paid.channel|owned.channel|earned.channel|channel.strateg/.test(t)
+  ) return 'channel';
+
+  // ── MEDIA — media planning, media spend, ad investment ────────────────────
+  if (
+    /media.plan|media.spend|media.invest|media.mix|media.alloc|media.buy/.test(t) ||
+    /ad.spend|media.weight|media.schedule|media.optim/.test(t)
+  ) return 'media';
+
+  // ── CREATIVE — creative testing, ad creative performance ──────────────────
+  if (
+    /creative.test|creative.perform|ad.creative|creative.asset|copy.test/.test(t) ||
+    /creative.format|visual.identity|a.b.test|split.test|creative.score/.test(t)
+  ) return 'creative';
 
   // ── CONTENT — media consumption, devices, screen time, formats ────────────
   if (
@@ -167,18 +199,27 @@ function buildInsightSlots(rows: any[]): DataSlot[] {
     byBucket[q.bucket].push(q);
   }
 
-  // Enforce target distribution: Content 30% · Communication 25% · Culture 25% · Commerce 20%
-  // 18 slots → Content 5, Communication 5, Culture 5, Commerce 4  (sums to 19 — trim to 18)
+  // Enforce target distribution across all 9 PRISM buckets.
+  // New buckets (channel/media/creative/pricing/search) get 1-2 slots each so they
+  // contribute when the data supports them — GWI questions rarely match those patterns,
+  // so their unfilled slots fall through to the overflow mechanism below.
   const MAX_SLOTS = 18;
   const TARGETS: Record<string, number> = {
-    content:       Math.round(MAX_SLOTS * 0.30), // 5
-    communication: Math.round(MAX_SLOTS * 0.25), // 5
-    culture:       Math.round(MAX_SLOTS * 0.25), // 5
-    commerce:      Math.round(MAX_SLOTS * 0.20), // 4
-  };
+    content:       3,
+    communication: 2,
+    culture:       2,
+    commerce:      2,
+    channel:       2,
+    media:         2,
+    creative:      2,
+    pricing:       2,
+    search:        1,
+  }; // total = 18
 
+  const BUCKET_ORDER = ['content', 'communication', 'culture', 'commerce',
+                        'channel', 'media', 'creative', 'pricing', 'search'] as const;
   const distributed: typeof questions = [];
-  for (const bucket of ['content', 'communication', 'culture', 'commerce'] as const) {
+  for (const bucket of BUCKET_ORDER) {
     const sorted = (byBucket[bucket] ?? []).sort((a, b) => b.maxIndex - a.maxIndex);
     distributed.push(...sorted.slice(0, TARGETS[bucket]));
   }
@@ -265,34 +306,43 @@ function cleanAttrText(attr: string): string {
 }
 
 /**
- * Build a stat-led title matching the prototype style.
- * e.g. "29.5% of This Audience Are Using Social Media Less Than Before — a Shift Brands Need to Plan Around"
- * e.g. "Young Parents Make Up 4.1% of This Audience — More Than the National Average Suggests"
+ * Build a punchy headline-style title matching the prototype.
+ * Target: newspaper-headline style, max ~12 words, one number, no filler endings.
+ * e.g. "1 in 3 in This Audience Are Using Social Media Less Than Before"
+ * e.g. "Young Parents Make Up Nearly 1 in 10 of This Audience"
  */
 function buildTitle(attr: string, pctNum: string | null, multFmt: string): string {
   const clean   = cleanAttrText(attr);
-  const short   = clean.length > 48 ? clean.slice(0, 45) + '…' : clean;
+  const short   = clean.length > 42 ? clean.slice(0, 40) + '…' : clean;
   const wasIAm  = /^I am /i.test(attr);
   const wasVerb = /^I (am |)(using|watch|buy|prefer|trust|worry|think|feel|read|listen|spend|value|choos|believ|driv|own|follow|support|creat|shar|post|play|cook|exercis|travel)/i.test(attr);
 
   if (wasIAm || wasVerb) {
-    return pctNum
-      ? `${pctNum} of This Audience Are ${cap(short)} — a Signal Worth Building Into the Brief`
-      : `A Key Segment of This Audience Is ${cap(short)} — Stronger Than the National Average Suggests`;
+    // Use fraction notation ("1 in 3") when available, otherwise percentage
+    const frac = pctNum ? pctToWords(parseFloat(pctNum)) : null;
+    return frac && !frac.startsWith('about') && !frac.startsWith('roughly')
+      ? `${cap(frac)} in This Audience Are ${cap(short)}`
+      : pctNum
+        ? `${pctNum} of This Audience Are ${cap(short)}`
+        : `A Disproportionate Share of This Audience Is ${cap(short)}`;
   }
 
   // Persona (title-case, ≤ 3 words, e.g. "Young Parent", "Social Media Scroller")
   const words = attr.trim().split(/\s+/);
   if (words.length <= 3 && /^[A-Z]/.test(words[0])) {
     return pctNum
-      ? `${attr}s Make Up ${pctNum} of This Audience — Disproportionately High vs the National Average`
-      : `${attr}s Are More Prevalent in This Audience Than Brands Typically Assume`;
+      ? `${attr}s Make Up ${pctNum} of This Audience — ${multFmt} the National Average`
+      : `${attr}s Are ${multFmt} More Common Here Than the National Average Suggests`;
   }
 
-  // Topic / interest
+  // Topic / interest — lead with the number, not the attribute name
+  const frac2 = pctNum ? pctToWords(parseFloat(pctNum)) : null;
+  if (frac2 && !frac2.startsWith('about') && !frac2.startsWith('roughly')) {
+    return `${cap(frac2)} Prioritise ${cap(short)} — ${multFmt} the National Average`;
+  }
   return pctNum
     ? `${pctNum} of This Audience Prioritise ${cap(short)} — ${multFmt} the National Average`
-    : `${cap(short)} Is ${multFmt} More Common Here Than in the General Indian Population`;
+    : `${cap(short)} Is ${multFmt} More Common Here Than in the General Population`;
 }
 
 /**
@@ -379,13 +429,70 @@ function buildRec(slot: DataSlot, topAttr: string, pctNum: string | null): strin
     return `Shift 40–50% of paid social spend to creator-led Instagram Reels and YouTube Shorts. This audience trusts peer recommendations over polished brand content — brief creators with the insight, not the script.`;
   if (slot.bucket === 'culture')
     return `Build regional-language creative for Moj and Josh in addition to Hindi-first platforms. This audience's cultural identity is a real strategic signal — campaigns that acknowledge it will outperform those that flatten it.`;
+  if (slot.bucket === 'channel')
+    return `Concentrate budget on the top 2 channels in this mix — audit each platform for ROI before the next planning cycle, and shift spend aggressively away from the lowest-performing channel.`;
+  if (slot.bucket === 'media')
+    return `Build a media brief that prioritises the formats and platforms showing the strongest signals here — even a 10% budget shift to the top-performing media can drive disproportionate returns on reach and engagement.`;
+  if (slot.bucket === 'creative')
+    return `Brief the creative team on the specific angles and formats that tested strongest — produce 3 variations for the top-performing format and run a rapid A/B test on Instagram Reels before the full campaign launch.`;
+  if (slot.bucket === 'pricing')
+    return `Position the hero SKU at the price point that best matches the value perception in this data — avoid leading with discounts, and instead build the narrative around quality and value clarity on Flipkart and Amazon product pages.`;
+  if (slot.bucket === 'search')
+    return `Prioritise bid spend on the highest-intent keywords in this data — build a Google Ads and Flipkart search campaign around the top 5 terms, and ensure landing pages are conversion-optimised for each intent level.`;
 
   // content default
   return `Prioritise short-form video on Instagram Reels and YouTube — 15-second formats that lead with the insight rather than the brand. This audience rewards creative that reflects their actual life, not a brand-polished version of it.`;
 }
 
+// ── Chart variety helpers ─────────────────────────────────────────────────────
+// Rotation used by the fallback generator to pick varied chart types.
+// Order matters: we cycle through visually distinct types first.
+// hbar/bar → ranked-list reading, doughnut/pie → share/proportion,
+// area/line → magnitude/trend feel, radar → profile, funnel → journey,
+// waterfall → decomposition, histogram → distribution.
+const VARIETY_ROTATION: GeminiInsightCard['type'][] = [
+  'hbar', 'doughnut', 'bar', 'area', 'radar', 'pie', 'line', 'funnel', 'waterfall', 'histogram',
+];
+
+/** Return a chart type that hasn't been over-used and doesn't repeat the last card. */
+function pickFallbackType(
+  preferred: GeminiInsightCard['type'],
+  typeUsed:  Record<string, number>,
+  lastType:  GeminiInsightCard['type'] | null,
+  rowCount:  number,
+): GeminiInsightCard['type'] {
+  // funnel / waterfall only make sense for 3–8 items; strip them from candidate list if too few/many
+  const safePool = VARIETY_ROTATION.filter(t => {
+    if ((t === 'funnel' || t === 'waterfall') && (rowCount < 3 || rowCount > 8)) return false;
+    if ((t === 'radar')     && rowCount < 3) return false;
+    if ((t === 'histogram') && rowCount < 4) return false;
+    return true;
+  });
+
+  // 1. Preferred is fine: not consecutive, used < 2 times
+  if (preferred !== lastType && (typeUsed[preferred] ?? 0) < 2 && safePool.includes(preferred))
+    return preferred;
+
+  // 2. Scan rotation for a type that passes all checks
+  for (const t of safePool) {
+    if (t !== lastType && (typeUsed[t] ?? 0) < 2) return t;
+  }
+
+  // 3. Relax consecutive constraint (all good types used twice)
+  for (const t of safePool) {
+    if ((typeUsed[t] ?? 0) < 2) return t;
+  }
+
+  // 4. Everything maxed — just avoid consecutive
+  return safePool.find(t => t !== lastType) ?? preferred;
+}
+
 function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsightCard[] {
   const cards: GeminiInsightCard[] = [];
+
+  // Variety state tracked across all cards in this set
+  const typeUsed: Record<string, number> = {};
+  let   lastType: GeminiInsightCard['type'] | null = null;
 
   for (const slot of slots) {
     if (slot.rows.length < 2) continue;
@@ -416,28 +523,45 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
       commerce:      'Messaging that acknowledges how this audience actually makes purchase decisions will consistently outperform generic category creative.',
       communication: 'Media spend aligned to the platforms and formats this audience actively uses will deliver higher earned attention and more efficient CPMs.',
       culture:       'Campaigns that genuinely connect with these cultural values will feel authentic to this group — and they have a sharp radar for brands that do it well vs. brands that appropriate.',
+      channel:       'A channel-specific brief that concentrates budget on the most efficient medium in this mix will outperform a broad spray-and-pray approach every time.',
+      media:         'Media investment concentrated on the platforms showing the highest engagement in this data will deliver better reach-to-impact ratios than an even-spread plan.',
+      creative:      'Creative assets directly informed by what this data shows about resonant formats and messages will outperform brief-free executions in every measure that matters.',
+      pricing:       'Positioning that matches the value perceptions evident in this data — rather than leading with discounts — will build longer-term brand equity and margin resilience.',
+      search:        'Search investment that maps to the keyword themes in this data will capture high-intent demand from exactly the audience most likely to convert.',
     };
     const s3 = s3map[slot.bucket] ?? 'This is a clear strategic signal worth building into the next campaign brief.';
 
     const obs = `${s1} ${s2} ${s3}`;
 
-    // ── STAT — pull-quote style, no raw Index numbers ─────────────────────
-    const stat = hasPct
-      ? `${pctNum} of this audience — ${pctFrac} — ${/^I (am |)/i.test(top.attr) ? 'are ' + cleanAttrText(top.attr) : 'prioritise ' + cleanAttrText(top.attr)} (${multFmt} the national average)`
-      : `${cleanAttrText(top.attr)} is ${multFmt} more prevalent here than in the general Indian population — the strongest signal in this category`;
+    // ── STAT — pull-quote style: one crisp sentence, no brackets, no raw Index numbers ─────────
+    const cleanAttr = cleanAttrText(top.attr);
+    const isVerb    = /^I (am |)(using|watch|buy|prefer|trust|worry|think|feel|read|listen|spend|value|choos|believ|driv|own|follow|support|creat|shar|post|play|cook|exercis|travel)/i.test(top.attr);
+    const stat = hasPct && pctFrac
+      ? isVerb
+        ? `${cap(pctFrac)} of this audience are ${cleanAttr} — ${multFmt} the national average`
+        : `${cap(pctFrac)} prioritise ${cleanAttr} — ${multFmt} more common here than the national average`
+      : hasPct
+        ? `${pctNum} of this audience prioritise ${cleanAttr} — ${multFmt} the national average`
+        : `${cap(cleanAttr)} is ${multFmt} more prevalent here than in the general Indian population`;
 
     // ── RECOMMENDATION ───────────────────────────────────────────────────────
     const rec = buildRec(slot, top.attr, pctNum);
 
-    // ── CHART ────────────────────────────────────────────────────────────────
+    // ── CHART — enforce variety across all cards ──────────────────────────
+    const preferred    = slot.chartSuggestion as GeminiInsightCard['type'];
+    const chartType    = pickFallbackType(preferred, typeUsed, lastType, topN.length);
+    typeUsed[chartType] = (typeUsed[chartType] ?? 0) + 1;
+    lastType            = chartType;
+
     const useAudiencePct = topN.some(r => r.audiencePct > 0);
     const chartValues    = topN.map(r => useAudiencePct ? r.audiencePct : r.index);
-    const chartValues2   = slot.chartSuggestion === 'scatter' ? topN.map(r => r.index) : undefined;
+    // scatter needs a second series (index as multiplier on Y axis)
+    const chartValues2   = chartType === 'scatter' ? topN.map(r => +(r.index / 100).toFixed(2)) : undefined;
 
     cards.push({
       title,
       bucket:      slot.bucket,
-      type:        slot.chartSuggestion,
+      type:        chartType,
       conviction:  70,
       obs,
       stat,
@@ -454,30 +578,33 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
 
 // ── Post-process: enforce balanced bucket distribution ───────────────────────
 // Applied to ALL card outputs regardless of which tier generated them.
-// If any bucket is empty, the last card of the dominant bucket is reassigned to it.
-// This guarantees every bucket tab in the UI shows at least 1 card.
-// Target: Content ≤45% · Communication ≥10% · Culture ≥10% · Commerce ≥10%
-const ALL_BUCKETS = ['content', 'commerce', 'communication', 'culture'] as const;
+// Tracks all 9 buckets but only enforces the CORE 4 (content/commerce/communication/culture)
+// to guarantee every primary PRISM tab in the UI shows at least 1 card.
+// The 5 new buckets (channel/media/creative/pricing/search) are optional extras.
+const CORE_BUCKETS = ['content', 'commerce', 'communication', 'culture'] as const;
+const ALL_BUCKET_KEYS = ['content', 'commerce', 'communication', 'culture',
+                         'channel', 'media', 'creative', 'pricing', 'search'] as const;
 
 function rebalanceCards(cards: GeminiInsightCard[]): GeminiInsightCard[] {
   if (cards.length < 4) return cards;
 
-  const counts: Record<string, number> = { content: 0, commerce: 0, communication: 0, culture: 0 };
+  // Count cards per bucket across all 9 buckets
+  const counts: Record<string, number> = Object.fromEntries(ALL_BUCKET_KEYS.map(b => [b, 0]));
   cards.forEach(c => {
-    const b = ALL_BUCKETS.includes(c.bucket as any) ? c.bucket : 'content';
+    const b = (ALL_BUCKET_KEYS as readonly string[]).includes(c.bucket) ? c.bucket : 'content';
     counts[b]++;
   });
 
-  const emptyBuckets = ALL_BUCKETS.filter(b => counts[b] === 0);
-  if (emptyBuckets.length === 0) return cards; // all 4 buckets have at least 1 card
+  // Only enforce coverage for the 4 core PRISM buckets
+  const emptyBuckets = CORE_BUCKETS.filter(b => counts[b] === 0);
+  if (emptyBuckets.length === 0) return cards;
 
-  // Find the dominant bucket to take cards from
-  const dominant = ALL_BUCKETS.reduce((a, b) => (counts[a] > counts[b] ? a : b));
+  // Donor = the most card-rich bucket across ALL 9 (may be a new bucket)
+  const dominant = ALL_BUCKET_KEYS.reduce((a, b) => (counts[a] > counts[b] ? a : b));
 
   const result = [...cards];
   for (const target of emptyBuckets) {
-    if (counts[dominant] <= 1) break; // don't strip the last card from a bucket
-    // Take the last card of the dominant bucket (lowest conviction = safest to reassign)
+    if (counts[dominant] <= 1) break;
     for (let i = result.length - 1; i >= 0; i--) {
       if (result[i].bucket === dominant) {
         result[i] = { ...result[i], bucket: target };
@@ -489,6 +616,45 @@ function rebalanceCards(cards: GeminiInsightCard[]): GeminiInsightCard[] {
   }
 
   return result;
+}
+
+// ── Brief context builder ──────────────────────────────────────
+// Converts a brief DB row into a compact, human-readable context
+// block that is injected into every Gemini / OpenRouter prompt so
+// the AI frames insights against the specific brand objective.
+function buildBriefContext(brief: any): string {
+  if (!brief) return '';
+  const lines: string[] = [];
+  if (brief.brand)    lines.push(`BRAND: ${brief.brand}`);
+  if (brief.category) lines.push(`CATEGORY: ${brief.category}`);
+  if (brief.objective)lines.push(`CAMPAIGN OBJECTIVE: ${brief.objective}`);
+  if (brief.background) lines.push(`BRIEF BACKGROUND: ${brief.background}`);
+  const audience: string[] = [];
+  if (brief.age_ranges) audience.push(brief.age_ranges);
+  if (brief.gender)     audience.push(brief.gender);
+  if (brief.sec)        audience.push(`SEC ${brief.sec}`);
+  if (audience.length)  lines.push(`TARGET AUDIENCE: ${audience.join(' · ')}`);
+  if (brief.geography)  lines.push(`GEOGRAPHY: ${brief.geography}`);
+  if (brief.market)     lines.push(`MARKET: ${brief.market}`);
+  if (brief.competitors)lines.push(`KEY COMPETITORS: ${brief.competitors}`);
+  if (brief.insight_buckets) lines.push(`PRIORITY INSIGHT AREAS: ${brief.insight_buckets}`);
+  return lines.join('\n');
+}
+
+// ── Fetch brief from DB (non-blocking — returns null on failure) ──
+async function fetchBrief(briefId: string): Promise<any | null> {
+  try {
+    const { rows } = await getPool().query(
+      `SELECT brand, category, objective, background, age_ranges, gender, sec,
+              market, geography, competitors, insight_buckets
+         FROM briefs WHERE id = $1`,
+      [briefId],
+    );
+    return rows[0] ?? null;
+  } catch (err: any) {
+    console.warn('[analyze-data] Could not fetch brief:', err.message);
+    return null;
+  }
 }
 
 // ── Timeout wrapper ────────────────────────────────────────────
@@ -507,7 +673,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 // ── Route ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const { rows, sheetName, fileNames } = await req.json();
+    const { rows, sheetName, fileNames, briefId } = await req.json();
 
     if (!Array.isArray(rows) || rows.length === 0)
       return NextResponse.json({ error: 'rows array required' }, { status: 400 });
@@ -518,6 +684,11 @@ export async function POST(req: NextRequest) {
     // then run as normal.  Returning 503 here would have killed every fallback.
     if (!process.env.GEMINI_API_KEY)
       console.warn('[analyze-data] GEMINI_API_KEY not set — Gemini will fail, OpenRouter + auto-analysis will handle it');
+
+    // Fetch brief context (non-blocking — null if no briefId or DB unreachable)
+    const brief       = briefId ? await fetchBrief(briefId) : null;
+    const briefContext = buildBriefContext(brief);
+    if (briefContext) console.log(`[analyze-data] Brief context loaded for briefId=${briefId} (${brief?.brand})`);
 
     const slots = buildInsightSlots(rows);
     const context = [fileNames?.join(' + ') || sheetName].filter(Boolean).join(' ');
@@ -541,7 +712,7 @@ export async function POST(req: NextRequest) {
         const batchResults = await Promise.allSettled(
           batches.map((batch, i) =>
             withTimeout(
-              analyzeDataForPRISM(batch, gwiContext, toolLabel),
+              analyzeDataForPRISM(batch, gwiContext, toolLabel, briefContext),
               30_000,
               `Gemini batch ${i + 1}/${batches.length}`,
             )
@@ -565,7 +736,7 @@ export async function POST(req: NextRequest) {
           if (process.env.OPENROUTER_API_KEY) {
             try {
               const orCards = await withTimeout(
-                analyzeWithOpenRouter(slots, gwiContext, toolLabel),
+                analyzeWithOpenRouter(slots, gwiContext, toolLabel, briefContext),
                 20_000,
                 'OpenRouter GWI',
               );
@@ -641,7 +812,7 @@ export async function POST(req: NextRequest) {
     if (toolLabel === 'SOCIAL_LISTENING') {
       try {
         const insights = await withTimeout(
-          analyzeSocialListeningForPRISM(rows, context, 'Social Listening'),
+          analyzeSocialListeningForPRISM(rows, context, 'Social Listening', briefContext),
           40_000, 'Gemini social-listening',
         );
         if (insights.length > 0)
@@ -653,7 +824,7 @@ export async function POST(req: NextRequest) {
       if (process.env.OPENROUTER_API_KEY) {
         try {
           const orCards = await withTimeout(
-            analyzeSocialWithOpenRouter(rows, context, 'Social Listening'),
+            analyzeSocialWithOpenRouter(rows, context, 'Social Listening', briefContext),
             15_000,
             'OpenRouter social-listening',
           );
@@ -672,7 +843,7 @@ export async function POST(req: NextRequest) {
     // ── Generic tabular path (Helium10, Keywords, Amazon, etc.) ──
     try {
       const insights = await withTimeout(
-        analyzeGenericTabularForPRISM(rows, context, toolLabel),
+        analyzeGenericTabularForPRISM(rows, context, toolLabel, briefContext),
         40_000, `Gemini ${toolLabel}`,
       );
       if (insights.length > 0)
@@ -685,7 +856,7 @@ export async function POST(req: NextRequest) {
     if (process.env.OPENROUTER_API_KEY) {
       try {
         const orCards = await withTimeout(
-          analyzeGenericWithOpenRouter(rows, context, toolLabel),
+          analyzeGenericWithOpenRouter(rows, context, toolLabel, briefContext),
           15_000,
           `OpenRouter ${toolLabel}`,
         );
