@@ -27,8 +27,11 @@ async function checkAdmin(userId: string): Promise<boolean> {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  // Next.js 16: params is a Promise — must be awaited before accessing properties
+  const { id } = await params;
+
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
   if (!(await checkAdmin(session.userId)))
@@ -39,7 +42,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'status must be "draft" or "published"' }, { status: 400 });
 
   // Check if page is protected before allowing unpublish
-  const check = await db.query('SELECT protected FROM pages WHERE id = $1', [params.id]);
+  const check = await db.query('SELECT protected FROM pages WHERE id = $1', [id]);
   if (!check.rows.length)
     return NextResponse.json({ error: 'Page not found' }, { status: 404 });
   if (check.rows[0].protected && status === 'draft')
@@ -48,7 +51,7 @@ export async function PATCH(
   const result = await db.query(
     `UPDATE pages SET status = $1, updated_at = NOW() WHERE id = $2
      RETURNING id, name, slug, status, updated_at`,
-    [status, params.id],
+    [status, id],
   );
 
   return NextResponse.json({ page: result.rows[0] });

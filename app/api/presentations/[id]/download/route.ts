@@ -11,15 +11,17 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  // Next.js 16: params is a Promise — must be awaited
+  const { id: presentationId } = await params;
+
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
   }
 
   try {
-    const presentationId = params.id;
 
     // Fetch presentation with ownership check
     const { rows } = await db.query(
