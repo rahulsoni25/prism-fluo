@@ -316,3 +316,172 @@ export async function callOpenRouterText(
 
   throw new Error(`All OpenRouter models failed:\n${failures.join('\n')}`);
 }
+
+// ── Generic tabular fallback (no slot structure) ──────────────────────────────
+/**
+ * Mirror of analyzeGenericTabularForPRISM — but calls OpenRouter instead of Gemini.
+ * Uses the same stratified sample + creative/media-pro prompt.
+ * Called when Gemini fails on Amazon/Helium10/keyword/sales/marketing uploads.
+ */
+
+function stratifiedSampleRows(rows: any[], n: number): any[] {
+  if (rows.length <= n) return rows.slice();
+  const out: any[] = [];
+  const step = (rows.length - 1) / (n - 1);
+  for (let i = 0; i < n; i++) out.push(rows[Math.round(i * step)]);
+  return out;
+}
+
+export async function analyzeGenericWithOpenRouter(
+  rows:      any[],
+  context:   string,
+  toolLabel: string,
+): Promise<GeminiInsightCard[]> {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const sample  = stratifiedSampleRows(rows, 120);
+  const columns = Object.keys(sample[0] ?? {});
+  const compact = sample.map(r => {
+    const o: Record<string, any> = {};
+    for (const k of columns) {
+      const v = r[k];
+      o[k] = typeof v === 'string' && v.length > 80 ? v.slice(0, 80) + '…' : v;
+    }
+    return o;
+  });
+
+  const prompt = `You are a senior Creative Strategist at PRISM, a consumer-intelligence firm advising brand managers and media planners in India.
+
+You will receive a tabular dataset. Your job is to read the columns and rows, infer what this data is about, and write 8 PRISM insight cards — 2 per bucket (Content · Commerce · Communication · Culture).
+
+━━ DATASET ━━
+Source: ${context}
+Columns: ${columns.join(', ')}
+Sample rows (up to 60):
+${JSON.stringify(compact.slice(0, 60), null, 2)}
+
+━━ AUDIENCE & TONE ━━
+Write for creative and media professionals. Plain English, short sentences, active voice.
+NEVER use: tailspin, momentum, volatility, breakout, multiplier, dominance, market moat, over-index, leverage, cohort, synergy, touchpoint, holistic, robust, utilize, paradigm, seamless.
+Use: people, shoppers, viewers, audiences, families, 1 in 3, nearly twice.
+
+━━ ANTI-HALLUCINATION ━━
+Every number MUST come from the sample rows above. No invented statistics.
+
+━━ BUCKET ASSIGNMENT ━━
+• content       — what people watch/read/play, formats, devices, listings, content behaviour
+• commerce      — purchase, price, ranking (BSR), units, sellers, conversion
+• communication — brand visibility, ads, reviews, ratings, social signals, brand voice
+• culture       — who the audience is, lifestyle, values, region, demographics, identity
+
+━━ CARD FORMAT ━━
+TITLE (max 14 words): magazine cover line — surprising finding + one plain-English number.
+OBSERVATION (3 sentences): hook → exact numbers from the data → strategic so-what.
+STAT: one crisp plain-English number that would make a room go quiet.
+RECOMMENDATION: one sentence to a creative director — name a specific Indian platform (YouTube, Instagram Reels, Hotstar, Flipkart, JioCinema, Meesho, Amazon), a specific format (15-second Reel, CTV pre-roll, search ad, sponsored listing, in-feed video), and a specific creative angle.
+
+━━ UNIQUENESS ━━
+Write EXACTLY 8 cards. No two cards share the same opening sentence, stat, or platform+format combo.
+
+━━ CHART DATA ━━
+Pick labels + values from the sample rows (up to 8 items). Use actual values from the data.
+If chart data doesn't make sense for a card: return chartLabels: [] and chartValues: [].
+
+━━ CHART VARIETY — MANDATORY ━━
+Use at least 5 DIFFERENT chart types across 8 cards. Never hbar or bar for more than 3 cards.
+Never assign the same chart type to consecutive cards.
+
+Return ONLY valid JSON — no markdown, no fences, no explanation:
+[{"title":"string","bucket":"content|commerce|communication|culture","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
+
+  const text = await callOpenRouterText(prompt, 4000);
+  return parseCards(text, toolLabel);
+}
+
+// ── Social listening fallback ─────────────────────────────────────────────────
+/**
+ * Mirror of analyzeSocialListeningForPRISM — but calls OpenRouter instead of Gemini.
+ * Receives the same pre-aggregated rows from lib/social/parser.ts.
+ * Called when Gemini fails on social/sentiment/brandwatch uploads.
+ */
+export async function analyzeSocialWithOpenRouter(
+  rows:      any[],
+  context:   string,
+  toolLabel: string = 'Social Listening',
+): Promise<GeminiInsightCard[]> {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  // Build same data blocks as the Gemini social prompt
+  const overview      = rows.find((r: any) => r.dimension === '_overview') ?? {};
+  const sentimentRows = rows.filter((r: any) => r.dimension === 'Sentiment');
+  const platformRows  = rows.filter((r: any) => r.dimension === 'Platform');
+  const crossRows     = rows.filter((r: any) => r.dimension === 'Platform×Sentiment').slice(0, 12);
+  const allThemes     = rows.filter((r: any) => r.dimension === 'Top Theme (All)').slice(0, 10);
+  const posThemes     = rows.filter((r: any) => r.dimension === 'Top Theme (Positive)').slice(0, 8);
+  const negThemes     = rows.filter((r: any) => r.dimension === 'Top Theme (Negative)').slice(0, 8);
+  const volumeRows    = rows.filter((r: any) => r.dimension === 'Volume Over Time');
+  const totalPosts    = overview.total_posts ?? sentimentRows.reduce((s: number, r: any) => s + (r.count || 0), 0);
+
+  const sentimentBlock = sentimentRows.map((r: any) => `  • ${r.value}: ${r.count} posts (${r.pct}%)`).join('\n') || '  (no data)';
+  const platformBlock  = platformRows.slice(0, 8).map((r: any) => `  • ${r.value}: ${r.count} posts (${r.pct}%)`).join('\n') || '  (no data)';
+  const crossBlock     = crossRows.map((r: any) => `  • ${r.value}: ${r.count} posts (${r.pct}%)`).join('\n') || '  (no data)';
+  const allThemeBlock  = allThemes.map((r: any) => `  • "${r.value}" — ${r.count}× across all posts`).join('\n') || '  (no data)';
+  const posThemeBlock  = posThemes.map((r: any) => `  • "${r.value}" — ${r.count}× in positive posts`).join('\n') || '  (no data)';
+  const negThemeBlock  = negThemes.map((r: any) => `  • "${r.value}" — ${r.count}× in negative posts`).join('\n') || '  (no data)';
+  const volumeBlock    = volumeRows.slice(0, 12).map((r: any) => `  • ${r.value}: ${r.count} posts`).join('\n') || '  (no trend data)';
+
+  const prompt = `You are a Creative Strategist and Brand Intelligence analyst at PRISM, advising brand managers and media planners in India.
+
+Social listening data for: "${context}"
+Total posts analysed: ${totalPosts.toLocaleString()}
+Source: ${toolLabel}
+
+━━ SENTIMENT BREAKDOWN ━━
+${sentimentBlock}
+
+━━ PLATFORM DISTRIBUTION ━━
+${platformBlock}
+
+━━ SENTIMENT × PLATFORM CROSS-TAB ━━
+${crossBlock}
+
+━━ TOP THEMES ACROSS ALL POSTS ━━
+${allThemeBlock}
+
+━━ TOP THEMES IN POSITIVE POSTS ━━
+${posThemeBlock}
+
+━━ TOP THEMES IN NEGATIVE POSTS ━━
+${negThemeBlock}
+
+━━ VOLUME OVER TIME ━━
+${volumeBlock}
+
+Write 8 PRISM insight cards — 2 per bucket (Content · Commerce · Communication · Culture).
+Use ONLY the numbers and themes above — no invented statistics.
+
+BUCKET ASSIGNMENT FOR SOCIAL DATA:
+• content       — formats/platforms driving conversation, content themes that resonate
+• commerce      — purchase intent signals, product mentions, price/availability chatter
+• communication — brand tone, crisis signals, negative theme management, positive amplification
+• culture       — who is talking (platform signals), lifestyle themes, identity in language
+
+TONE: Plain English, short sentences, active voice.
+Banned: over-index, leverage, synergy, touchpoint, holistic, robust, utilize, paradigm, seamless, volatility, momentum, dominance.
+
+TITLE (max 14 words): magazine cover line — surprising finding + one plain-English number.
+OBSERVATION (3 sentences): hook → exact numbers → strategic so-what.
+STAT: one crisp plain-English number.
+RECOMMENDATION: one sentence — specific Indian platform, specific format, specific creative angle.
+
+━━ CHART VARIETY — MANDATORY ━━
+Across all 8 cards use at least 5 DIFFERENT chart types.
+Never hbar or bar for more than 3 cards. Never same type in consecutive cards.
+Sentiment → doughnut. Volume trends → area. Conversion → funnel. Multi-attribute → radar.
+
+Return ONLY valid JSON — no markdown, no fences:
+[{"title":"string","bucket":"content|commerce|communication|culture","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
+
+  const text = await callOpenRouterText(prompt, 4000);
+  return parseCards(text, toolLabel);
+}

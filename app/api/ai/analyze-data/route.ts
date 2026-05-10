@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM } from '@/lib/ai/gemini';
-import { analyzeWithOpenRouter } from '@/lib/ai/openrouter';
+import { analyzeWithOpenRouter, analyzeGenericWithOpenRouter, analyzeSocialWithOpenRouter } from '@/lib/ai/openrouter';
 import type { DataSlot, GeminiInsightCard } from '@/lib/ai/gemini';
 
 // Vercel Hobby plan default timeout is 10 s — Gemini 2.5 routinely takes 15-40 s.
@@ -432,8 +432,12 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(rows) || rows.length === 0)
       return NextResponse.json({ error: 'rows array required' }, { status: 400 });
 
+    // BUG FIX: Do NOT exit here if GEMINI_API_KEY is missing.
+    // Gemini functions throw internally when the key is absent, which is caught
+    // by Promise.allSettled / try-catch — fallbacks (OpenRouter, auto-analysis)
+    // then run as normal.  Returning 503 here would have killed every fallback.
     if (!process.env.GEMINI_API_KEY)
-      return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 503 });
+      console.warn('[analyze-data] GEMINI_API_KEY not set — Gemini will fail, OpenRouter + auto-analysis will handle it');
 
     const slots = buildInsightSlots(rows);
     const context = [fileNames?.join(' + ') || sheetName].filter(Boolean).join(' ');
@@ -475,9 +479,16 @@ export async function POST(req: NextRequest) {
           console.warn('[analyze-data] All Gemini batches failed — trying OpenRouter fallback');
 
           // ── Tier 2: OpenRouter (free LLM models, same prompt) ──────────
+          // BUG FIX: wrapped in withTimeout(20_000) so OpenRouter cannot hang
+          // past 20 s — leaving ~10 s buffer for Tier 3 auto-analysis before
+          // Vercel kills the function at 60 s.
           if (process.env.OPENROUTER_API_KEY) {
             try {
-              const orCards = await analyzeWithOpenRouter(slots, gwiContext, toolLabel);
+              const orCards = await withTimeout(
+                analyzeWithOpenRouter(slots, gwiContext, toolLabel),
+                20_000,
+                'OpenRouter GWI',
+              );
               if (orCards.length > 0) {
                 console.log(`[analyze-data] OpenRouter returned ${orCards.length} cards`);
                 return NextResponse.json({
@@ -490,7 +501,7 @@ export async function POST(req: NextRequest) {
                 });
               }
             } catch (orErr: any) {
-              console.warn('[analyze-data] OpenRouter fallback failed:', orErr.message);
+              console.warn('[analyze-data] OpenRouter GWI fallback failed:', orErr.message);
             }
           } else {
             console.warn('[analyze-data] OPENROUTER_API_KEY not set — skipping OpenRouter fallback');
@@ -558,10 +569,18 @@ export async function POST(req: NextRequest) {
       } catch (err: any) {
         console.warn('[analyze-data] Social Listening Gemini failed:', err.message);
       }
-      // OpenRouter fallback for social listening
+
+      // BUG FIX: Previously passed [] as slots → prompt said "write 0 cards" → always failed.
+      // Now uses analyzeSocialWithOpenRouter which builds a proper sentiment/platform prompt
+      // from the actual pre-aggregated rows.  Also wrapped in withTimeout(15_000) so it
+      // cannot hang past 15 s after the 40 s Gemini timeout (total ≤ 55 s < 60 s limit).
       if (process.env.OPENROUTER_API_KEY) {
         try {
-          const orCards = await analyzeWithOpenRouter([], context, 'Social Listening');
+          const orCards = await withTimeout(
+            analyzeSocialWithOpenRouter(rows, context, 'Social Listening'),
+            15_000,
+            'OpenRouter social-listening',
+          );
           if (orCards.length > 0)
             return NextResponse.json({ insights: orCards, slots: [], path: 'social-listening', fallback: 'openrouter' });
         } catch (orErr: any) {
@@ -585,21 +604,54 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
       console.warn('[analyze-data] Generic tabular Gemini failed:', err.message);
     }
-    // OpenRouter fallback for generic tabular
+
+    // BUG FIX: The old code called buildInsightSlots(rows) here a second time.
+    // But we only reach this code because slots.length === 0 at line 444 — meaning
+    // this data has no GWI-style Index column.  Calling buildInsightSlots again
+    // on the same rows always returns 0, so the OpenRouter and auto-analysis
+    // conditions (genericSlots.length > 0) were ALWAYS false — those tiers
+    // never ran for Amazon, Helium10, keywords, or sales data.
+    //
+    // Fix: Use analyzeGenericWithOpenRouter which sends the raw rows (not slots)
+    // directly to OpenRouter with the same creative/media-pro prompt Gemini uses.
+    // This works for any tabular format regardless of column structure.
+
+    // ── Tier 2: OpenRouter (raw rows, same generic-tabular prompt) ──────────
+    // withTimeout(15_000): Gemini already used 40 s; 15 s leaves 5 s buffer
+    // before Vercel's 60 s hard limit.  Total max: 40 + 15 = 55 s.
     if (process.env.OPENROUTER_API_KEY) {
       try {
-        const fakeSlots = buildInsightSlots(rows);
-        if (fakeSlots.length > 0) {
-          const orCards = await analyzeWithOpenRouter(fakeSlots, context, toolLabel);
-          if (orCards.length > 0)
-            return NextResponse.json({ insights: orCards, slots: fakeSlots, path: 'generic-tabular', fallback: 'openrouter' });
-        }
+        const orCards = await withTimeout(
+          analyzeGenericWithOpenRouter(rows, context, toolLabel),
+          15_000,
+          `OpenRouter ${toolLabel}`,
+        );
+        if (orCards.length > 0)
+          return NextResponse.json({ insights: orCards, slots: [], path: 'generic-tabular', fallback: 'openrouter' });
       } catch (orErr: any) {
         console.warn('[analyze-data] OpenRouter generic fallback failed:', orErr.message);
       }
     }
+
+    // ── Tier 3: Pure-data auto-analysis — only possible if rows have Index-like columns ──
+    // (e.g. Helium10 relevance scores, custom exports with index fields).
+    // For Amazon BSR-only data this will produce 0 slots and gracefully fall through.
+    const genericSlots = buildInsightSlots(rows);
+    if (genericSlots.length > 0) {
+      const autoCards = generateFallbackCards(genericSlots, toolLabel);
+      if (autoCards.length > 0) {
+        console.warn('[analyze-data] Using auto-analysis fallback for generic tabular data');
+        return NextResponse.json({
+          insights:  autoCards,
+          slots:     genericSlots,
+          path:      'generic-tabular',
+          fallback:  'auto',
+        });
+      }
+    }
+
     return NextResponse.json(
-      { error: 'Gemini analysis failed and OpenRouter fallback also failed. Please try again in a moment.', path: 'generic-tabular' },
+      { error: 'Could not generate insights. Please verify the data format and try again.', path: 'generic-tabular' },
       { status: 502 },
     );
 
