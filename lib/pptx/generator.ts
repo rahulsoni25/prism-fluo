@@ -199,14 +199,24 @@ function slideAgenda(prs: any, d: PresentationData, p: Palette, data: Presentati
     { fontSize: 28, color: '0F172A', fontFace: FH, bold: true });
   ln(s, ML, 1.45, 1.6, p.acc, 2);
 
-  // 4 pillar agenda cards
-  const cardH = 1.28;
-  const cardGap = 0.18;
-  const startY = 1.68;
+  // Only show pillars that actually have insights, capped at 5 so cards fit
+  // on the 7.5-inch slide (card height 1.08 + gap 0.14 × 5 = ~6.1 inches used).
+  const activePillars = PILLAR_ORDER.filter(key => {
+    const pillar = data[key as keyof PresentationData] as PillarData | undefined;
+    return (pillar?.insights?.length ?? 0) > 0;
+  }).slice(0, 5);
 
-  PILLAR_ORDER.forEach((key, i) => {
+  // Dynamically shrink cards when > 4 active pillars to fit the slide
+  const count   = activePillars.length || 1;
+  const maxH    = H - 1.68 - 0.45;           // usable height below heading
+  const cardH   = Math.min(1.28, (maxH - (count - 1) * 0.14) / count);
+  const cardGap = Math.min(0.18, (maxH - count * cardH) / Math.max(count - 1, 1));
+  const startY  = 1.68;
+
+  activePillars.forEach((key, i) => {
     const pm = PILLARS[key];
-    const pillarInsights = (data[key as keyof PresentationData] as PillarData).insights || [];
+    // Safe access — pillar is guaranteed to exist here (filtered above)
+    const pillarInsights = (data[key as keyof PresentationData] as PillarData)?.insights ?? [];
     const y = startY + i * (cardH + cardGap);
 
     // Card background
@@ -216,23 +226,23 @@ function slideAgenda(prs: any, d: PresentationData, p: Palette, data: Presentati
     r(s, ML, y, 0.28, cardH, pm.color);
 
     // Pillar number
-    t(s, `0${i + 1}`, ML + 0.36, y + 0.18, 0.55, 0.55,
-      { fontSize: 22, color: pm.color, fontFace: FH, bold: true, valign: 'middle' });
+    t(s, `0${i + 1}`, ML + 0.36, y + cardH * 0.14, 0.55, cardH * 0.42,
+      { fontSize: Math.min(22, cardH * 17), color: pm.color, fontFace: FH, bold: true, valign: 'middle' });
 
     // Pillar icon + name
-    t(s, `${pm.icon}  ${pm.label}`, ML + 0.96, y + 0.14, 3.5, 0.42,
-      { fontSize: 17, color: '0F172A', fontFace: FH, bold: true });
+    t(s, `${pm.icon}  ${pm.label}`, ML + 0.96, y + cardH * 0.10, 3.5, cardH * 0.33,
+      { fontSize: Math.min(17, cardH * 13), color: '0F172A', fontFace: FH, bold: true });
 
     // Insight count
     t(s, `${pillarInsights.length} insight${pillarInsights.length !== 1 ? 's' : ''}`,
-      ML + 0.96, y + 0.62, 3.5, 0.28,
+      ML + 0.96, y + cardH * 0.48, 3.5, cardH * 0.28,
       { fontSize: 11, color: '64748B', fontFace: FB });
 
     // First insight teaser
     const firstTitle = pillarInsights[0]?.title || '';
     if (firstTitle) {
       const teaser = firstTitle.length > 65 ? firstTitle.slice(0, 65) + '…' : firstTitle;
-      t(s, `"${teaser}"`, ML + 4.8, y + 0.30, CW - 4.4, 0.60,
+      t(s, `"${teaser}"`, ML + 4.8, y + cardH * 0.22, CW - 4.4, cardH * 0.55,
         { fontSize: 11, color: '475569', fontFace: FB, italic: true, valign: 'middle' });
     }
   });
