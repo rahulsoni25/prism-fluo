@@ -28,13 +28,47 @@ function num(row: any, ...keys: string[]): number {
 }
 
 // ── Question → PRISM bucket ───────────────────────────────────
+// Order matters: Communication checked BEFORE Content so "social media brand"
+// questions route to Communication, not the Content default.
 function questionBucket(q: string): DataSlot['bucket'] {
   const t = q.toLowerCase();
-  if (/device|owned media|content format|streaming|screen time/.test(t))           return 'content';
-  if (/paid media|advert|discover|brand relation|advocacy|earned|brand qual|brand action|word.of.mouth/.test(t)) return 'communication';
-  if (/purchase|buy|shop|price|retailer|sale|eco|product research|income|mortgage|grocer|familiarity|purchase driver|in.store|online.*brand/.test(t)) return 'commerce';
-  if (/employ|household|children|vehicle|living arrangement|pet|lifestyle|family|grandchild|age.*child|properties owned|number.*child/.test(t)) return 'culture';
-  return 'content';
+
+  // ── COMMUNICATION — brand touchpoints, advertising, social signals, discovery ──
+  if (
+    /paid media|advert|discover|brand.rel|brand.action|brand.qual|advocacy|earned.media|word.of.mouth/.test(t) ||
+    /brand.aware|brand.trust|brand.image|brand.percep|brand.sentiment|brand.affin|brand.equity/.test(t) ||
+    /influenc|creator.market|ad.recall|net.promot|\bnps\b|social.media.attit|social.media.brand/.test(t) ||
+    /brand.discov|discover.brand|brand.famil|brand.consider|brand.prefer/.test(t) ||
+    /social.network.attit|platform.attit|media.channel|channel.prefer/.test(t)
+  ) return 'communication';
+
+  // ── COMMERCE — purchase intent, spending, financial, retail, pricing ──────
+  if (
+    /purchase|buy|shop|price|retailer|\bsale\b|ecomm|product.research|familiarity|purchase.driver|in.store|online.brand/.test(t) ||
+    /income|mortgage|grocer|financ|saving|loan|credit|subscript|afford|discount|voucher|cashback/.test(t) ||
+    /loyalty.prog|reward.point|consumer.confid|disposable|spend.habit|money.manage|financial.attit/.test(t) ||
+    /\beco\b|product.categor|brand.switch|value.for.money|deal.seek/.test(t)
+  ) return 'commerce';
+
+  // ── CULTURE — demographics, attitudes, lifestyle, values, identity ─────────
+  if (
+    /employ|household|children|vehicle|living.arrangement|\bpet\b|lifestyle|family|grandchild|age.child|properties.owned|number.child/.test(t) ||
+    /attitude|values?|\bbelief|\bopinion|wellbeing|mental.health|physical.health/.test(t) ||
+    /fitness|\bsport|\bexercis|\bhealth\b|food.habit|drink.habit|\btravel\b|holiday|vacation/.test(t) ||
+    /fashion|style|\bbeauty\b|grooming|environment|sustainab|social.issue|politic|religion|spirit/.test(t) ||
+    /community|education|\bcareer|work.life|life.goal|parenting|identity|demograph|hobbi/.test(t) ||
+    /luxury.attit|social.cause|personal.value|cultural.identity|self.image/.test(t)
+  ) return 'culture';
+
+  // ── CONTENT — media consumption, devices, screen time, formats ────────────
+  if (
+    /device|owned.media|content.format|streaming|screen.time|television|\btv\b/.test(t) ||
+    /gaming|\bgame\b|podcast|\bmusic\b|radio|internet.usage|digital.device|\bott\b/.test(t) ||
+    /social.media(?!.attit)(?!.brand)|social.network(?!.attit)|messag.app|content.consumption/.test(t) ||
+    /news.consumption|video.content|audio.content|reading.habit/.test(t)
+  ) return 'content';
+
+  return 'content'; // default — media consumption is the most common unclassified category
 }
 
 // ── Suggest best chart type for this question's data ─────────

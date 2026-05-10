@@ -369,10 +369,12 @@ Use: people, shoppers, viewers, audiences, families, 1 in 3, nearly twice.
 Every number MUST come from the sample rows above. No invented statistics.
 
 ━━ BUCKET ASSIGNMENT ━━
-• content       — what people watch/read/play, formats, devices, listings, content behaviour
-• commerce      — purchase, price, ranking (BSR), units, sellers, conversion
-• communication — brand visibility, ads, reviews, ratings, social signals, brand voice
-• culture       — who the audience is, lifestyle, values, region, demographics, identity
+Spread your 8 cards evenly — aim for 2 per bucket. NEVER put more than 4 cards in one bucket.
+• content       — media consumption, streaming, devices, screen time, gaming, content formats, listing quality, titles, A+ content.
+• commerce      — purchase intent, price, BSR/ranking, units sold, revenue, search volume, conversion, discount, subscription, consumer confidence, financial attitudes.
+• communication — brand awareness, brand trust, brand perception, reviews, ratings, ad recall, influencer reach, brand discovery, word of mouth, NPS, social mentions.
+• culture       — demographics, lifestyle, attitudes, values, health, fitness, food, travel, fashion, sustainability, community, education, identity.
+RULE: price/rank/sales data → commerce. brand/review/rating data → communication. demographics/attitudes → culture. Do NOT default everything to content.
 
 ━━ CARD FORMAT ━━
 TITLE (max 14 words): magazine cover line — surprising finding + one plain-English number.

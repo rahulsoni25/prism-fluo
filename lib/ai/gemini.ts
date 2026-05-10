@@ -403,10 +403,12 @@ You are writing for **creative and media professionals**, NOT financial analysts
 Every number/percentage in your cards MUST come from the sample rows above. If you can't compute it from the data, leave it out.
 
 ━━ BUCKET ASSIGNMENT ━━
-• content       — what people watch/read/play, formats, devices, screen behaviour, listings, titles, descriptions
-• commerce      — purchase, price, ranking (BSR), sales rank, units, sellers, retailers, conversion
-• communication — how brands show up: ads, search visibility, reviews, ratings, social signals, brand voice
-• culture       — who the audience is, lifestyle, values, region, demographics, identity signals
+Spread your 8 cards evenly — aim for 2 per bucket. NEVER assign more than 4 cards to any single bucket.
+• content       — media consumption, streaming, devices, screen time, gaming, podcasts, formats people use (OTT, social feeds, news). For product data: listing quality, titles, A+ content, images.
+• commerce      — purchase intent, price sensitivity, BSR/ranking, units sold, revenue, search volume, conversion, discount behaviour, subscription, loyalty, financial attitudes, consumer confidence.
+• communication — brand awareness, brand trust, brand image, brand perception, reviews, ratings, ad recall, influencer reach, social mentions, brand discovery, word of mouth, NPS, media channel preference.
+• culture       — who the audience is: demographics, lifestyle, values, attitudes, health, fitness, food, travel, fashion, sustainability, community, education, career, identity signals.
+IMPORTANT: If the data has price/rank/sales columns → those cards are commerce. If the data has brand/review/rating columns → those cards are communication. Do NOT default everything to content.
 
 ━━ CARD FORMAT ━━
 TITLE (max 14 words): magazine cover line — surprising finding + one plain-English number, no jargon.
