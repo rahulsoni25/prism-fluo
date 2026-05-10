@@ -320,17 +320,26 @@ export async function POST(req: NextRequest) {
     const flatObs  = Array.isArray(meta.observations)    ? meta.observations.filter((o: string) => o?.trim())    : [];
     const flatRecs = Array.isArray(meta.recommendations) ? meta.recommendations.filter((r: string) => r?.trim()) : [];
 
-    // Assemble full PresentationData
+    // Assemble full PresentationData — ALL 9 buckets must be present
+    // (generator.ts iterates PILLAR_ORDER which includes the 5 newer buckets;
+    //  missing keys crash with "Cannot read properties of undefined (reading 'insights')")
     const presentationData: PresentationData = {
       templateId,
       briefName:       analysis.brand || analysis.sheet_name || 'Analysis Report',
       headline:        meta.headline  || analysis.brand || 'Strategic Insights from Analysis',
       objective:       meta.objective || analysis.objective || 'Data-driven analysis with key findings and recommendations',
       date:            new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      // Core 4 pillars
       content:         pillars.content,
       commerce:        pillars.commerce,
       communication:   pillars.communication,
       culture:         pillars.culture,
+      // Extended 5 pillars — empty fallback prevents undefined crash in slideAgenda
+      channel:         pillars.channel   ?? { insights: [] },
+      media:           pillars.media     ?? { insights: [] },
+      creative:        pillars.creative  ?? { insights: [] },
+      pricing:         pillars.pricing   ?? { insights: [] },
+      search:          pillars.search    ?? { insights: [] },
       observations:    flatObs.length  > 0 ? flatObs  : charts.map(c => c.obs || '').filter(Boolean),
       recommendations: flatRecs.length > 0 ? flatRecs : charts.map(c => c.rec || '').filter(Boolean),
     };
