@@ -411,6 +411,19 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
   return cards;
 }
 
+// ── Timeout wrapper ────────────────────────────────────────────
+// Races a promise against a hard deadline. When Gemini hangs past
+// the deadline the batch is treated as failed so we fall through to
+// OpenRouter before Vercel kills the whole function at 60 s.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)
+    ),
+  ]);
+}
+
 // ── Route ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
@@ -437,9 +450,18 @@ export async function POST(req: NextRequest) {
         // Limit to 18 slots max → always exactly 3 parallel calls, never 4+
         const batches    = chunkSlots(slots.slice(0, 18), BATCH_SIZE);
 
-        // Run up to 3 batches in parallel — each resolves independently
+        // Each batch has a 30 s hard deadline so Promise.allSettled() always
+        // resolves within 30 s — leaving 25+ s for OpenRouter if needed.
+        // Without this, a single hanging Gemini call causes a Vercel 504
+        // before the fallback code ever runs.
         const batchResults = await Promise.allSettled(
-          batches.map(batch => analyzeDataForPRISM(batch, gwiContext, toolLabel))
+          batches.map((batch, i) =>
+            withTimeout(
+              analyzeDataForPRISM(batch, gwiContext, toolLabel),
+              30_000,
+              `Gemini batch ${i + 1}/${batches.length}`,
+            )
+          )
         );
 
         // Merge successful results, log failures without crashing
@@ -527,38 +549,59 @@ export async function POST(req: NextRequest) {
     // ── Social Listening path — uses pre-aggregated sentiment/platform rows ──
     if (toolLabel === 'SOCIAL_LISTENING') {
       try {
-        const insights = await analyzeSocialListeningForPRISM(rows, context, 'Social Listening');
-        if (insights.length === 0) {
-          return NextResponse.json(
-            { error: 'Gemini returned no insights for social listening data. Try re-uploading the file.', path: 'social-listening' },
-            { status: 422 },
-          );
-        }
-        return NextResponse.json({ insights, slots: [], path: 'social-listening' });
-      } catch (err: any) {
-        return NextResponse.json(
-          { error: `Social listening Gemini call failed: ${err.message}`, path: 'social-listening' },
-          { status: 502 },
+        const insights = await withTimeout(
+          analyzeSocialListeningForPRISM(rows, context, 'Social Listening'),
+          40_000, 'Gemini social-listening',
         );
+        if (insights.length > 0)
+          return NextResponse.json({ insights, slots: [], path: 'social-listening' });
+      } catch (err: any) {
+        console.warn('[analyze-data] Social Listening Gemini failed:', err.message);
       }
+      // OpenRouter fallback for social listening
+      if (process.env.OPENROUTER_API_KEY) {
+        try {
+          const orCards = await analyzeWithOpenRouter([], context, 'Social Listening');
+          if (orCards.length > 0)
+            return NextResponse.json({ insights: orCards, slots: [], path: 'social-listening', fallback: 'openrouter' });
+        } catch (orErr: any) {
+          console.warn('[analyze-data] OpenRouter social fallback failed:', orErr.message);
+        }
+      }
+      return NextResponse.json(
+        { error: 'Could not generate insights for social listening data. Please try again.', path: 'social-listening' },
+        { status: 422 },
+      );
     }
 
     // ── Generic tabular path (Helium10, Keywords, Amazon, etc.) ──
     try {
-      const insights = await analyzeGenericTabularForPRISM(rows, context, toolLabel);
-      if (insights.length === 0) {
-        return NextResponse.json(
-          { error: 'Gemini returned no insights for this dataset (empty array). The dataset may be too small or the model is overloaded.', path: 'generic-tabular' },
-          { status: 422 },
-        );
-      }
-      return NextResponse.json({ insights, slots: [], path: 'generic-tabular' });
-    } catch (err: any) {
-      return NextResponse.json(
-        { error: `Gemini call failed: ${err.message}`, path: 'generic-tabular' },
-        { status: 502 },
+      const insights = await withTimeout(
+        analyzeGenericTabularForPRISM(rows, context, toolLabel),
+        40_000, `Gemini ${toolLabel}`,
       );
+      if (insights.length > 0)
+        return NextResponse.json({ insights, slots: [], path: 'generic-tabular' });
+    } catch (err: any) {
+      console.warn('[analyze-data] Generic tabular Gemini failed:', err.message);
     }
+    // OpenRouter fallback for generic tabular
+    if (process.env.OPENROUTER_API_KEY) {
+      try {
+        const fakeSlots = buildInsightSlots(rows);
+        if (fakeSlots.length > 0) {
+          const orCards = await analyzeWithOpenRouter(fakeSlots, context, toolLabel);
+          if (orCards.length > 0)
+            return NextResponse.json({ insights: orCards, slots: fakeSlots, path: 'generic-tabular', fallback: 'openrouter' });
+        }
+      } catch (orErr: any) {
+        console.warn('[analyze-data] OpenRouter generic fallback failed:', orErr.message);
+      }
+    }
+    return NextResponse.json(
+      { error: 'Gemini analysis failed and OpenRouter fallback also failed. Please try again in a moment.', path: 'generic-tabular' },
+      { status: 502 },
+    );
 
   } catch (err: any) {
     console.error('[analyze-data]', err.message);
