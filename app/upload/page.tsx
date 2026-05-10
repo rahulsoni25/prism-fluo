@@ -397,10 +397,21 @@ function UploadDataInner() {
 
     addLog(`🔍 Reading "${preferredSheet.sheetName}" from "${file.name}"…`);
 
-    const dataRes = await fetch(
-      `/api/uploads/${uploadId}/sheets/${encodeURIComponent(preferredSheet.sheetName)}/data`,
-    );
-    const rawData: any[] = await dataRes.json();
+    let rawData: any[] = [];
+    try {
+      const dataRes = await fetch(
+        `/api/uploads/${uploadId}/sheets/${encodeURIComponent(preferredSheet.sheetName)}/data`,
+      );
+      if (!dataRes.ok) {
+        const errBody = await dataRes.json().catch(() => ({}));
+        throw new Error((errBody as any).message || `HTTP ${dataRes.status}`);
+      }
+      rawData = await dataRes.json().catch(() => []);
+    } catch (err: any) {
+      addLog(`⚠ Could not load sheet data: ${err.message}`);
+      updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: `Failed to read sheet "${preferredSheet.sheetName}": ${err.message}` });
+      return { charts: [], uploadId };
+    }
 
     if (!Array.isArray(rawData) || rawData.length === 0) {
       addLog(`⚠ No data found in "${preferredSheet.sheetName}" — the sheet may be empty or data storage failed`);
@@ -509,7 +520,7 @@ function UploadDataInner() {
     // Gemini 2.5 (now with a generic-tabular path for Amazon/Helium10/etc.)
     // is the ONLY valid analyser. If it failed, we surface the error so it
     // can be fixed — we never silently downgrade the output quality.
-    const msg = `Gemini 2.5 analysis failed (${geminiError || 'no insights returned'}). This usually means GEMINI_API_KEY is missing or rate-limited on Railway.`;
+    const msg = `All analysis tiers failed (${geminiError || 'no insights returned'}). Gemini 2.5, OpenRouter, and auto-analysis were all attempted. Check that GEMINI_API_KEY and OPENROUTER_API_KEY are set on the server, or verify the file has structured data rows.`;
     addLog(`❌ ${msg}`);
     updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: msg });
     return { charts: [], uploadId };

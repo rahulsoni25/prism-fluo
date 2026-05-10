@@ -117,8 +117,10 @@ export async function POST(req: NextRequest) {
           safeUserId = reinserted.id;
           logger.info('analyses:user_reinserted', { newId: reinserted.id });
         } catch (e: any) {
-          logger.warn('analyses:user_reinsert_failed', { error: e.message });
-          safeUserId = null; // Save without user ownership rather than fail
+          logger.warn('analyses:user_reinsert_failed', { error: e.message, uploadId });
+          safeUserId = null; // Save without user ownership rather than fail entirely
+          // NOTE: analysis will be saved but invisible to the user in /insights.
+          // Recover with: UPDATE analyses SET user_id = '<id>' WHERE upload_id = '<uploadId>'
         }
       }
     } catch (e: any) {

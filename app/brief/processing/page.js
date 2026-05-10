@@ -41,8 +41,9 @@ function ProcessingInner() {
   useEffect(() => {
     if (!briefId) return;
     fetch(`/api/briefs/${briefId}`)
-      .then(r => r.json())
-      .then(d => { if (!d.error) setBrief(d); });
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => { if (!d.error) setBrief(d); })
+      .catch(err => console.warn('[processing] Could not load brief:', err.message));
   }, [briefId]);
 
   // Animate progress bars

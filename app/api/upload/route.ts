@@ -42,6 +42,13 @@ export const POST = async (req: NextRequest) => {
     const fileObj = file as File;
     const sizeMB = fileObj.size / (1024 * 1024);
 
+    if (fileObj.size === 0) {
+      return NextResponse.json(
+        { error: 'EMPTY_FILE', message: 'The uploaded file is empty (0 bytes). Please upload a file with data.' },
+        { status: 400 }
+      );
+    }
+
     if (sizeMB > config.MAX_FILE_SIZE_MB) {
       return NextResponse.json(
         {
