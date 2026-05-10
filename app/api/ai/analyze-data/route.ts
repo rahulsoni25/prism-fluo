@@ -160,29 +160,36 @@ function buildInsightSlots(rows: any[]): DataSlot[] {
     };
   }).filter(q => q.topRows.length >= 2);
 
-  // 3. Sort ALL questions by signal strength (maxIndex) — no bucket cap
-  // Preserve at least 1 slot per bucket if available, then fill with highest-index
+  // 3. Group by bucket, sort each group by signal strength
   const byBucket: Record<string, typeof questions> = {};
   for (const q of questions) {
     if (!byBucket[q.bucket]) byBucket[q.bucket] = [];
     byBucket[q.bucket].push(q);
   }
 
-  // Guarantee minimum coverage: 2 per bucket (if available)
-  const guaranteed: typeof questions = [];
-  for (const bucket of ['content', 'commerce', 'communication', 'culture'] as const) {
+  // Enforce target distribution: Content 30% · Communication 25% · Culture 25% · Commerce 20%
+  // 18 slots → Content 5, Communication 5, Culture 5, Commerce 4  (sums to 19 — trim to 18)
+  const MAX_SLOTS = 18;
+  const TARGETS: Record<string, number> = {
+    content:       Math.round(MAX_SLOTS * 0.30), // 5
+    communication: Math.round(MAX_SLOTS * 0.25), // 5
+    culture:       Math.round(MAX_SLOTS * 0.25), // 5
+    commerce:      Math.round(MAX_SLOTS * 0.20), // 4
+  };
+
+  const distributed: typeof questions = [];
+  for (const bucket of ['content', 'communication', 'culture', 'commerce'] as const) {
     const sorted = (byBucket[bucket] ?? []).sort((a, b) => b.maxIndex - a.maxIndex);
-    guaranteed.push(...sorted.slice(0, 2));
+    distributed.push(...sorted.slice(0, TARGETS[bucket]));
   }
 
-  // Add remaining questions not already included, sorted by maxIndex
-  const guaranteedKeys = new Set(guaranteed.map(q => q.question));
-  const remaining = questions
-    .filter(q => !guaranteedKeys.has(q.question))
+  // Fill any remaining slots from questions not yet included, sorted by maxIndex
+  const distributedKeys = new Set(distributed.map(q => q.question));
+  const overflow = questions
+    .filter(q => !distributedKeys.has(q.question))
     .sort((a, b) => b.maxIndex - a.maxIndex);
 
-  // Return up to 20 slots total (covers all 19 GWI sheets + some overlap)
-  return [...guaranteed, ...remaining].slice(0, 20).map(q => ({
+  return [...distributed, ...overflow].slice(0, MAX_SLOTS).map(q => ({
     bucket: q.bucket,
     question: q.question,
     chartSuggestion: suggestChart(q.rowCount, q.topRows, q.question),
@@ -445,6 +452,45 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
   return cards;
 }
 
+// ── Post-process: enforce balanced bucket distribution ───────────────────────
+// Applied to ALL card outputs regardless of which tier generated them.
+// If any bucket is empty, the last card of the dominant bucket is reassigned to it.
+// This guarantees every bucket tab in the UI shows at least 1 card.
+// Target: Content ≤45% · Communication ≥10% · Culture ≥10% · Commerce ≥10%
+const ALL_BUCKETS = ['content', 'commerce', 'communication', 'culture'] as const;
+
+function rebalanceCards(cards: GeminiInsightCard[]): GeminiInsightCard[] {
+  if (cards.length < 4) return cards;
+
+  const counts: Record<string, number> = { content: 0, commerce: 0, communication: 0, culture: 0 };
+  cards.forEach(c => {
+    const b = ALL_BUCKETS.includes(c.bucket as any) ? c.bucket : 'content';
+    counts[b]++;
+  });
+
+  const emptyBuckets = ALL_BUCKETS.filter(b => counts[b] === 0);
+  if (emptyBuckets.length === 0) return cards; // all 4 buckets have at least 1 card
+
+  // Find the dominant bucket to take cards from
+  const dominant = ALL_BUCKETS.reduce((a, b) => (counts[a] > counts[b] ? a : b));
+
+  const result = [...cards];
+  for (const target of emptyBuckets) {
+    if (counts[dominant] <= 1) break; // don't strip the last card from a bucket
+    // Take the last card of the dominant bucket (lowest conviction = safest to reassign)
+    for (let i = result.length - 1; i >= 0; i--) {
+      if (result[i].bucket === dominant) {
+        result[i] = { ...result[i], bucket: target };
+        counts[dominant]--;
+        counts[target]++;
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
 // ── Timeout wrapper ────────────────────────────────────────────
 // Races a promise against a hard deadline. When Gemini hangs past
 // the deadline the batch is treated as failed so we fall through to
@@ -526,7 +572,7 @@ export async function POST(req: NextRequest) {
               if (orCards.length > 0) {
                 console.log(`[analyze-data] OpenRouter returned ${orCards.length} cards`);
                 return NextResponse.json({
-                  insights:   orCards,
+                  insights:   rebalanceCards(orCards),
                   slots,
                   path:       'gwi-slots',
                   totalSlots: slots.length,
@@ -546,7 +592,7 @@ export async function POST(req: NextRequest) {
           const fallbackCards = generateFallbackCards(slots, toolLabel);
           if (fallbackCards.length > 0) {
             return NextResponse.json({
-              insights:   fallbackCards,
+              insights:   rebalanceCards(fallbackCards),
               slots,
               path:       'gwi-slots',
               totalSlots: slots.length,
@@ -561,7 +607,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        return NextResponse.json({ insights, slots, path: 'gwi-slots', totalSlots: slots.length, batches: batches.length });
+        return NextResponse.json({ insights: rebalanceCards(insights), slots, path: 'gwi-slots', totalSlots: slots.length, batches: batches.length });
       } catch (err: any) {
         return NextResponse.json(
           { error: `Gemini failed on GWI slots: ${err.message}`, path: 'gwi-slots', slotCount: slots.length },
@@ -599,15 +645,11 @@ export async function POST(req: NextRequest) {
           40_000, 'Gemini social-listening',
         );
         if (insights.length > 0)
-          return NextResponse.json({ insights, slots: [], path: 'social-listening' });
+          return NextResponse.json({ insights: rebalanceCards(insights), slots: [], path: 'social-listening' });
       } catch (err: any) {
         console.warn('[analyze-data] Social Listening Gemini failed:', err.message);
       }
 
-      // BUG FIX: Previously passed [] as slots → prompt said "write 0 cards" → always failed.
-      // Now uses analyzeSocialWithOpenRouter which builds a proper sentiment/platform prompt
-      // from the actual pre-aggregated rows.  Also wrapped in withTimeout(15_000) so it
-      // cannot hang past 15 s after the 40 s Gemini timeout (total ≤ 55 s < 60 s limit).
       if (process.env.OPENROUTER_API_KEY) {
         try {
           const orCards = await withTimeout(
@@ -616,7 +658,7 @@ export async function POST(req: NextRequest) {
             'OpenRouter social-listening',
           );
           if (orCards.length > 0)
-            return NextResponse.json({ insights: orCards, slots: [], path: 'social-listening', fallback: 'openrouter' });
+            return NextResponse.json({ insights: rebalanceCards(orCards), slots: [], path: 'social-listening', fallback: 'openrouter' });
         } catch (orErr: any) {
           console.warn('[analyze-data] OpenRouter social fallback failed:', orErr.message);
         }
@@ -634,25 +676,12 @@ export async function POST(req: NextRequest) {
         40_000, `Gemini ${toolLabel}`,
       );
       if (insights.length > 0)
-        return NextResponse.json({ insights, slots: [], path: 'generic-tabular' });
+        return NextResponse.json({ insights: rebalanceCards(insights), slots: [], path: 'generic-tabular' });
     } catch (err: any) {
       console.warn('[analyze-data] Generic tabular Gemini failed:', err.message);
     }
 
-    // BUG FIX: The old code called buildInsightSlots(rows) here a second time.
-    // But we only reach this code because slots.length === 0 at line 444 — meaning
-    // this data has no GWI-style Index column.  Calling buildInsightSlots again
-    // on the same rows always returns 0, so the OpenRouter and auto-analysis
-    // conditions (genericSlots.length > 0) were ALWAYS false — those tiers
-    // never ran for Amazon, Helium10, keywords, or sales data.
-    //
-    // Fix: Use analyzeGenericWithOpenRouter which sends the raw rows (not slots)
-    // directly to OpenRouter with the same creative/media-pro prompt Gemini uses.
-    // This works for any tabular format regardless of column structure.
-
     // ── Tier 2: OpenRouter (raw rows, same generic-tabular prompt) ──────────
-    // withTimeout(15_000): Gemini already used 40 s; 15 s leaves 5 s buffer
-    // before Vercel's 60 s hard limit.  Total max: 40 + 15 = 55 s.
     if (process.env.OPENROUTER_API_KEY) {
       try {
         const orCards = await withTimeout(
@@ -661,22 +690,20 @@ export async function POST(req: NextRequest) {
           `OpenRouter ${toolLabel}`,
         );
         if (orCards.length > 0)
-          return NextResponse.json({ insights: orCards, slots: [], path: 'generic-tabular', fallback: 'openrouter' });
+          return NextResponse.json({ insights: rebalanceCards(orCards), slots: [], path: 'generic-tabular', fallback: 'openrouter' });
       } catch (orErr: any) {
         console.warn('[analyze-data] OpenRouter generic fallback failed:', orErr.message);
       }
     }
 
-    // ── Tier 3: Pure-data auto-analysis — only possible if rows have Index-like columns ──
-    // (e.g. Helium10 relevance scores, custom exports with index fields).
-    // For Amazon BSR-only data this will produce 0 slots and gracefully fall through.
+    // ── Tier 3: Pure-data auto-analysis ────────────────────────────────────
     const genericSlots = buildInsightSlots(rows);
     if (genericSlots.length > 0) {
       const autoCards = generateFallbackCards(genericSlots, toolLabel);
       if (autoCards.length > 0) {
         console.warn('[analyze-data] Using auto-analysis fallback for generic tabular data');
         return NextResponse.json({
-          insights:  autoCards,
+          insights:  rebalanceCards(autoCards),
           slots:     genericSlots,
           path:      'generic-tabular',
           fallback:  'auto',
