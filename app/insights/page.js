@@ -694,9 +694,13 @@ function ApiChartRenderer({ chart }) {
     case 'funnel':    chartEl = <ChartFunnel    labels={data?.labels ?? []} values={data?.values ?? []} />; break;
     default: return null;
   }
+  // Only render chart.lbl as a descriptive title when it is long enough to be a
+  // real chart description (> 20 chars). Short strings like "GWI" or "HELIUM10"
+  // are source badges stored in lbl on old analyses — skip them here.
+  const showTitle = chart.lbl && chart.lbl.length > 20;
   return (
     <>
-      {chart.lbl && <div className="chart-label">{chart.lbl}</div>}
+      {showTitle && <div className="chart-label">{chart.lbl}</div>}
       {chartEl}
     </>
   );
