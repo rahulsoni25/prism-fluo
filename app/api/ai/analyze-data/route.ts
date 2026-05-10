@@ -14,9 +14,11 @@ import { analyzeWithOpenRouter, analyzeGenericWithOpenRouter, analyzeSocialWithO
 import type { DataSlot, GeminiInsightCard } from '@/lib/ai/gemini';
 import { getPool } from '@/lib/db/client';
 
-// Vercel Hobby plan default timeout is 10 s — Gemini 2.5 routinely takes 15-40 s.
-// Setting maxDuration = 60 (the Hobby-plan maximum) prevents premature timeouts.
-export const maxDuration = 60;
+// Sequential Gemini batches: up to 3 × 38 s = 114 s worst case.
+// Vercel Hobby max is 60 s — upgrade to Pro (300 s) is recommended for
+// multi-file GWI uploads.  We set 300 here so Pro deployments get the full
+// budget; Hobby deployments are capped at 60 s automatically by the platform.
+export const maxDuration = 300;
 
 // ── Column aliases ────────────────────────────────────────────
 function col(row: any, ...keys: string[]): string {
@@ -711,24 +713,31 @@ export async function POST(req: NextRequest) {
         // Limit to 18 slots max → always exactly 3 parallel calls, never 4+
         const batches    = chunkSlots(slots.slice(0, 18), BATCH_SIZE);
 
-        // Each batch has a 30 s hard deadline so Promise.allSettled() always
-        // resolves within 30 s — leaving 25+ s for OpenRouter if needed.
-        // Without this, a single hanging Gemini call causes a Vercel 504
-        // before the fallback code ever runs.
-        const batchResults = await Promise.allSettled(
-          batches.map((batch, i) =>
-            withTimeout(
-              analyzeDataForPRISM(batch, gwiContext, toolLabel, briefContext),
-              30_000,
+        // Run batches SEQUENTIALLY — not in parallel.
+        // Why: parallel fires 3 simultaneous Gemini calls per file.
+        // With multiple files uploading concurrently that hits 429 (rate limit)
+        // immediately on the free tier (15 RPM) and causes every batch to fail.
+        // Sequential: each batch only runs after the previous one completes,
+        // keeping peak load at 1 Gemini call at a time regardless of file count.
+        // Trade-off: ~5-10s slower per file, but reliably gets AI insights.
+        const batchResults: PromiseSettledResult<any[]>[] = [];
+        for (let i = 0; i < batches.length; i++) {
+          try {
+            const value = await withTimeout(
+              analyzeDataForPRISM(batches[i], gwiContext, toolLabel, briefContext),
+              38_000,
               `Gemini batch ${i + 1}/${batches.length}`,
-            )
-          )
-        );
+            );
+            batchResults.push({ status: 'fulfilled', value });
+          } catch (reason: any) {
+            batchResults.push({ status: 'rejected', reason });
+          }
+        }
 
         // Merge successful results, log failures without crashing
         const insights = batchResults.flatMap((result, i) => {
           if (result.status === 'fulfilled') return result.value;
-          console.warn(`[analyze-data] Batch ${i + 1}/${batches.length} failed:`, result.reason?.message);
+          console.warn(`[analyze-data] Batch ${i + 1}/${batches.length} failed:`, (result as any).reason?.message);
           return [];
         });
 
@@ -743,7 +752,7 @@ export async function POST(req: NextRequest) {
             try {
               const orCards = await withTimeout(
                 analyzeWithOpenRouter(slots, gwiContext, toolLabel, briefContext),
-                20_000,
+                40_000,
                 'OpenRouter GWI',
               );
               if (orCards.length > 0) {
@@ -831,7 +840,7 @@ export async function POST(req: NextRequest) {
         try {
           const orCards = await withTimeout(
             analyzeSocialWithOpenRouter(rows, context, 'Social Listening', briefContext),
-            15_000,
+            40_000,
             'OpenRouter social-listening',
           );
           if (orCards.length > 0)
@@ -863,7 +872,7 @@ export async function POST(req: NextRequest) {
       try {
         const orCards = await withTimeout(
           analyzeGenericWithOpenRouter(rows, context, toolLabel, briefContext),
-          15_000,
+          40_000,
           `OpenRouter ${toolLabel}`,
         );
         if (orCards.length > 0)

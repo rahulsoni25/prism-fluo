@@ -43,7 +43,8 @@ function stratifiedSample<T>(rows: T[], n: number): T[] {
  */
 async function callGeminiWithRetry(model: any, prompt: string): Promise<any> {
   const MAX_ATTEMPTS = 3;
-  const DELAYS_MS = [1000, 3000, 7000];
+  // 429 (rate limit) needs a longer wait — Gemini quota windows are ~60s.
+  // Standard delays: 5s → 15s for rate limits; 2s → 5s for server errors.
   let lastErr: any = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
@@ -57,11 +58,18 @@ async function callGeminiWithRetry(model: any, prompt: string): Promise<any> {
         invalidateModelCache(_resolvedModelName ?? undefined);
         throw err; // propagate immediately — retrying won't help
       }
+      const isRateLimit = status === 429 || /rate ?limit|quota/i.test(msg);
       const transient =
-        status === 429 || status === 503 || status === 504 ||
-        /overloaded|rate ?limit|temporar|timeout|ECONNRESET|ETIMEDOUT|fetch failed/i.test(msg);
+        isRateLimit || status === 503 || status === 504 ||
+        /overloaded|temporar|timeout|ECONNRESET|ETIMEDOUT|fetch failed/i.test(msg);
       if (!transient || attempt === MAX_ATTEMPTS - 1) throw err;
-      await new Promise(r => setTimeout(r, DELAYS_MS[attempt]));
+      // Rate limits need longer waits — use 5s + 15s to allow quota to reset.
+      // Server errors use shorter 2s + 5s backoff.
+      const delay = isRateLimit
+        ? [5000, 15000][attempt] ?? 15000
+        : [2000, 5000][attempt] ?? 5000;
+      console.warn(`[Gemini] attempt ${attempt + 1} failed (${status || 'transient'}) — retrying in ${delay / 1000}s`);
+      await new Promise(r => setTimeout(r, delay));
     }
   }
   throw lastErr;
