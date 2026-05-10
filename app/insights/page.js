@@ -20,6 +20,110 @@ function fmtTs(ts) {
   });
 }
 
+/**
+ * BriefContextStrip — replaces the raw filename dump under the report title.
+ * When a brief is linked: shows objective, audience pills, competitor tags.
+ * When no brief: falls back to the source badge + time ago (original behaviour).
+ */
+function BriefContextStrip({ brief, sourceBadge, createdAt }) {
+  // ── Pill helper ─────────────────────────────────────────────
+  const Pill = ({ icon, label, subtle }) => (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '3px 10px', borderRadius: 20,
+      fontSize: 11, fontWeight: 600,
+      background: subtle ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.14)',
+      color: 'rgba(255,255,255,0.88)',
+      border: '1px solid rgba(255,255,255,0.14)',
+      whiteSpace: 'nowrap',
+    }}>
+      {icon && <span style={{ fontSize: 12 }}>{icon}</span>}
+      {label}
+    </span>
+  );
+
+  // ── No brief linked — minimal fallback ─────────────────────
+  if (!brief?.brand) {
+    return (
+      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        <Pill icon="📊" label={sourceBadge} subtle />
+        <Pill icon="🕐" label={timeAgo(createdAt)} subtle />
+      </div>
+    );
+  }
+
+  // ── Build audience pills ────────────────────────────────────
+  const audiencePills = [];
+  if (brief.age_ranges)  audiencePills.push({ icon: '👥', label: brief.age_ranges });
+  if (brief.gender)      audiencePills.push({ icon: '⚥',  label: brief.gender });
+  if (brief.sec)         audiencePills.push({ icon: '🏷',  label: `SEC ${brief.sec}` });
+  if (brief.geography)   audiencePills.push({ icon: '📍', label: brief.geography });
+  else if (brief.market) audiencePills.push({ icon: '🌐', label: brief.market });
+
+  // ── Competitors ─────────────────────────────────────────────
+  const competitorList = brief.competitors
+    ? brief.competitors.split(/[,;·|]+/).map(s => s.trim()).filter(Boolean).slice(0, 4)
+    : [];
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      {/* Row 1 — brand + category badge */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          padding: '3px 12px', borderRadius: 20,
+          fontSize: 11.5, fontWeight: 700,
+          background: 'rgba(99,102,241,0.25)',
+          color: '#C7D2FE',
+          border: '1px solid rgba(99,102,241,0.4)',
+        }}>
+          🏢 {brief.brand}{brief.category ? ` · ${brief.category}` : ''}
+        </span>
+        <Pill icon="📊" label={sourceBadge} subtle />
+        <Pill icon="🕐" label={timeAgo(createdAt)} subtle />
+      </div>
+
+      {/* Row 2 — objective (1 line, truncated) */}
+      {brief.objective && (
+        <div style={{
+          fontSize: 12.5, fontWeight: 500, color: 'rgba(255,255,255,0.82)',
+          lineHeight: 1.45, marginBottom: 9,
+          display: '-webkit-box', WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          maxWidth: 640,
+        }}>
+          🎯 {brief.objective}
+        </div>
+      )}
+
+      {/* Row 3 — audience pills */}
+      {audiencePills.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 6 }}>
+          {audiencePills.map((p, i) => <Pill key={i} icon={p.icon} label={p.label} />)}
+        </div>
+      )}
+
+      {/* Row 4 — competitors */}
+      {competitorList.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5 }}>
+          <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.45)', fontWeight: 600, marginRight: 2 }}>
+            VS
+          </span>
+          {competitorList.map((c, i) => (
+            <span key={i} style={{
+              padding: '2px 9px', borderRadius: 20,
+              fontSize: 10.5, fontWeight: 600,
+              background: 'rgba(239,68,68,0.15)',
+              color: 'rgba(252,165,165,0.95)',
+              border: '1px solid rgba(239,68,68,0.25)',
+            }}>{c}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SlaStrip({ brief }) {
   const planned = brief.sla_due_at ? new Date(brief.sla_due_at) : null;
   const actual  = brief.actual_completed_at ? new Date(brief.actual_completed_at) : null;
@@ -889,12 +993,13 @@ function AnalysisDetail({ id }) {
       {/* ── Hero header (identical structure to NikeInsights) ── */}
       <div className="insights-hero">
         <div className="insights-top">
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div className="ins-eyebrow">Intelligence Report — Ready</div>
             <div className="ins-title">{analysis.sheet_name || analysis.filename}</div>
-            <div className="ins-sub">
-              {analysis.filename} · {sourceBadge} · {timeAgo(analysis.created_at)}
-            </div>
+
+            {/* ── Brief context strip (replaces raw filename dump) ── */}
+            <BriefContextStrip brief={analysis.brief} sourceBadge={sourceBadge} createdAt={analysis.created_at} />
+
             {analysis.brief?.sla_due_at && (
               <SlaStrip brief={analysis.brief} />
             )}
