@@ -25,6 +25,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/health',
   '/api/version',
   '/api/debug-db',
+  '/api/migrate',   // one-shot idempotent DDL — safe to expose, no data leak
 ];
 // Static assets — never gate
 function isStatic(pathname: string): boolean {
