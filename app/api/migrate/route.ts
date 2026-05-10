@@ -160,32 +160,17 @@ const STATEMENTS = [
    ON CONFLICT (id) DO NOTHING`,
 ];
 
-/** Convert pooler URL (port 6543) → direct Supabase URL (port 5432) for DDL */
-function toDirectUrl(poolerUrl: string): string {
-  try {
-    const u = new URL(poolerUrl);
-    // username like postgres.euwvjzszgnbuabyrvxhr → extract project ref
-    const projectRef = u.username.split('.')[1];
-    if (!projectRef) return poolerUrl; // not a pooler URL, use as-is
-    const direct = new URL(poolerUrl);
-    direct.host = `db.${projectRef}.supabase.co`;
-    direct.port = '5432';
-    direct.username = 'postgres';
-    return direct.toString();
-  } catch {
-    return poolerUrl;
-  }
-}
-
 export async function GET(req: NextRequest) {
   const rawUrl = process.env.DATABASE_URL;
   if (!rawUrl) {
     return NextResponse.json({ error: 'DATABASE_URL not set' }, { status: 500 });
   }
 
-  const directUrl = toDirectUrl(rawUrl);
+  // Use DATABASE_URL as-is (the existing pooler connection that the rest of the
+  // app uses). Each DDL statement runs individually — not in an explicit
+  // transaction — so the pooler allows them without issue.
   const pool = new Pool({
-    connectionString: directUrl,
+    connectionString: rawUrl,
     ssl: { rejectUnauthorized: false },
     max: 1,
     connectionTimeoutMillis: 15_000,
@@ -201,7 +186,7 @@ export async function GET(req: NextRequest) {
     await pool.end().catch(() => {});
     return NextResponse.json({
       error: `Cannot connect to database: ${connErr.message}`,
-      tried_url: directUrl.replace(/:([^:@]+)@/, ':***@'),
+      tried_url: rawUrl.replace(/:([^:@]+)@/, ':***@'),
     }, { status: 500 });
   }
 
