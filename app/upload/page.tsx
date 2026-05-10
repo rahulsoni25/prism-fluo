@@ -190,14 +190,27 @@ function buildGeminiChartData(
   }
 
   // ── Grouped bar / hbar — two series (e.g. Brand A vs Brand B) ────
+  // Series 1: always PRISM blue  →  "our brand"
+  // Series 2: always vibrant orange →  "competitor / second group"
+  // This makes the colour meaning consistent across all comparison cards.
   if ((type === 'bar' || type === 'hbar') && values2 && values2.length === values.length && values2.some(v => v !== 0)) {
     const s1Label = series?.[0] || 'Series 1';
     const s2Label = series?.[1] || 'Series 2';
     return {
       labels,
       datasets: [
-        { label: s1Label, data: values,  backgroundColor: bg,                     borderColor: border,               borderWidth: 1, borderRadius: 3 },
-        { label: s2Label, data: values2, backgroundColor: 'rgba(239,68,68,0.82)', borderColor: 'rgba(185,28,28,1)',  borderWidth: 1, borderRadius: 3 },
+        {
+          label: s1Label, data: values,
+          backgroundColor: 'rgba(37,99,235,0.85)',
+          borderColor:     'rgba(30,64,175,1)',
+          borderWidth: 1, borderRadius: 4,
+        },
+        {
+          label: s2Label, data: values2,
+          backgroundColor: 'rgba(249,115,22,0.85)',
+          borderColor:     'rgba(194,65,12,1)',
+          borderWidth: 1, borderRadius: 4,
+        },
       ],
     };
   }

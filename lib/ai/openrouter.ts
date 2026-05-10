@@ -135,6 +135,14 @@ Must include in Sentence 1: ① a specific Indian platform, ② a specific forma
 • chartLabels: use the exact attribute names from THIS slot (up to 8)
 • chartValues: use exact Audience % values from THIS slot
 • For scatter: chartValues = Audience % (X axis), chartValues2 = Index scores converted to multipliers (Y axis)
+• COMPARISON CHARTS — MANDATORY RULE:
+  Whenever your insight compares two brands, two groups, or this audience vs a baseline
+  (e.g. "Nike vs Adidas", "Brand vs Category Average", "This Audience vs National Average"):
+  ① Set type to "bar" or "hbar"
+  ② chartValues   = values for the FIRST brand/group
+  ③ chartValues2  = values for the SECOND brand/group — NEVER leave empty
+  ④ chartSeries   = ["Brand A Name", "Brand B Name"] — use the actual names
+  If you mention a comparison in your title or obs, you MUST fill chartValues2 and chartSeries.
 • type: start with the chartSuggestion from THIS slot — override only if a better type is obvious
 
 ━━ CHART VARIETY — MANDATORY ━━

@@ -65,10 +65,19 @@ const BASE: any = {
 
 interface ChartProps { data: any; extraOptions?: any; title?: string; }
 
-// ── Shared legend config for multi-series charts ──────────────
+// ── Shared legend config for multi-series (comparison) charts ─
+// Larger, bolder labels so brand vs competitor names are immediately readable.
 const MULTI_LEGEND = {
   display: true, position: 'top' as const,
-  labels: { font: { size: 10, family: 'Inter' }, boxWidth: 10, padding: 8, color: '#374151' },
+  align: 'end' as const,
+  labels: {
+    font: { size: 11, family: 'Inter', weight: '600' } as any,
+    boxWidth: 14, boxHeight: 14,
+    padding: 16,
+    color: '#1E293B',
+    usePointStyle: true,
+    pointStyle: 'rectRounded' as const,
+  },
 };
 function multiSeriesPlugins(data: any) {
   return (data?.datasets?.length ?? 0) > 1

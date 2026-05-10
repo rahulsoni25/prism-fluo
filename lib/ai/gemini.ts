@@ -305,8 +305,15 @@ Must contain all three of these in Sentence 1:
   ✅ "BRAND CONSIDERATION VS. PURCHASE CONVERSION (%) — BY CITY TIER"
   Never write "Chart Title" or leave generic. Max 12 words.
 • For scatter: chartLabels = attribute names, chartValues = Audience % (X axis), chartValues2 = Index scores converted to multipliers (Y axis, e.g. Index 197 → 1.97)
-• For grouped comparison (two brands, two metrics, this audience vs national average):
-  chartValues = first group, chartValues2 = second group, chartSeries = ["Group 1 Name", "Group 2 Name"]
+• COMPARISON CHARTS — MANDATORY RULE:
+  Whenever your insight compares two brands, two groups, or this audience vs a national/competitor baseline
+  (e.g. "Nike vs Adidas", "Brand vs Category Average", "This Audience vs National Average"):
+  ① Set type to "bar" or "hbar"
+  ② chartValues   = values for the FIRST brand/group (the primary subject)
+  ③ chartValues2  = values for the SECOND brand/group (the competitor/baseline) — NEVER leave empty
+  ④ chartSeries   = ["Brand A Name", "Brand B Name"] — use the actual brand names
+  This renders a side-by-side grouped bar chart: Brand A in blue, Brand B in orange.
+  If you describe a comparison in your obs or title, you MUST provide chartValues2 + chartSeries.
 • type: start with the chartSuggestion from THIS slot — override only if a better type is obvious
 
 CHART TYPE GUIDE (choose the best visual for this insight):
@@ -504,8 +511,15 @@ chartTitle: 6–12 words in ALL CAPS — a precise description of what this spec
   ✅ "AMAZON SPONSORED AD PRESENCE SCORE — BRAND A VS BRAND B"
   ✅ "TOP KEYWORDS BY MONTHLY SEARCH VOLUME — CATEGORY BREAKDOWN"
   ✅ "REVENUE BY CHANNEL — MONTHLY TREND (JAN–DEC)"
-chartSeries: if comparing two distinct groups/metrics (e.g. Brand A vs Brand B, Metric X vs Metric Y),
-  provide names as ["Group A", "Group B"] and put group A values in chartValues, group B in chartValues2.
+
+COMPARISON CHARTS — MANDATORY RULE:
+Whenever your insight compares two brands, groups, or metrics (e.g. "Nike vs Adidas", "Brand vs Category"):
+  ① type = "bar" or "hbar"
+  ② chartValues   = primary brand/group values  [REQUIRED]
+  ③ chartValues2  = second brand/group values   [REQUIRED — never leave empty or []]
+  ④ chartSeries   = ["Brand A", "Brand B"]      [REQUIRED — use real names]
+  ⑤ chartTitle    = "BRAND A VS BRAND B — [METRIC NAME]"
+  If your title or obs mentions "vs" or compares two entities, you MUST fill chartValues2 and chartSeries.
 
 CHART TYPE GUIDE — pick the most informative and visually striking type:
 • hbar       → ranked lists, long labels (5–12 items) — great for top-10 comparisons
@@ -537,9 +551,11 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     "obs": "string",
     "stat": "string",
     "rec": "string",
+    "chartTitle": "ALL CAPS DESCRIPTION — MAX 12 WORDS",
     "chartLabels": ["label1","label2"],
     "chartValues": [12.5, 8.3],
-    "chartValues2": []
+    "chartValues2": [9.1, 6.4],
+    "chartSeries": ["Brand A", "Brand B"]
   }
 ]`;
 
