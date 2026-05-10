@@ -92,6 +92,7 @@ function buildGeminiChartData(
   values:  number[],
   bucket:  string,
   values2?: number[],
+  series?:  string[],
 ) {
   const bg     = BUCKET_CHART_COLORS[bucket]  || 'rgba(37,99,235,0.85)';
   const border = BUCKET_CHART_BORDERS[bucket] || 'rgba(37,99,235,1)';
@@ -188,11 +189,24 @@ function buildGeminiChartData(
     };
   }
 
-  // ── bar / hbar / histogram — standard bar format ─────────────────
+  // ── Grouped bar / hbar — two series (e.g. Brand A vs Brand B) ────
+  if ((type === 'bar' || type === 'hbar') && values2 && values2.length === values.length && values2.some(v => v !== 0)) {
+    const s1Label = series?.[0] || 'Series 1';
+    const s2Label = series?.[1] || 'Series 2';
+    return {
+      labels,
+      datasets: [
+        { label: s1Label, data: values,  backgroundColor: bg,                     borderColor: border,               borderWidth: 1, borderRadius: 3 },
+        { label: s2Label, data: values2, backgroundColor: 'rgba(239,68,68,0.82)', borderColor: 'rgba(185,28,28,1)',  borderWidth: 1, borderRadius: 3 },
+      ],
+    };
+  }
+
+  // ── bar / hbar / histogram — standard single-series format ────────
   return {
     labels,
     datasets: [{
-      label: 'Value',
+      label: series?.[0] || 'Value',
       data: values,
       backgroundColor: bg,
       borderColor: border,
@@ -209,6 +223,7 @@ function insightsToCharts(insights: any[], entryIdx: number): ChartSpec[] {
     const rawLabels: string[] = Array.isArray(ins.chartLabels) ? ins.chartLabels : [];
     const rawValues: number[] = Array.isArray(ins.chartValues) ? ins.chartValues.map(Number) : [];
     const rawValues2: number[] = Array.isArray(ins.chartValues2) ? ins.chartValues2.map(Number) : [];
+    const rawSeries: string[]  = Array.isArray(ins.chartSeries)  ? ins.chartSeries.map(String) : [];
 
     // Only keep positions where label is non-empty AND value is a real number
     const validPairs = rawLabels
@@ -232,7 +247,7 @@ function insightsToCharts(insights: any[], entryIdx: number): ChartSpec[] {
       xCol:       'Attributes',
       yCol:       'Audience %',
       title:      ins.title,
-      lbl:        ins.toolLabel || 'PRISM',
+      lbl:        ins.chartTitle || '',    // descriptive chart subtitle (shown above chart)
       source:     ins.toolLabel || 'PRISM',
       conviction: ins.conviction ?? 85,
       obs:        ins.obs  ?? '',
@@ -241,7 +256,7 @@ function insightsToCharts(insights: any[], entryIdx: number): ChartSpec[] {
       bucket:     ins.bucket || 'content',
       toolLabel:  ins.toolLabel || 'PRISM',
       computedChartData: hasChart
-        ? buildGeminiChartData(ins.type, cleanLabels, cleanValues, ins.bucket, cleanValues2)
+        ? buildGeminiChartData(ins.type, cleanLabels, cleanValues, ins.bucket, cleanValues2, rawSeries.length >= 2 ? rawSeries : undefined)
         : null,
     };
   });

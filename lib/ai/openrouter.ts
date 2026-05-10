@@ -122,10 +122,13 @@ STAT — one sentence. One number. The line a strategist would screenshot and se
 ❌ "21.8% of this audience (1.3× the national average)" (bracket-heavy, not memorable)
 Max 18 words. No brackets. No bullet points. No "Index" numbers. One crisp, memorable sentence only.
 
-RECOMMENDATION — 1 to 2 sentences. Direct brief to a creative director or media buyer.
-Must contain: ① a specific Indian platform, ② a specific format, ③ a specific creative angle.
-✅ "Shift 65% of content budget to 15-second Instagram Reels and YouTube Shorts showing real Indians on their own terms — personal milestones, not medals."
-✅ "Run a CTV pre-roll on Hotstar and JioCinema in the 7–10pm family slot — warm Indian home imagery, no discount messaging, pride of everyday smart choices."
+RECOMMENDATION — 2 to 3 sentences. Direct brief to a creative director or media buyer.
+Sentence 1: Name the specific platform, format, and budget shift or action.
+Sentence 2: Give the creative brief — what the content should show. Name a specific campaign concept, series title, or hashtag.
+Sentence 3 (optional): An implementation detail — rollout geography, cadence, targeting parameter.
+Must include in Sentence 1: ① a specific Indian platform, ② a specific format, ③ a concrete action (shift X% of budget / launch / build).
+✅ "Shift 65–70% of content budget to Instagram Reels and YouTube Shorts with weekly cadence. Build a recurring content series — a 'Training Ground' format featuring India-based fitness creators showing authentic workout moments, not polished aspirational imagery. Prioritise vertical video to reduce repurposing friction."
+✅ "Significantly increase Amazon Ads investment with a keyword-first strategy targeting the top 10 search terms. Build A+ content for top-selling SKUs with lifestyle imagery, and launch an exclusive India bundle to maximise platform discovery. Close the ad presence gap vs. the category leader before the next peak season."
 ❌ "Consider digital advertising on social platforms to reach this audience" (too vague — not a brief)
 
 ━━ CHART DATA ━━
@@ -148,9 +151,11 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     "obs": "string",
     "stat": "string",
     "rec": "string",
+    "chartTitle": "ALL CAPS DESCRIPTION OF WHAT THIS CHART SHOWS",
     "chartLabels": ["label1","label2"],
     "chartValues": [42.5, 38.1],
-    "chartValues2": [1.97, 1.54]
+    "chartValues2": [1.97, 1.54],
+    "chartSeries": ["Series 1 Name", "Series 2 Name"]
   }
 ]`;
 }
@@ -176,6 +181,8 @@ function parseCards(text: string, toolLabel: string): GeminiInsightCard[] {
     chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
     chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
     chartValues2: Array.isArray(c.chartValues2) ? c.chartValues2.map(Number) : undefined,
+    chartTitle:   c.chartTitle  ? String(c.chartTitle)  : undefined,
+    chartSeries:  Array.isArray(c.chartSeries)  ? c.chartSeries.map(String)  : undefined,
   }));
 }
 

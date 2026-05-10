@@ -558,6 +558,11 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
     // scatter needs a second series (index as multiplier on Y axis)
     const chartValues2   = chartType === 'scatter' ? topN.map(r => +(r.index / 100).toFixed(2)) : undefined;
 
+    // Build a short uppercase chart descriptor from the slot question
+    const chartTitle = slot.question.length <= 60
+      ? slot.question.toUpperCase()
+      : slot.question.slice(0, 58).toUpperCase() + '…';
+
     cards.push({
       title,
       bucket:      slot.bucket,
@@ -570,6 +575,7 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
       chartLabels: topN.map(r => r.attr),
       chartValues,
       chartValues2,
+      chartTitle,
     });
   }
 

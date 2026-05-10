@@ -141,17 +141,19 @@ export type ChartType =
   | 'waterfall' | 'funnel';
 
 export interface GeminiInsightCard {
-  title:        string;
-  bucket:       'content' | 'commerce' | 'communication' | 'culture' | 'channel' | 'media' | 'creative' | 'pricing' | 'search';
-  type:         ChartType;
-  conviction:   number;
-  obs:          string;
-  stat:         string;
-  rec:          string;
-  toolLabel:    string;
-  chartLabels:  string[];
-  chartValues:  number[];
-  chartValues2?: number[]; // scatter Y-axis (Index scores)
+  title:         string;
+  bucket:        'content' | 'commerce' | 'communication' | 'culture' | 'channel' | 'media' | 'creative' | 'pricing' | 'search';
+  type:          ChartType;
+  conviction:    number;
+  obs:           string;
+  stat:          string;
+  rec:           string;
+  toolLabel:     string;
+  chartLabels:   string[];
+  chartValues:   number[];
+  chartValues2?: number[];  // scatter Y-axis OR second series for grouped bar/hbar
+  chartTitle?:   string;    // SHORT CAPS descriptor shown above the chart
+  chartSeries?:  string[];  // legend labels when two series are plotted [series1, series2]
 }
 
 export interface ExecutiveSummary {
@@ -281,20 +283,30 @@ STAT — one line. One number. Write the sentence a strategist would screenshot 
 ❌ "Key stat: Audience shows elevated propensity for X behaviour" (vague, no number)
 Max 18 words. No brackets. No bullet points. No "Index" numbers. One crisp, memorable sentence only.
 
-RECOMMENDATION — 1 to 2 sentences. A direct brief to a creative director or media buyer.
-Must contain all three of these:
+RECOMMENDATION — 2 to 3 sentences. A direct brief to a creative director or media buyer.
+Sentence 1: Name the specific platform, format, and budget shift or action.
+Sentence 2: Give the creative brief — what the content should show, feel like, or say. Name a specific campaign concept, series title, or hashtag.
+Sentence 3 (optional): An implementation detail — rollout geography, cadence, targeting parameter, or competitive differentiation.
+Must contain all three of these in Sentence 1:
 ① A specific Indian platform: Instagram Reels, YouTube Shorts, Hotstar, JioCinema, Meesho, Flipkart, Amazon Ads, Google Search, Moj, Josh, LinkedIn India, Times of India digital, Sharechat
 ② A specific format: 15-second Reel, 6-second bumper, CTV pre-roll, sponsored listing, in-feed video, search ad, creator brief, OOH integration, podcast sponsorship
-③ A specific creative angle: real Indian families, everyday fitness, personal milestones, value without discount, cultural pride, community belonging, aspirations on their own terms, authenticity over polish
-✅ "Shift 65% of content budget to 15-second Instagram Reels and YouTube Shorts showing real Indians exercising on their own terms — personal milestones, not medals."
-✅ "Run a CTV pre-roll campaign on Hotstar and JioCinema in the 7–10pm family slot — warm Indian home imagery, no discount messaging, built around the pride of everyday smart choices."
-✅ "Build a Reels-first content calendar with weekly cadence; brief creators with the insight rather than the script, and prioritise vertical video to reduce repurposing friction across platforms."
+③ A budget shift or concrete action: shift X% of budget, launch, invest in, build, launch a structured
+✅ "Shift 65–70% of content budget to short-form video on Instagram Reels and YouTube Shorts with weekly cadence. Build a recurring content series — a 'Training Ground' format with India-based fitness creators showing authentic workout moments, not polished aspirational imagery. Prioritise vertical video production to reduce repurposing friction and run a Reels-first calendar."
+✅ "Significantly increase Amazon Ads investment with a keyword-first strategy targeting the top 10 search terms. Build A+ content for top-selling SKUs with lifestyle imagery, and consider an exclusive Amazon India launch bundle to maximise platform discovery. Close the 40% ad presence gap vs. the category leader before the next peak season."
+✅ "Launch a structured UGC campaign (#JustMoveIndia) incentivising customers to share authentic product-in-use content on Instagram Reels and YouTube Shorts. Build a clear submission-and-amplification pipeline across tier 1 and tier 2 markets. Brief creators with the insight, not the script — authenticity outperforms polish with this audience."
 ❌ "Consider digital advertising on social platforms to reach this audience" (too vague — not a brief, no platform, no format)
 
 ━━ CHART DATA ━━
 • chartLabels: use the exact attribute names from THIS slot (up to 8)
 • chartValues: use exact Audience % values from THIS slot
+• chartTitle: 6–10 words in ALL CAPS — a precise description of what this chart actually shows.
+  ✅ "DISCOVERY CHANNEL BREAKDOWN — WHERE TARGET SEGMENT RESEARCHES BEFORE BUYING"
+  ✅ "PURCHASE INTENT BY INCOME BRACKET — INDEXED VS NATIONAL AVERAGE"
+  ✅ "BRAND CONSIDERATION VS. PURCHASE CONVERSION (%) — BY CITY TIER"
+  Never write "Chart Title" or leave generic. Max 12 words.
 • For scatter: chartLabels = attribute names, chartValues = Audience % (X axis), chartValues2 = Index scores converted to multipliers (Y axis, e.g. Index 197 → 1.97)
+• For grouped comparison (two brands, two metrics, this audience vs national average):
+  chartValues = first group, chartValues2 = second group, chartSeries = ["Group 1 Name", "Group 2 Name"]
 • type: start with the chartSuggestion from THIS slot — override only if a better type is obvious
 
 CHART TYPE GUIDE (choose the best visual for this insight):
@@ -327,9 +339,11 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     "obs": "string",
     "stat": "string",
     "rec": "string",
+    "chartTitle": "ALL CAPS DESCRIPTION OF WHAT THIS CHART SHOWS — MAX 12 WORDS",
     "chartLabels": ["label1","label2"],
     "chartValues": [42.5, 38.1],
-    "chartValues2": [1.97, 1.54]
+    "chartValues2": [1.97, 1.54],
+    "chartSeries": ["Series 1 Name", "Series 2 Name"]
   }
 ]`;
 
@@ -370,6 +384,8 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
       chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
       chartValues2: Array.isArray(c.chartValues2) ? c.chartValues2.map(Number) : undefined,
+      chartTitle:   c.chartTitle  ? String(c.chartTitle)  : undefined,
+      chartSeries:  Array.isArray(c.chartSeries)  ? c.chartSeries.map(String)  : undefined,
     }));
 
   } catch (err) {
@@ -484,6 +500,12 @@ Write EXACTLY 8 cards. No two cards may share the same opening sentence, the sam
 ━━ CHART DATA ━━
 Pick labels + values from the sample rows (up to 8 items). Use actual values.
 If a chart doesn't make sense for a card, return chartLabels: [] and chartValues: [].
+chartTitle: 6–12 words in ALL CAPS — a precise description of what this specific chart visualises.
+  ✅ "AMAZON SPONSORED AD PRESENCE SCORE — BRAND A VS BRAND B"
+  ✅ "TOP KEYWORDS BY MONTHLY SEARCH VOLUME — CATEGORY BREAKDOWN"
+  ✅ "REVENUE BY CHANNEL — MONTHLY TREND (JAN–DEC)"
+chartSeries: if comparing two distinct groups/metrics (e.g. Brand A vs Brand B, Metric X vs Metric Y),
+  provide names as ["Group A", "Group B"] and put group A values in chartValues, group B in chartValues2.
 
 CHART TYPE GUIDE — pick the most informative and visually striking type:
 • hbar       → ranked lists, long labels (5–12 items) — great for top-10 comparisons
@@ -557,6 +579,8 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
       chartValues2: Array.isArray(c.chartValues2) && (c.chartValues2 as any[]).length > 0
         ? c.chartValues2.map(Number) : undefined,
+      chartTitle:   c.chartTitle  ? String(c.chartTitle)  : undefined,
+      chartSeries:  Array.isArray(c.chartSeries)  ? c.chartSeries.map(String)  : undefined,
     }));
 
   } catch (err) {

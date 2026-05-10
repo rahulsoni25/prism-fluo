@@ -65,16 +65,36 @@ const BASE: any = {
 
 interface ChartProps { data: any; extraOptions?: any; title?: string; }
 
+// ── Shared legend config for multi-series charts ──────────────
+const MULTI_LEGEND = {
+  display: true, position: 'top' as const,
+  labels: { font: { size: 10, family: 'Inter' }, boxWidth: 10, padding: 8, color: '#374151' },
+};
+function multiSeriesPlugins(data: any) {
+  return (data?.datasets?.length ?? 0) > 1
+    ? { legend: MULTI_LEGEND, tooltip: TIP }
+    : { legend: { display: false }, tooltip: TIP };
+}
+
 // ── 1. Vertical Bar ───────────────────────────────────────────
 export function ChartBar({ data, extraOptions = {} }: ChartProps) {
-  const options = { ...BASE, aspectRatio: 2.4, scales: { x: XA, y: YA }, ...extraOptions };
+  const options = {
+    ...BASE,
+    aspectRatio: 2.4,
+    plugins: multiSeriesPlugins(data),
+    scales: { x: XA, y: YA },
+    ...extraOptions,
+  };
   return <Bar data={data} options={options} />;
 }
 
 // ── 2. Horizontal Bar ─────────────────────────────────────────
 export function ChartHBar({ data, extraOptions = {} }: ChartProps) {
   const options = {
-    ...BASE, indexAxis: 'y' as const, aspectRatio: 1.7,
+    ...BASE,
+    indexAxis: 'y' as const,
+    aspectRatio: 1.7,
+    plugins: multiSeriesPlugins(data),
     scales: { x: { ...XA, grid: { color: BORDER, display: true } }, y: { ...YA, grid: { display: false } } },
     ...extraOptions,
   };

@@ -678,21 +678,28 @@ function chartHasContent(data) {
 function ApiChartRenderer({ chart }) {
   const data = chart.computedChartData;
   if (!chartHasContent(data)) return null;
+  let chartEl = null;
   switch (chart.type) {
-    case 'bar':       return <ChartBar       data={data} />;
-    case 'hbar':      return <ChartHBar      data={data} />;
-    case 'line':      return <ChartLine      data={data} />;
-    case 'area':      return <ChartArea      data={data} />;
-    case 'pie':       return <ChartPie       data={data} />;
-    case 'doughnut':  return <ChartDoughnut  data={data} />;
-    case 'scatter':   return <ChartScatter   data={data} />;
-    case 'combo':     return <ChartCombo     data={data} />;
-    case 'histogram': return <ChartHistogram data={data} />;
-    case 'radar':     return <ChartRadar     data={data} />;
-    case 'waterfall': return <ChartWaterfall labels={data?.labels ?? []} values={data?.values ?? []} />;
-    case 'funnel':    return <ChartFunnel    labels={data?.labels ?? []} values={data?.values ?? []} />;
-    default:          return null;
+    case 'bar':       chartEl = <ChartBar       data={data} />; break;
+    case 'hbar':      chartEl = <ChartHBar      data={data} />; break;
+    case 'line':      chartEl = <ChartLine      data={data} />; break;
+    case 'area':      chartEl = <ChartArea      data={data} />; break;
+    case 'pie':       chartEl = <ChartPie       data={data} />; break;
+    case 'doughnut':  chartEl = <ChartDoughnut  data={data} />; break;
+    case 'scatter':   chartEl = <ChartScatter   data={data} />; break;
+    case 'combo':     chartEl = <ChartCombo     data={data} />; break;
+    case 'histogram': chartEl = <ChartHistogram data={data} />; break;
+    case 'radar':     chartEl = <ChartRadar     data={data} />; break;
+    case 'waterfall': chartEl = <ChartWaterfall labels={data?.labels ?? []} values={data?.values ?? []} />; break;
+    case 'funnel':    chartEl = <ChartFunnel    labels={data?.labels ?? []} values={data?.values ?? []} />; break;
+    default: return null;
   }
+  return (
+    <>
+      {chart.lbl && <div className="chart-label">{chart.lbl}</div>}
+      {chartEl}
+    </>
+  );
 }
 
 /* Maps tool domain → human-readable source badge */
