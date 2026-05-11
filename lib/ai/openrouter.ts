@@ -114,28 +114,46 @@ Newspaper headline or magazine cover line. State the key finding with one number
 ❌ "29% of This Audience Are Using Social Media Less" (pure data, no signal)
 NEVER: "This Audience", "— Worth Planning Around", "— Worth Building Into the Brief", "— Worth Watching", "— Brands Need to Act", "Key Insight:".
 
-OBSERVATION — 2 to 3 rich sentences. Use numbers from THIS slot's PERMITTED NUMBERS only.
-• Sentence 1 (hook): Lead with the top-ranked attribute from the slot and its audience% in plain English. Active voice.
-  FORMAT: "About [X] in [Y] of this audience [top behaviour from slot] — [N]× the national rate."
-• Sentence 2 (depth): Name the 2nd and 3rd ranked attributes from the slot with their percentages — show the full breakdown.
-  FORMAT: "[2nd attr] accounts for [its audiencePct]% while [3rd attr] adds [its audiencePct]%."
-• Sentence 3 (so-what): What does this mean for the brand? No new numbers — just the implication.
-RULE: Every number must be in the PERMITTED NUMBERS list for this slot. Do NOT invent trends, YoY growth, engagement ratios, or comparisons unless they appear in the slot data.
+OBSERVATION — 2 to 3 sentences. Write like a senior strategist briefing a creative team — a connected story, not a stats list.
+
+Use the BRAND, TARGET AUDIENCE, and GEOGRAPHY from the brief to name the audience specifically.
+Never write "this audience" — always say "Nike 18–34 consumers in India" or whatever the brief specifies.
+
+Sentence 1 — WHO + WHAT + IN WHAT CONTEXT:
+  Name the exact audience (brand + demographics + geography from brief) + top behaviour from slot + what they do with it.
+  ✅ "[Slot %] of [brand] [age] [market] consumers [top behaviour from slot] before [relevant destination from brief]."
+  ❌ Never: "About [X] in [Y] of this audience are [attr] — [N]× the national average." (stat readout, not a story)
+
+Sentence 2 — THE BREAKDOWN: Show how the category splits across 2–3 attributes with their actual percentages.
+  Name specific platforms or behaviours by name. Show the journey if one exists.
+  ✅ "[2nd attr] accounts for [its %], while [3rd attr] adds [its %] — [implication for the brand]."
+
+Sentence 3 — THE GAP: Name a specific gap, competitive disadvantage, or underserved opportunity using the brand name.
+  Quantify from the slot data. If no competitive data exists, give a plain strategic implication.
+  ✅ "[Brand]'s [metric from slot] vs. [competitor or category avg from slot] — a [N]-point gap to close."
+
+RULE: Every number must be in the PERMITTED NUMBERS list for this slot. Do NOT invent trends, YoY growth, engagement ratios, or benchmarks not in the slot data.
 
 STAT — one line from THIS slot's data. The sentence a strategist would screenshot.
-FORMAT: "[plain-English fraction] [top behaviour from slot] — [N]× more common here than the national average"
-❌ "Index 168 · Full Price behaviour" (raw index number — never write this)
+Lead with the data point that would make a room go quiet.
+✅ "[top behaviour from slot] among [brief audience in brief geography] — [N]× the national rate"
+❌ "Index 168 · Full Price behaviour" (raw index — never write this)
 ❌ "21.8% of this audience (1.3× the national average)" (bracket-heavy, not memorable)
 Max 18 words. No brackets. No bullet points. No "Index" numbers. One crisp, memorable sentence only.
 
-RECOMMENDATION — 2 to 3 sentences. Direct brief to a creative director or media buyer.
-Sentence 1: Name the specific platform, format, and budget shift or action.
-Sentence 2: Give the creative brief — what the content should show. Name a specific campaign concept, series title, or hashtag.
-Sentence 3 (optional): An implementation detail — rollout geography, cadence, targeting parameter.
-Must include in Sentence 1: ① a specific Indian platform, ② a specific format, ③ a concrete action (shift X% of budget / launch / build).
-✅ "Shift 65–70% of content budget to Instagram Reels and YouTube Shorts with weekly cadence. Build a recurring content series — a 'Training Ground' format featuring India-based fitness creators showing authentic workout moments, not polished aspirational imagery. Prioritise vertical video to reduce repurposing friction."
-✅ "Significantly increase Amazon Ads investment with a keyword-first strategy targeting the top 10 search terms. Build A+ content for top-selling SKUs with lifestyle imagery, and launch an exclusive India bundle to maximise platform discovery. Close the ad presence gap vs. the category leader before the next peak season."
-❌ "Consider digital advertising on social platforms to reach this audience" (too vague — not a brief)
+RECOMMENDATION — 3 sentences. A direct brief that flows from the observation above.
+Each sentence MUST start with a specific action verb: Integrate, Build, Invest, Prioritise, Launch, Shift, Close.
+
+Sentence 1 — INTEGRATE or BUILD: Name a specific product feature, integration, or content format. What to create and where.
+  ✅ "Integrate Instagram Shopping and YouTube product tagging to create shoppable content at the discovery moment."
+  ✅ "Build A+ content on the top 5 SKUs on Flipkart and Amazon with lifestyle imagery and comparison tables."
+Sentence 2 — INVEST or PRIORITISE: What to invest in to bridge the gap named in the observation.
+  ✅ "Invest in retargeting that bridges social discovery to DTC or marketplace conversion."
+  ✅ "Prioritise creator briefs over polished brand content — this group responds to peer signal, not brand voice."
+Sentence 3 — CLOSE THE GAP: Use a specific number from the slot to quantify the target outcome.
+  ✅ "Prioritise DTC website UX improvements to close the conversion shortfall vs. category peers."
+  ✅ "Close the search presence gap vs. [competitor from brief] before the next peak season."
+❌ "Consider digital advertising on social platforms to reach this audience" (too vague — no feature, no gap, no action)
 
 ━━ CHART DATA ━━
 • chartLabels: use the exact attribute names from THIS slot (up to 8)

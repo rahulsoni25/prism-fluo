@@ -356,48 +356,65 @@ function buildTitle(attr: string, pctNum: string | null, multFmt: string): strin
 }
 
 /**
- * Write observation S1 — the punchy opening fact, active voice, no raw Index numbers.
+ * Build a named audience description from brief context.
+ * Falls back to "target consumers in this market" if no brief.
+ * e.g. "Nike 18–34 consumers in India" or "Adidas target segment across metros"
  */
-function buildS1(attr: string, pctNum: string | null, pctFrac: string | null, multFmt: string): string {
-  const clean  = cleanAttrText(attr);
-  const wasIAm = /^I am /i.test(attr);
-  const wasVerb = /^I (am |)(using|watch|buy|prefer|trust|worry|think|feel|read|listen|spend|value|choos|believ|driv|own|follow|support|creat|shar|post|play|cook|exercis|travel)/i.test(attr);
-
-  if ((wasIAm || wasVerb) && pctNum && pctFrac) {
-    return `${pctNum} of this audience — ${pctFrac} — are ${clean}, a rate ${multFmt} the national average and a clear indicator of where this group's attention is heading.`;
-  }
-  if ((wasIAm || wasVerb) && pctFrac) {
-    return `${cap(pctFrac)} of this audience are ${clean} — ${multFmt} the national average, and a pattern that runs consistently across this group.`;
-  }
-  if (pctNum && pctFrac) {
-    return `${pctNum} of this audience — ${pctFrac} — prioritise ${clean}, placing this group ${multFmt} the national average and making it one of the strongest signals in this dataset.`;
-  }
-  if (pctFrac) {
-    return `${cap(pctFrac)} of this audience lean strongly towards ${clean} — ${multFmt} the national average, and a signal that holds up across multiple data cuts.`;
-  }
-  return `${cap(clean)} is the leading signal in this category — ${multFmt} the national average, and consistently the top-ranked attribute in this audience profile.`;
+function audienceLabel(brief: { brand?: string; age_ranges?: string; geography?: string } | null): string {
+  if (!brief) return 'target consumers in this market';
+  const parts: string[] = [];
+  if (brief.brand)      parts.push(brief.brand);
+  if (brief.age_ranges) parts.push(brief.age_ranges);
+  parts.push('consumers');
+  if (brief.geography)  parts.push(`in ${brief.geography}`);
+  return parts.join(' ');
 }
 
 /**
- * Write observation S2 — second different attribute, different angle, concrete numbers.
+ * Write observation S1 — names the audience from the brief, tells WHO does WHAT.
+ */
+function buildS1(
+  attr: string,
+  pctNum: string | null,
+  pctFrac: string | null,
+  multFmt: string,
+  brief: { brand?: string; age_ranges?: string; geography?: string } | null = null,
+): string {
+  const clean   = cleanAttrText(attr);
+  const label   = audienceLabel(brief);
+  const wasVerb = /^I (am |)(using|watch|buy|prefer|trust|worry|think|feel|read|listen|spend|value|choos|believ|driv|own|follow|support|creat|shar|post|play|cook|exercis|travel)/i.test(attr);
+
+  if (pctNum && wasVerb) {
+    return `${pctNum} of ${label} are ${clean} — ${multFmt} the national average, and the strongest signal in this category.`;
+  }
+  if (pctNum) {
+    return `${pctNum} of ${label} prioritise ${clean} — ${multFmt} the national average, making it the top signal in this dataset.`;
+  }
+  if (pctFrac) {
+    return `${cap(pctFrac)} of ${label} lean strongly towards ${clean} — ${multFmt} the national average.`;
+  }
+  return `${cap(clean)} is the leading signal among ${label} — ${multFmt} the national average.`;
+}
+
+/**
+ * Write observation S2 — names the second attribute with its % and multiplier.
  */
 function buildS2(attr1: string, attr2: string, pct2Raw: number, index2: number): string {
   if (attr2 === attr1) {
     return `This pattern holds consistently across multiple attributes in this category, suggesting a deliberate audience orientation rather than an isolated data point.`;
   }
-  const clean2  = cleanAttrText(attr2);
-  const wasIAm2 = /^I am /i.test(attr2);
+  const clean2   = cleanAttrText(attr2);
   const wasVerb2 = /^I /i.test(attr2);
-  const pct2Str = pct2Raw > 0 ? `${pct2Raw.toFixed(1)}%` : null;
-  const mult2   = `${(index2 / 100).toFixed(1)}×`;
+  const pct2Str  = pct2Raw > 0 ? `${pct2Raw.toFixed(1)}%` : null;
+  const mult2    = `${(index2 / 100).toFixed(1)}×`;
 
-  if ((wasIAm2 || wasVerb2) && pct2Str) {
-    return `The same audience also shows a strong lean towards ${clean2}: ${pct2Str} exhibit this behaviour (${mult2} the national rate), reinforcing a consistent picture of how this group thinks and acts.`;
+  if (wasVerb2 && pct2Str) {
+    return `${pct2Str} are also ${clean2} (${mult2} the national rate), reinforcing a consistent pattern across this category.`;
   }
   if (pct2Str) {
-    return `${cap(clean2)} is the next strongest signal at ${pct2Str} (${mult2} the national average) — confirming this is a consistent audience orientation, not a one-off finding.`;
+    return `${cap(clean2)} follows at ${pct2Str} — ${mult2} the national average — confirming this is a consistent audience orientation, not a one-off signal.`;
   }
-  return `${cap(clean2)} follows closely at ${mult2} the national average, confirming that this audience has a clear and consistent lean in this category.`;
+  return `${cap(clean2)} follows closely at ${mult2} the national average.`;
 }
 
 /**
@@ -497,7 +514,11 @@ function pickFallbackType(
   return safePool.find(t => t !== lastType) ?? preferred;
 }
 
-function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsightCard[] {
+function generateFallbackCards(
+  slots: DataSlot[],
+  toolLabel: string,
+  brief: { brand?: string; age_ranges?: string; geography?: string } | null = null,
+): GeminiInsightCard[] {
   const cards: GeminiInsightCard[] = [];
 
   // Variety state tracked across all cards in this set
@@ -523,7 +544,7 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
     const title = buildTitle(top.attr, pctNum, multFmt);
 
     // ── OBSERVATION — use top-3 rows for a rich, multi-stat picture ─────────
-    const s1 = buildS1(top.attr, pctNum, pctFrac, multFmt);
+    const s1 = buildS1(top.attr, pctNum, pctFrac, multFmt, brief);
 
     // S2: name rows 2 AND 3 in one sentence so the breakdown is complete
     const s2pct    = second.audiencePct > 0 ? second.audiencePct : second.dataPct;
@@ -801,7 +822,7 @@ export async function POST(req: NextRequest) {
 
           // ── Tier 3: Pure-data auto-analysis (no AI, grounded in slot numbers) ──
           console.warn('[analyze-data] Using pure-data auto-analysis as last resort');
-          const fallbackCards = generateFallbackCards(slots, toolLabel);
+          const fallbackCards = generateFallbackCards(slots, toolLabel, brief);
           if (fallbackCards.length > 0) {
             return NextResponse.json({
               insights:   rebalanceCards(fallbackCards),
