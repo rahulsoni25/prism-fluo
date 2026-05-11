@@ -550,6 +550,11 @@ const BUCKET_TABS = [
  *
  * On tab switch the key prop changes → component remounts → animations replay.
  * ─────────────────────────────────────────────────────────────────────────── */
+
+// Float phase offsets must match .insight-card:nth-child delays in globals.css.
+// Using two separate delay values keeps fadeInUp stagger independent of float phase.
+const FLOAT_PHASE = [0.4, 0.9, 1.4, 1.9, 0.7, 1.2, 1.7, 1.0];
+
 function AnimatedCard({ index, bucketCls, children }) {
   const ref    = useRef(null);
   const [shown, setShown] = useState(false);
@@ -568,13 +573,20 @@ function AnimatedCard({ index, bucketCls, children }) {
     return () => io.disconnect();
   }, []);  // empty deps → runs once per mount; re-mounts on key change auto-resets
 
+  // .insight-card runs TWO animations: fadeInUp then float-card.
+  // animation-delay accepts comma-separated values — one per animation.
+  // Inline style must supply BOTH values, otherwise CSS repeats the single
+  // value for both and the float phase offset is wrong.
+  const fadeDelay  = index * 0.08;                       // staggered entry
+  const floatDelay = FLOAT_PHASE[index % FLOAT_PHASE.length]; // float phase offset
+
   return (
     <div
       ref={ref}
       className={`insight-card ${bucketCls}`}
       style={
         shown
-          ? { animationDelay: `${index * 0.07}s` }           // CSS fadeInUp + float plays
+          ? { animationDelay: `${fadeDelay}s, ${floatDelay}s` }
           : { animation: 'none', opacity: 0, transform: 'translateY(12px)', minHeight: 260 }
       }
     >
