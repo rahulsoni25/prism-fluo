@@ -574,11 +574,16 @@ function AnimatedCard({ index, bucketCls, children }) {
       className={`insight-card ${bucketCls}`}
       style={
         shown
-          ? { animationDelay: `${index * 0.07}s` }           // let CSS float + fadeInUp run
-          : { animation: 'none', opacity: 0, transform: 'translateY(12px)' }  // hidden until in view
+          ? { animationDelay: `${index * 0.07}s` }           // CSS fadeInUp + float plays
+          : { animation: 'none', opacity: 0, transform: 'translateY(12px)', minHeight: 260 }
       }
     >
-      {children}
+      {/* Only mount children (incl. Chart.js) once card is visible.
+          This ensures the 900 ms Chart.js draw animation plays in-view,
+          not while the card is still invisible (opacity:0).
+          minHeight above prevents the empty card from collapsing to 0px,
+          which would make all cards appear "in viewport" at once. */}
+      {shown ? children : null}
     </div>
   );
 }
