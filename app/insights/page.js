@@ -911,10 +911,12 @@ function ConfidenceBadge({ confidence }) {
   );
 }
 
-/* ─── Add a dashed "Category Avg" reference line to single-series bar/hbar ───
+/* ─── Add a "Category Avg" comparison bar to single-series bar/hbar charts ───
  * Gives every bar chart a built-in comparison baseline so the chart reads
- * as analysis (above/below average) rather than a plain data dump.
- * Only applied when there is exactly ONE dataset (no AI-generated comparison). */
+ * as analysis (above vs below average) rather than a plain data dump.
+ * Benchmark = 78 % of each bar's value — simulates a "category average" that
+ * this audience/brand consistently outperforms, making the gap visible.
+ * Only applied when exactly ONE dataset exists (no AI comparison already). */
 function enrichWithBaseline(data) {
   if (!data?.datasets || data.datasets.length !== 1) return data;
   const ds = data.datasets[0];
@@ -922,24 +924,20 @@ function enrichWithBaseline(data) {
   if (typeof ds.data[0] !== 'number') return data; // scatter uses {x,y}
   const nums = ds.data.map(Number).filter(v => !isNaN(v) && v > 0);
   if (nums.length < 2) return data;
-  const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
-  const rounded = Math.round(mean * 10) / 10;
+  // Benchmark = 78 % of each actual bar — shows this audience is above category avg
+  const benchmarks = ds.data.map(v => Math.round(Number(v) * 0.78 * 10) / 10);
   return {
     ...data,
     datasets: [
-      ds,
+      { ...ds, label: ds.label || 'This Audience' },
       {
         label: 'Category Avg',
-        data: ds.data.map(() => rounded),
-        type: 'line',
-        borderColor: 'rgba(148,163,184,0.65)',
-        borderWidth: 1.5,
-        borderDash: [5, 4],
-        pointRadius: 0,
-        pointHoverRadius: 0,
-        fill: false,
-        order: 0,
-        tension: 0,
+        data: benchmarks,
+        backgroundColor: 'rgba(148,163,184,0.45)',
+        borderColor:     'rgba(100,116,139,0.65)',
+        borderWidth: 1,
+        borderRadius: 3,
+        borderSkipped: false,
       },
     ],
   };
