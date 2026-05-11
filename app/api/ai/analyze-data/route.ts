@@ -522,11 +522,25 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
     // ── TITLE ────────────────────────────────────────────────────────────────
     const title = buildTitle(top.attr, pctNum, multFmt);
 
-    // ── OBSERVATION ──────────────────────────────────────────────────────────
+    // ── OBSERVATION — use top-3 rows for a rich, multi-stat picture ─────────
     const s1 = buildS1(top.attr, pctNum, pctFrac, multFmt);
 
-    const s2pct = second.audiencePct > 0 ? second.audiencePct : second.dataPct;
-    const s2    = buildS2(top.attr, second.attr, s2pct, second.index);
+    // S2: name rows 2 AND 3 in one sentence so the breakdown is complete
+    const s2pct    = second.audiencePct > 0 ? second.audiencePct : second.dataPct;
+    const third    = topN.find(r => r.attr !== top.attr && r.attr !== second.attr);
+    const thirdPct = third ? (third.audiencePct > 0 ? third.audiencePct : third.dataPct) : 0;
+    const thirdMul = third ? `${(third.index / 100).toFixed(1)}×` : '';
+
+    let s2: string;
+    if (third && thirdPct > 0 && s2pct > 0) {
+      const c2 = cleanAttrText(second.attr);
+      const c3 = cleanAttrText(third.attr);
+      s2 = `${cap(c2)} accounts for ${s2pct.toFixed(1)}% (${(second.index / 100).toFixed(1)}× the national rate), `
+         + `while ${c3} adds another ${thirdPct.toFixed(1)}% (${thirdMul} national) — `
+         + `together these three signals account for the dominant share of this category.`;
+    } else {
+      s2 = buildS2(top.attr, second.attr, s2pct, second.index);
+    }
 
     const s3map: Record<string, string> = {
       content:       'For brands in this space, reflecting this behaviour in content strategy — not just targeting — will deliver meaningfully stronger engagement with this group.',
@@ -539,7 +553,7 @@ function generateFallbackCards(slots: DataSlot[], toolLabel: string): GeminiInsi
       pricing:       'Positioning that matches the value perceptions evident in this data — rather than leading with discounts — will build longer-term brand equity and margin resilience.',
       search:        'Search investment that maps to the keyword themes in this data will capture high-intent demand from exactly the audience most likely to convert.',
     };
-    const s3 = s3map[slot.bucket] ?? 'This is a clear strategic signal worth building into the next campaign brief.';
+    const s3 = s3map[slot.bucket] ?? 'A clear strategic signal worth building into the next campaign brief.';
 
     const obs = `${s1} ${s2} ${s3}`;
 

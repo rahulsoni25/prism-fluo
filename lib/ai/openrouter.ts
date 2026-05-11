@@ -42,15 +42,25 @@ const VALID_TYPES   = ['hbar','bar','line','area','pie','doughnut',
 function buildSlotBlock(slots: DataSlot[]): string {
   return slots.map((slot, i) => {
     const rowLines = slot.rows.map(r =>
-      `    • ${r.attr}: ${r.audiencePct.toFixed(1)}% of this audience have this` +
-      ` — that is ${(r.index / 100).toFixed(2)}× the national average` +
-      (r.universe > 0 ? `, approximately ${(r.universe / 1e6).toFixed(1)} million people in India` : ''),
+      `    • ${r.attr}: ${r.audiencePct.toFixed(1)}% audience` +
+      ` | ${(r.index / 100).toFixed(2)}× national avg` +
+      (r.universe > 0 ? ` | ~${(r.universe / 1e6).toFixed(1)}M people in India` : ''),
     ).join('\n');
+
+    // Explicit NUMBER BANK — the only numbers permitted in the card for this slot
+    const bankLines = slot.rows.map(r => {
+      const parts = [`${r.audiencePct.toFixed(1)}%`, `${(r.index / 100).toFixed(2)}×`];
+      if (r.universe > 0) parts.push(`~${(r.universe / 1e6).toFixed(1)}M`);
+      return `  ${r.attr}: ${parts.join(' | ')}`;
+    }).join('\n');
+
     return `
 SLOT ${i + 1} | PRISM Bucket: ${slot.bucket.toUpperCase()} | Topic: ${slot.question}
 Suggested chart: ${slot.chartSuggestion}
-DATA (use ONLY these numbers — no other sources, no estimates):
-${rowLines}`;
+DATA ROWS (sorted by signal strength):
+${rowLines}
+PERMITTED NUMBERS for this card — use only these (or plain-English translations). Any number not listed here is forbidden:
+${bankLines}`;
   }).join('\n');
 }
 
@@ -79,11 +89,12 @@ Do NOT mix findings from different slots into a single card.
 Do NOT repeat the same finding, stat, or sentence across any two cards.
 
 ━━ ANTI-HALLUCINATION RULE — READ THIS FIRST ━━
-Every single number, percentage, or statistic in your observation MUST come directly from the slot data above.
-Do NOT invent, guess, round differently, or add any number that is not in the slot.
-If a slot says "3.45× the national average", you can write "about 3 and a half times more likely".
-If a slot says "21.8% of this audience", you can write "roughly 1 in 5 people" or "about 22 out of every 100".
-Translate numbers into plain English — but stay accurate to what the data actually says.
+Every single number, percentage, or statistic you write MUST come verbatim from the slot's DATA rows above.
+Do NOT invent, guess, combine, or extrapolate any value not present in the slot.
+Plain-English translation is allowed: "1.83×" → "nearly twice"; "62.0%" → "about 3 in 5".
+⚠️  The ✅ example sentences below contain FORMAT TEMPLATES only.
+    Do NOT copy any number from those examples into your output.
+    Every number you write must be traceable to a specific row in the slot's PERMITTED NUMBERS list — if you cannot point to it, do not write it.
 
 ━━ TONE ━━
 Write like a brilliant colleague explaining a finding over coffee — not a consultant writing a deck.
@@ -103,21 +114,16 @@ Newspaper headline or magazine cover line. State the key finding with one number
 ❌ "29% of This Audience Are Using Social Media Less" (pure data, no signal)
 NEVER: "This Audience", "— Worth Planning Around", "— Worth Building Into the Brief", "— Worth Watching", "— Brands Need to Act", "Key Insight:".
 
-OBSERVATION — 2 to 3 rich sentences. Tell the full story, not just the data point.
-• Sentence 1 (hook): One short, punchy sentence — the most surprising number from THIS slot. Active voice.
-  ✅ "Almost 2 in 3 Indian 18–34s now exercise three or more times a week — up nearly a quarter in four years."
-  ✅ "73% of the target audience researches on Instagram or YouTube before visiting a brand website."
-• Sentence 2 (depth): A second finding from THIS slot that shows WHY this matters or what it tells us about how this audience thinks.
-  ✅ "They are not aspiring athletes — searches for home workout and running tips have grown 89% since 2022."
-  ✅ "The average purchase journey spans 4.7 touchpoints, with social as discovery and Amazon or Myntra as conversion."
-• Sentence 3 (so-what): One plain-English sentence on what this means for a brand or media team right now.
-  ✅ "Any brand still leading with elite sport performance is missing the person who actually buys the running shoes."
-RULE: Every number must come from THIS slot's data only. Do NOT invent benchmarks or comparisons.
+OBSERVATION — 2 to 3 rich sentences. Use numbers from THIS slot's PERMITTED NUMBERS only.
+• Sentence 1 (hook): Lead with the top-ranked attribute from the slot and its audience% in plain English. Active voice.
+  FORMAT: "About [X] in [Y] of this audience [top behaviour from slot] — [N]× the national rate."
+• Sentence 2 (depth): Name the 2nd and 3rd ranked attributes from the slot with their percentages — show the full breakdown.
+  FORMAT: "[2nd attr] accounts for [its audiencePct]% while [3rd attr] adds [its audiencePct]%."
+• Sentence 3 (so-what): What does this mean for the brand? No new numbers — just the implication.
+RULE: Every number must be in the PERMITTED NUMBERS list for this slot. Do NOT invent trends, YoY growth, engagement ratios, or comparisons unless they appear in the slot data.
 
-STAT — one sentence. One number. The line a strategist would screenshot and send to their client.
-✅ "Full-price buyers are nearly twice as common here as in the average Indian household"
-✅ "Short-form video drives 4.2× more engagement here than static posts"
-✅ "3 in 4 in this group research on social before buying — more than double the national average"
+STAT — one line from THIS slot's data. The sentence a strategist would screenshot.
+FORMAT: "[plain-English fraction] [top behaviour from slot] — [N]× more common here than the national average"
 ❌ "Index 168 · Full Price behaviour" (raw index number — never write this)
 ❌ "21.8% of this audience (1.3× the national average)" (bracket-heavy, not memorable)
 Max 18 words. No brackets. No bullet points. No "Index" numbers. One crisp, memorable sentence only.
