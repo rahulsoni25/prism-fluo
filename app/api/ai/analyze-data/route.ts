@@ -308,43 +308,51 @@ function cleanAttrText(attr: string): string {
 }
 
 /**
- * Build a punchy headline-style title matching the prototype.
- * Target: newspaper-headline style, max ~12 words, one number, no filler endings.
- * e.g. "1 in 3 in This Audience Are Using Social Media Less Than Before"
- * e.g. "Young Parents Make Up Nearly 1 in 10 of This Audience"
+ * Build a directional, action-signalling headline title.
+ * Rules:
+ *   1. Always include the multiplier or percentage — one hard number per title.
+ *   2. End with a strategic gap / opportunity signal, not a neutral data statement.
+ *   3. Never use "This Audience" (anonymous) — use "Your Audience" or the behaviour itself.
+ *   4. Max ~12 words, newspaper headline rhythm.
+ *
+ * ✅ "1 in 3 of Your Audience Prefer Shopping Online — Close the Social-to-DTC Gap"
+ * ✅ "Young Parents Over-Index 2.4× Here — An Underserved High-Value Segment"
+ * ✅ "Health & Wellness Drives 1 in 4 — Lead With Fitness in Your Messaging"
+ * ❌ "1 in 3 in This Audience Are Using Social Media Less Than Before" (no direction)
+ * ❌ "Young Parents Make Up 12% of This Audience" (pure data, no signal)
  */
 function buildTitle(attr: string, pctNum: string | null, multFmt: string): string {
   const clean   = cleanAttrText(attr);
-  const short   = clean.length > 42 ? clean.slice(0, 40) + '…' : clean;
+  const short   = clean.length > 40 ? clean.slice(0, 38) + '…' : clean;
   const wasIAm  = /^I am /i.test(attr);
   const wasVerb = /^I (am |)(using|watch|buy|prefer|trust|worry|think|feel|read|listen|spend|value|choos|believ|driv|own|follow|support|creat|shar|post|play|cook|exercis|travel)/i.test(attr);
 
+  const frac = pctNum ? pctToWords(parseFloat(pctNum)) : null;
+  const fracStr = frac && !frac.startsWith('about') && !frac.startsWith('roughly') ? frac : null;
+
   if (wasIAm || wasVerb) {
-    // Use fraction notation ("1 in 3") when available, otherwise percentage
-    const frac = pctNum ? pctToWords(parseFloat(pctNum)) : null;
-    return frac && !frac.startsWith('about') && !frac.startsWith('roughly')
-      ? `${cap(frac)} in This Audience Are ${cap(short)}`
-      : pctNum
-        ? `${pctNum} of This Audience Are ${cap(short)}`
-        : `A Disproportionate Share of This Audience Is ${cap(short)}`;
+    // Verb-behaviour: state the scale + gap signal
+    if (fracStr) return `${cap(fracStr)} of Your Audience Are ${cap(short)} — ${multFmt} the National Average`;
+    if (pctNum)  return `${pctNum} of Your Audience Are ${cap(short)} — ${multFmt} the National Average`;
+    return `Your Audience Over-Indexes ${multFmt} on ${cap(short)} — A Gap Worth Closing`;
   }
 
-  // Persona (title-case, ≤ 3 words, e.g. "Young Parent", "Social Media Scroller")
+  // Persona (title-case, ≤ 3 words: "Young Parent", "Social Media Scroller")
   const words = attr.trim().split(/\s+/);
   if (words.length <= 3 && /^[A-Z]/.test(words[0])) {
     return pctNum
-      ? `${attr}s Make Up ${pctNum} of This Audience — ${multFmt} the National Average`
-      : `${attr}s Are ${multFmt} More Common Here Than the National Average Suggests`;
+      ? `${attr}s Are ${pctNum} of Your Audience — ${multFmt} the National Average`
+      : `${attr}s Over-Index ${multFmt} Here — High-Value, Underserved Segment`;
   }
 
-  // Topic / interest — lead with the number, not the attribute name
-  const frac2 = pctNum ? pctToWords(parseFloat(pctNum)) : null;
-  if (frac2 && !frac2.startsWith('about') && !frac2.startsWith('roughly')) {
-    return `${cap(frac2)} Prioritise ${cap(short)} — ${multFmt} the National Average`;
+  // Topic / interest — make the number lead, end with the strategic signal
+  if (fracStr) {
+    return `${cap(fracStr)} Prioritise ${cap(short)} — ${multFmt} the National Average`;
   }
-  return pctNum
-    ? `${pctNum} of This Audience Prioritise ${cap(short)} — ${multFmt} the National Average`
-    : `${cap(short)} Is ${multFmt} More Common Here Than in the General Population`;
+  if (pctNum) {
+    return `${pctNum} Prioritise ${cap(short)} — ${multFmt} Over the National Average`;
+  }
+  return `${cap(short)} Is ${multFmt} More Prevalent Here — Build It Into Your Strategy`;
 }
 
 /**

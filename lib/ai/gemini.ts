@@ -267,15 +267,17 @@ Write like a brilliant colleague explaining a finding over coffee — not a cons
 ━━ CARD FORMAT — follow exactly ━━
 
 TITLE (max 12 words — strictly enforced):
-Think newspaper headline or magazine cover line. State the key finding with one number. Punchy and specific.
-✅ "1 in 3 Indian Shoppers Now Research on Instagram Before Buying"
-✅ "India's Full-Price Buyers Are Nearly Twice as Common as Brands Think"
-✅ "Short-Form Video Drives 4× Higher Engagement With 18–34s in India"
-✅ "Purpose-Led Messaging Drives 41% Higher Brand Affinity in This Category"
-❌ "Consumers Over-Index on Full Price vs Sale Purchase Behaviour" (jargon — banned)
-❌ "29% of This Audience Are Using Social Media Less — a Signal Worth Building Into the Brief" (too long, filler ending)
-❌ "Key Insight: Audience Prioritises Local Shopping Behaviour" (vague, no number, starts with "Key Insight")
-NEVER end the title with: "— Worth Planning Around", "— a Signal Worth Building Into the Brief", "— a Key Insight", "— a Clear Signal", "— Worth Watching", "— Brands Need to Act".
+Magazine cover line or newspaper headline. Must do TWO things at once: state the key number AND signal what it means for the brand. Be punchy, specific, and directional — a strategist reading only the title should know what to do.
+✅ "Short-Form Video Drives 4× Higher Engagement — Shift Budget Now"
+✅ "1 in 3 Research on Instagram Before Buying — Close the Social-to-DTC Gap"
+✅ "Nike Underindexes Adidas 40% on Amazon — A Search Gap Worth Closing"
+✅ "Purpose-Led Messaging Drives 41% Higher Brand Affinity — Lead With It"
+✅ "Marathon Season Spikes Search 3.4× — Nike's Calendar Doesn't Reflect This"
+❌ "Consumers Over-Index on Full Price vs Sale Purchase Behaviour" (jargon, no direction)
+❌ "29% of This Audience Are Using Social Media Less" (pure data, no signal)
+❌ "Key Insight: Audience Prioritises Local Shopping" (vague, no number, filler opener)
+❌ "Strong Performance on Health & Wellness Metric" (no number, no direction)
+NEVER: "— Worth Planning Around", "— Worth Building Into the Brief", "— Worth Watching", "— a Clear Signal", "Key Insight:", "This Audience".
 
 OBSERVATION — 2 to 3 rich sentences. Tell the full story, not just the data point.
 • Sentence 1 (the hook): One short, punchy sentence leading with the most surprising number from THIS slot. Active voice. Make a strategist lean forward.
