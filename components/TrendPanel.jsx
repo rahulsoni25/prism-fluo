@@ -13,15 +13,202 @@ function seededRand(str) {
   return () => { s = (s * 1664525 + 1013904223) | 0; return (s >>> 0) / 0xffffffff; };
 }
 
+/* ── Pre-seeded realistic data for key brands ───────────────────────────────
+ * Values are hand-crafted to match the prototype insights narrative.
+ * Dates are computed dynamically (always relative to today). */
+const PRESET_TRENDS = {
+  'nike india': {
+    // Mirrors prototype: everyday fitness rising, marathon season spikes,
+    // strong brand search — steady uptrend from 62 → 91
+    values: [62, 58, 65, 61, 68, 72, 70, 76, 74, 81, 85, 88, 91],
+    trend: 'rising',
+    topQueries: [
+      { query: 'nike shoes india', value: 100 },
+      { query: 'nike air max india', value: 87 },
+      { query: 'nike running shoes india', value: 79 },
+      { query: 'nike india website', value: 71 },
+      { query: 'nike dri-fit india', value: 64 },
+      { query: 'nike sneakers india', value: 58 },
+    ],
+    risingQueries: [
+      { query: 'nike air force 1 india 2025', value: 5000, isBreakout: true },
+      { query: 'nike dunk low india',         value: 380,  isBreakout: false },
+      { query: 'nike just do it campaign',    value: 260,  isBreakout: false },
+      { query: 'nike basketball shoes india', value: 190,  isBreakout: false },
+    ],
+    relatedTopics: [
+      { topic: 'Adidas', type: 'Brand' },
+      { topic: 'Running', type: 'Topic' },
+      { topic: 'Fitness', type: 'Topic' },
+      { topic: 'Puma', type: 'Brand' },
+    ],
+  },
+
+  'loreal paris': {
+    // Rising beauty market in India: skincare surging, hair care stable
+    values: [55, 58, 61, 59, 64, 68, 66, 71, 74, 70, 77, 82, 86],
+    trend: 'rising',
+    topQueries: [
+      { query: "l'oreal paris serum india",       value: 100 },
+      { query: "l'oreal paris revitalift",         value: 91 },
+      { query: "l'oreal paris hair colour",        value: 83 },
+      { query: "l'oreal paris shampoo",            value: 76 },
+      { query: "l'oreal paris foundation",         value: 68 },
+      { query: "l'oreal paris moisturiser india",  value: 61 },
+    ],
+    risingQueries: [
+      { query: "l'oreal paris hyaluronic acid serum", value: 5000, isBreakout: true },
+      { query: "l'oreal paris 1.5% pure ha",          value: 420,  isBreakout: true },
+      { query: "l'oreal paris men expert india",       value: 290,  isBreakout: false },
+      { query: "l'oreal paris skincare routine 2025",  value: 210,  isBreakout: false },
+    ],
+    relatedTopics: [
+      { topic: 'Maybelline', type: 'Brand' },
+      { topic: 'Skincare', type: 'Topic' },
+      { topic: "L'Oréal Group", type: 'Brand' },
+      { topic: 'Serum', type: 'Topic' },
+    ],
+  },
+
+  'zomato': {
+    values: [71, 68, 74, 79, 77, 82, 86, 80, 85, 88, 84, 90, 87],
+    trend: 'rising',
+    topQueries: [
+      { query: 'zomato app',           value: 100 },
+      { query: 'zomato order online',  value: 89 },
+      { query: 'zomato pro',           value: 77 },
+      { query: 'zomato offers today',  value: 68 },
+      { query: 'zomato customer care', value: 60 },
+      { query: 'zomato gold',          value: 54 },
+    ],
+    risingQueries: [
+      { query: 'zomato blinkit',           value: 5000, isBreakout: true },
+      { query: 'zomato 10 min delivery',   value: 340,  isBreakout: false },
+      { query: 'zomato hyperpure',         value: 220,  isBreakout: false },
+      { query: 'zomato live order track',  value: 180,  isBreakout: false },
+    ],
+    relatedTopics: [
+      { topic: 'Swiggy', type: 'Brand' },
+      { topic: 'Blinkit', type: 'Brand' },
+      { topic: 'Food Delivery', type: 'Topic' },
+    ],
+  },
+
+  'ipl 2025': {
+    values: [45, 52, 61, 58, 68, 74, 88, 92, 95, 100, 97, 89, 82],
+    trend: 'rising',
+    topQueries: [
+      { query: 'ipl 2025 schedule',     value: 100 },
+      { query: 'ipl 2025 teams list',   value: 94 },
+      { query: 'ipl points table 2025', value: 88 },
+      { query: 'ipl 2025 live score',   value: 81 },
+      { query: 'ipl 2025 auction',      value: 72 },
+      { query: 'ipl streaming 2025',    value: 65 },
+    ],
+    risingQueries: [
+      { query: 'ipl 2025 winner',        value: 5000, isBreakout: true },
+      { query: 'ipl 2025 tickets',       value: 460,  isBreakout: false },
+      { query: 'ipl 2025 new players',   value: 310,  isBreakout: false },
+      { query: 'ipl 2025 final date',    value: 240,  isBreakout: false },
+    ],
+    relatedTopics: [
+      { topic: 'BCCI', type: 'Organization' },
+      { topic: 'Cricket', type: 'Sport' },
+      { topic: 'Mumbai Indians', type: 'Team' },
+      { topic: 'JioCinema', type: 'Brand' },
+    ],
+  },
+
+  'blinkit': {
+    values: [55, 58, 62, 60, 66, 71, 68, 74, 78, 72, 80, 83, 85],
+    trend: 'rising',
+    topQueries: [
+      { query: 'blinkit app download',  value: 100 },
+      { query: 'blinkit delivery time', value: 88 },
+      { query: 'blinkit near me',       value: 79 },
+      { query: 'blinkit offers',        value: 70 },
+      { query: 'blinkit grocery',       value: 62 },
+      { query: 'blinkit franchise',     value: 51 },
+    ],
+    risingQueries: [
+      { query: 'blinkit vs zepto',          value: 5000, isBreakout: true },
+      { query: 'blinkit 10 min delivery',   value: 390,  isBreakout: false },
+      { query: 'blinkit dark store model',  value: 230,  isBreakout: false },
+      { query: 'blinkit new cities 2025',   value: 170,  isBreakout: false },
+    ],
+    relatedTopics: [
+      { topic: 'Zepto', type: 'Brand' },
+      { topic: 'Swiggy Instamart', type: 'Brand' },
+      { topic: 'Quick Commerce', type: 'Topic' },
+    ],
+  },
+
+  'zepto': {
+    values: [42, 46, 51, 48, 54, 58, 56, 62, 66, 61, 68, 71, 74],
+    trend: 'rising',
+    topQueries: [
+      { query: 'zepto app',             value: 100 },
+      { query: 'zepto delivery',        value: 86 },
+      { query: 'zepto near me',         value: 74 },
+      { query: 'zepto grocery offers',  value: 65 },
+      { query: 'zepto café',            value: 57 },
+      { query: 'zepto franchise',       value: 48 },
+    ],
+    risingQueries: [
+      { query: 'zepto vs blinkit',        value: 5000, isBreakout: true },
+      { query: 'zepto 10 min delivery',   value: 360,  isBreakout: false },
+      { query: 'zepto café menu',         value: 280,  isBreakout: false },
+      { query: 'zepto new cities 2025',   value: 190,  isBreakout: false },
+    ],
+    relatedTopics: [
+      { topic: 'Blinkit', type: 'Brand' },
+      { topic: 'Quick Commerce', type: 'Topic' },
+      { topic: 'Aadit Palicha', type: 'Person' },
+    ],
+  },
+};
+
+/* ── Helper: build timeline array with real relative dates ────────────────── */
+function buildTimeline(values) {
+  const now = new Date();
+  return values.map((value, i) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - (values.length - 1 - i) * 7);
+    return { date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value };
+  });
+}
+
 /* ── Generate realistic-looking Google Trends data for any keyword ──────────
- * Used as an instant fallback when Google rate-limits the server. */
+ * Checks PRESET_TRENDS first; falls back to seeded-random for unknown keywords. */
 function generateDemoTrends(keyword) {
+  // Normalise common aliases so chip labels match preset keys
+  const ALIASES = { "l'oréal paris": 'loreal paris', 'loreal': 'loreal paris', "l'oreal paris": 'loreal paris' };
+  const kl     = keyword.toLowerCase().trim();
+  const preset = PRESET_TRENDS[ALIASES[kl] ?? kl];
+
+  if (preset) {
+    const timeline = buildTimeline(preset.values);
+    const peak     = timeline.reduce((b, p) => p.value > b.value ? p : b);
+    return {
+      keyword, geo: 'IN', period: 'today 3-m',
+      timeline,
+      topQueries:    preset.topQueries,
+      risingQueries: preset.risingQueries,
+      relatedTopics: preset.relatedTopics ?? [],
+      peakWeek: peak.date, peakValue: peak.value,
+      trend: preset.trend,
+      dataPoints: timeline.length,
+      fetchedAt: new Date().toISOString(),
+      isDemo: true,
+    };
+  }
+
+  // ── Fallback: seeded-random for any other keyword ──
   const rand  = seededRand(keyword);
-  const base  = 38 + Math.round(rand() * 42);          // 38–80 starting interest
-  const slope = (rand() - 0.35) * 3;                   // −1.05 … +1.95 per week
+  const base  = 38 + Math.round(rand() * 42);
+  const slope = (rand() - 0.35) * 3;
   const now   = new Date();
 
-  // 13 weeks of weekly interest (0–100)
   const timeline = Array.from({ length: 13 }, (_, i) => {
     const d = new Date(now); d.setDate(d.getDate() - (12 - i) * 7);
     const noise = (rand() - 0.45) * 14;
@@ -35,17 +222,13 @@ function generateDemoTrends(keyword) {
   const diff  = avg(timeline.slice(half)) - avg(timeline.slice(0, half));
   const trend = diff > 6 ? 'rising' : diff < -6 ? 'falling' : 'stable';
 
-  // Related queries — brand-specific suffixes seeded by keyword
   const TOP_SFX    = ['app', 'near me', 'offers', 'customer care', 'delivery', 'order', 'login', 'download'];
   const RISING_SFX = ['2025', 'new launch', 'review', 'vs', 'free delivery'];
-  const kl = keyword.toLowerCase();
   const topQueries    = TOP_SFX.slice(0, 6).map((s, i) => ({
     query: `${kl} ${s}`, value: Math.max(10, Math.round(100 - i * 11 - rand() * 9)),
   }));
   const risingQueries = RISING_SFX.slice(0, 4).map(s => ({
-    query: `${kl} ${s}`,
-    value: Math.round(120 + rand() * 280),
-    isBreakout: rand() > 0.72,
+    query: `${kl} ${s}`, value: Math.round(120 + rand() * 280), isBreakout: rand() > 0.72,
   }));
 
   return {
@@ -54,7 +237,7 @@ function generateDemoTrends(keyword) {
     peakWeek: peak.date, peakValue: peak.value,
     trend, dataPoints: timeline.length,
     fetchedAt: new Date().toISOString(),
-    isDemo: true,   // flag — show subtle "indicative" badge
+    isDemo: true,
   };
 }
 
@@ -309,7 +492,7 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
         {/* Quick examples */}
         {!trendsData && !loadingT && (
           <div className="chips" style={{ marginTop: 10 }}>
-            {['Nike India', 'Zomato', 'IPL 2025', 'Blinkit', 'Zepto'].map(s => (
+            {['Nike India', "L'Oréal Paris", 'Zomato', 'IPL 2025', 'Blinkit', 'Zepto'].map(s => (
               <button key={s} className="chip"
                 onClick={() => { setInput(s); fetchTrends(s); }}>
                 {s}
