@@ -144,7 +144,7 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
           setRateLimited(true);
           // Clear any previous timer before scheduling a new one
           if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-          retryTimerRef.current = setTimeout(() => fetchTrends(kw, attempt + 1), 20_000);
+          retryTimerRef.current = setTimeout(() => fetchTrends(kw, attempt + 1), 8_000);
         } else {
           // All retries exhausted — show a gentle non-alarming note, not a red error
           setRateLimited(false);

@@ -52,6 +52,10 @@ const BROWSER_HEADERS = {
   'Referer':         'https://trends.google.com/',
 };
 
+// ── Per-call timeout: short so we fail-fast instead of hanging ──
+const CALL_TIMEOUT_MS = 6000;   // 6 s per individual Google call
+const TOTAL_TIMEOUT_MS = 9000;  // 9 s total wall-clock budget
+
 // ── Step 1: Get explore tokens ────────────────────────────────
 async function getWidgetTokens(keyword: string, geo: string, period: string) {
   const req = JSON.stringify({
@@ -61,7 +65,7 @@ async function getWidgetTokens(keyword: string, geo: string, period: string) {
   });
 
   const url = `https://trends.google.com/trends/api/explore?hl=en-US&tz=-330&req=${encodeURIComponent(req)}&tz=-330`;
-  const res  = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(15000) });
+  const res  = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Explore fetch failed: ${res.status}`);
 
   const text = await res.text();
@@ -80,7 +84,7 @@ async function fetchTimeSeries(widget: any, keyword: string, geo: string, period
   });
 
   const url = `https://trends.google.com/trends/api/widgetdata/multiline?hl=en-US&tz=-330&req=${encodeURIComponent(req)}&token=${widget.token}&tz=-330`;
-  const res  = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(15000) });
+  const res  = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
   if (!res.ok) return [];
 
   const text = await res.text();
@@ -101,7 +105,7 @@ async function fetchRelatedQueries(widget: any) {
   });
 
   const url = `https://trends.google.com/trends/api/widgetdata/relatedsearches?hl=en-US&tz=-330&req=${encodeURIComponent(req)}&token=${widget.token}&tz=-330`;
-  const res  = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(15000) });
+  const res  = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
   if (!res.ok) return { top: [], rising: [] };
 
   const text  = await res.text();
@@ -129,7 +133,7 @@ async function fetchRelatedTopics(widget: any) {
   });
 
   const url = `https://trends.google.com/trends/api/widgetdata/relatedsearches?hl=en-US&tz=-330&req=${encodeURIComponent(req)}&token=${widget.token}&tz=-330`;
-  const res  = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(15000) });
+  const res  = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
   if (!res.ok) return [];
 
   const text  = await res.text();
@@ -183,17 +187,42 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const widgets = await getWidgetTokens(q, geo, period);
+    // Race the entire fetch against a hard wall-clock limit.
+    // If Google is slow, we return stale cache (if any) or a demo skeleton
+    // instead of hanging for up to 30 s.
+    const fetchAll = async () => {
+      const widgets = await getWidgetTokens(q, geo, period);
 
-    const timeWidget  = widgets.find((w: any) => w.id === 'TIMESERIES');
-    const queryWidget = widgets.find((w: any) => w.id === 'RELATED_QUERIES');
-    const topicWidget = widgets.find((w: any) => w.id === 'RELATED_TOPICS');
+      const timeWidget  = widgets.find((w: any) => w.id === 'TIMESERIES');
+      const queryWidget = widgets.find((w: any) => w.id === 'RELATED_QUERIES');
+      const topicWidget = widgets.find((w: any) => w.id === 'RELATED_TOPICS');
 
-    const [timeline, queries, topics] = await Promise.allSettled([
-      timeWidget  ? fetchTimeSeries(timeWidget, q, geo, period) : Promise.resolve([]),
-      queryWidget ? fetchRelatedQueries(queryWidget)            : Promise.resolve({ top: [], rising: [] }),
-      topicWidget ? fetchRelatedTopics(topicWidget)             : Promise.resolve([]),
-    ]);
+      const [timeline, queries, topics] = await Promise.allSettled([
+        timeWidget  ? fetchTimeSeries(timeWidget, q, geo, period) : Promise.resolve([]),
+        queryWidget ? fetchRelatedQueries(queryWidget)            : Promise.resolve({ top: [], rising: [] }),
+        topicWidget ? fetchRelatedTopics(topicWidget)             : Promise.resolve([]),
+      ]);
+
+      return { timeline, queries, topics };
+    };
+
+    const timeout = new Promise<null>(resolve =>
+      setTimeout(() => resolve(null), TOTAL_TIMEOUT_MS)
+    );
+
+    const result = await Promise.race([fetchAll(), timeout]);
+
+    // Timed out — serve stale cache or 429 so client shows demo state
+    if (!result) {
+      const stale = cache.getStale<object>(key);
+      if (stale) return NextResponse.json({ ...stale, stale: true, cached: true });
+      return NextResponse.json(
+        { error: 'Google Trends temporarily unavailable — please try again shortly.', captcha: true, keyword: q },
+        { status: 429 },
+      );
+    }
+
+    const { timeline, queries, topics } = result as any;
 
     const tl      = timeline.status === 'fulfilled' ? timeline.value : [];
     const qr      = queries.status  === 'fulfilled' ? queries.value  : { top: [], rising: [] };
