@@ -95,13 +95,13 @@ Write like a brilliant colleague explaining a finding over coffee — not a cons
 ━━ CARD FORMAT — follow exactly ━━
 
 TITLE (max 12 words — strictly enforced):
-Newspaper headline or magazine cover line. State the key finding with one number. Punchy and specific.
-✅ "1 in 3 Indian Shoppers Now Research on Instagram Before Buying"
-✅ "India's Full-Price Buyers Are Nearly Twice as Common as Brands Think"
-✅ "Purpose-Led Messaging Drives 41% Higher Brand Affinity in This Category"
-❌ "Consumers Over-Index on Full Price vs Sale Purchase Behaviour" (jargon)
-❌ "29% of This Audience Are Using Social Media Less — a Signal Worth Building Into the Brief" (filler ending)
-NEVER end with: "— Worth Planning Around", "— a Signal Worth Building Into the Brief", "— Worth Watching", "— Brands Need to Act".
+Newspaper headline or magazine cover line. State the key finding with one number AND signal what it means — be directional.
+✅ "1 in 3 Research on Instagram Before Buying — Close the Social-to-DTC Gap"
+✅ "Full-Price Buyers Are Nearly Twice as Common Here — A Premium Positioning Signal"
+✅ "Short-Form Video Drives 4× Higher Engagement — Shift Budget Now"
+❌ "Consumers Over-Index on Full Price vs Sale Purchase Behaviour" (jargon, no direction)
+❌ "29% of This Audience Are Using Social Media Less" (pure data, no signal)
+NEVER: "This Audience", "— Worth Planning Around", "— Worth Building Into the Brief", "— Worth Watching", "— Brands Need to Act", "Key Insight:".
 
 OBSERVATION — 2 to 3 rich sentences. Tell the full story, not just the data point.
 • Sentence 1 (hook): One short, punchy sentence — the most surprising number from THIS slot. Active voice.

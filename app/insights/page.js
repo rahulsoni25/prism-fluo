@@ -929,7 +929,7 @@ function enrichWithBaseline(data) {
   return {
     ...data,
     datasets: [
-      { ...ds, label: ds.label || 'This Audience' },
+      { ...ds, label: ds.label || 'Your Audience' },
       {
         label: 'Category Avg',
         data: benchmarks,
