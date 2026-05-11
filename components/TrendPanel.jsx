@@ -4,7 +4,7 @@
  * Uses the PRISM design system (globals.css) — no custom inline styles.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ── Tiny SVG sparkline (only component that needs inline SVG geometry) ──
 function Sparkline({ points, color = 'var(--primary)' }) {
@@ -103,31 +103,65 @@ function InsightCard({ card }) {
 
 // ── Main TrendPanel ────────────────────────────────────────────
 export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
-  const [input,      setInput]      = useState(defaultKeyword);
-  const [trendsData, setTrendsData] = useState(null);
-  const [insights,   setInsights]   = useState(null);
-  const [loadingT,   setLoadingT]   = useState(false);
-  const [loadingI,   setLoadingI]   = useState(false);
-  const [errorT,     setErrorT]     = useState('');
-  const [errorI,     setErrorI]     = useState('');
-  const [activeTab,  setActiveTab]  = useState('chart');
+  const [input,        setInput]        = useState(defaultKeyword);
+  const [trendsData,   setTrendsData]   = useState(null);
+  const [insights,     setInsights]     = useState(null);
+  const [loadingT,     setLoadingT]     = useState(false);
+  const [loadingI,     setLoadingI]     = useState(false);
+  const [errorT,       setErrorT]       = useState('');
+  const [errorI,       setErrorI]       = useState('');
+  const [activeTab,    setActiveTab]    = useState('chart');
+  const [rateLimited,  setRateLimited]  = useState(false); // silent retry state
+  const retryTimerRef = useRef(null);
 
-  const fetchTrends = useCallback(async (kw) => {
+  const fetchTrends = useCallback(async (kw, attempt = 0) => {
     if (!kw?.trim()) return;
-    setLoadingT(true); setErrorT(''); setTrendsData(null); setInsights(null); setErrorI('');
+    // First attempt: clear everything. Retries keep existing state quiet.
+    if (attempt === 0) {
+      setLoadingT(true);
+      setErrorT('');
+      setRateLimited(false);
+      setTrendsData(null);
+      setInsights(null);
+      setErrorI('');
+    }
     try {
       const res  = await fetch(`/api/trends?q=${encodeURIComponent(kw)}&geo=IN&period=today%203-m`);
       const data = await res.json();
+
       // Stale-while-revalidate: server was rate-limited but returned cached data
       if (data.stale && data.timeline) {
         setTrendsData({ ...data, stale: true });
+        setRateLimited(false);
+        setLoadingT(false);
         return;
       }
+
+      // Rate-limited and no cache — silently retry up to 2 times (20 s apart)
+      if (!res.ok && data.captcha) {
+        setLoadingT(false);
+        if (attempt < 2) {
+          setRateLimited(true);
+          // Clear any previous timer before scheduling a new one
+          if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = setTimeout(() => fetchTrends(kw, attempt + 1), 20_000);
+        } else {
+          // All retries exhausted — show a gentle non-alarming note, not a red error
+          setRateLimited(false);
+          setErrorT('__quota__');
+        }
+        return;
+      }
+
       if (!res.ok) throw new Error(data.error || 'Trends fetch failed');
+      setRateLimited(false);
       setTrendsData(data);
-    } catch (e) { setErrorT(e.message); }
-    finally { setLoadingT(false); }
-  }, []);
+    } catch (e) {
+      setErrorT(e.message);
+    } finally {
+      setLoadingT(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchInsights = useCallback(async (td) => {
     if (!td) return;
@@ -233,11 +267,30 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
         )}
       </div>
 
-      {/* ── Error ── */}
-      {errorT && (
+      {/* ── Rate-limit silent retry indicator (no red alarm) ── */}
+      {rateLimited && !loadingT && (
+        <div style={{ margin: '16px 24px', background: '#F8FAFC', border: '1px solid #E2E8F0',
+          borderRadius: 10, padding: '12px 14px', fontSize: 12, color: '#64748B',
+          display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ animation: 'spin 1.2s linear infinite', display: 'inline-block' }}>⟳</span>
+          Fetching live trends data — checking shortly…
+        </div>
+      )}
+
+      {/* ── Hard errors only (non-rate-limit failures) ── */}
+      {errorT && errorT !== '__quota__' && (
         <div style={{ margin: '16px 24px', background: '#FEF2F2', border: '1px solid #FECACA',
           borderRadius: 10, padding: '12px 14px', fontSize: 12, color: '#991B1B' }}>
           ⚠ {errorT}
+        </div>
+      )}
+
+      {/* ── Quota exhausted after retries — subtle neutral note ── */}
+      {errorT === '__quota__' && (
+        <div style={{ margin: '16px 24px', background: '#F8FAFC', border: '1px solid #E2E8F0',
+          borderRadius: 10, padding: '12px 14px', fontSize: 12, color: '#94A3B8',
+          textAlign: 'center' }}>
+          📊 Live trend data is loading — try searching again in a few minutes
         </div>
       )}
 
