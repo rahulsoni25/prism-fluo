@@ -828,7 +828,7 @@ function NikeInsights() {
             >
               <div className="ic-header">
                 <span className="ic-source">{insight.source}</span>
-                <span className="ic-confidence">● {insight.confidence}% confidence</span>
+                <ConfidenceBadge confidence={insight.confidence} />
               </div>
               <div className="ic-title">{insight.title}</div>
 
@@ -873,14 +873,86 @@ function chartHasContent(data) {
   return ds.data.some(v => Number(v) > 0);
 }
 
+/* ─── Confidence badge with hover tooltip ─── */
+function ConfidenceBadge({ confidence }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span
+      className="ic-confidence"
+      style={{ position: 'relative', cursor: 'default' }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      ● {confidence}% confidence
+      {show && (
+        <span style={{
+          position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+          width: 272, background: '#0F172A', color: '#E2E8F0',
+          fontSize: 11, lineHeight: 1.6, padding: '12px 14px',
+          borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
+          zIndex: 200, whiteSpace: 'normal', textAlign: 'left',
+          fontWeight: 400, letterSpacing: 0,
+        }}>
+          <strong style={{ display: 'block', marginBottom: 6, fontSize: 11.5, color: '#7DD3FC', fontWeight: 700 }}>
+            PRISM Confidence Score
+          </strong>
+          Calculated from three weighted factors:
+          <ul style={{ margin: '6px 0 8px 14px', padding: 0, listStyle: 'disc', color: '#CBD5E1', fontSize: 10.5 }}>
+            <li>Data source quality — sample size, recency &amp; coverage</li>
+            <li>Signal strength — statistical significance &amp; effect size</li>
+            <li>Cross-source corroboration — independent sources in agreement</li>
+          </ul>
+          <span style={{ opacity: 0.65, fontSize: 10.5 }}>
+            90–100% high conviction · 80–89% moderate · 70–79% emerging
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/* ─── Add a dashed "Category Avg" reference line to single-series bar/hbar ───
+ * Gives every bar chart a built-in comparison baseline so the chart reads
+ * as analysis (above/below average) rather than a plain data dump.
+ * Only applied when there is exactly ONE dataset (no AI-generated comparison). */
+function enrichWithBaseline(data) {
+  if (!data?.datasets || data.datasets.length !== 1) return data;
+  const ds = data.datasets[0];
+  if (!Array.isArray(ds?.data) || ds.data.length < 3) return data;
+  if (typeof ds.data[0] !== 'number') return data; // scatter uses {x,y}
+  const nums = ds.data.map(Number).filter(v => !isNaN(v) && v > 0);
+  if (nums.length < 2) return data;
+  const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+  const rounded = Math.round(mean * 10) / 10;
+  return {
+    ...data,
+    datasets: [
+      ds,
+      {
+        label: 'Category Avg',
+        data: ds.data.map(() => rounded),
+        type: 'line',
+        borderColor: 'rgba(148,163,184,0.65)',
+        borderWidth: 1.5,
+        borderDash: [5, 4],
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        fill: false,
+        order: 0,
+        tension: 0,
+      },
+    ],
+  };
+}
+
 /* ─── Saved analysis detail view ─── */
 function ApiChartRenderer({ chart }) {
   const data = chart.computedChartData;
   if (!chartHasContent(data)) return null;
   let chartEl = null;
   switch (chart.type) {
-    case 'bar':       chartEl = <ChartBar       data={data} />; break;
-    case 'hbar':      chartEl = <ChartHBar      data={data} />; break;
+    case 'bar':       chartEl = <ChartBar       data={enrichWithBaseline(data)} />; break;
+    case 'hbar':      chartEl = <ChartHBar      data={enrichWithBaseline(data)} />; break;
     case 'line':      chartEl = <ChartLine      data={data} />; break;
     case 'area':      chartEl = <ChartArea      data={data} />; break;
     case 'pie':       chartEl = <ChartPie       data={data} />; break;
@@ -1148,7 +1220,7 @@ function AnalysisDetail({ id }) {
                     <AnimatedCard key={`${currentBucket}-${i}`} index={i} bucketCls={sectionMeta.cls}>
                       <div className="ic-header">
                         <span className="ic-source">{cardSource}</span>
-                        <span className="ic-confidence">● {confidence}% confidence</span>
+                        <ConfidenceBadge confidence={confidence} />
                       </div>
                       <div className="ic-title">{chart.title}</div>
                       {chartHasContent(chart.computedChartData) && (
