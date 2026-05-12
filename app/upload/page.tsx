@@ -681,9 +681,11 @@ function UploadDataInner() {
         const { charts, uploadId, overview } = await processFile(entries[i], existingOffset + i);
         if (i === 0) batchFirstUploadId = uploadId;
         batchCharts.push(...charts);
-        // Capture the first non-empty overview from this batch.
-        if (overview?.headline && !analysisOverview) {
-          setAnalysisOverview(overview);
+        // Capture the first non-empty overview from this run.
+        // Functional setState avoids the stale-closure bug across files in a batch
+        // and across multiple batches in the same upload session.
+        if (overview?.headline) {
+          setAnalysisOverview(prev => prev ?? overview);
         }
       }
 
