@@ -51,7 +51,14 @@ function questionBucket(q: string): DataSlot['bucket'] {
     /purchase|buy|shop|price|retailer|\bsale\b|ecomm|product.research|familiarity|purchase.driver|in.store|online.brand/.test(t) ||
     /income|mortgage|grocer|financ|saving|loan|credit|subscript|afford|discount|voucher|cashback/.test(t) ||
     /loyalty.prog|reward.point|consumer.confid|disposable|spend.habit|money.manage|financial.attit/.test(t) ||
-    /\beco\b|product.categor|brand.switch|value.for.money|deal.seek/.test(t)
+    /\beco\b|product.categor|brand.switch|value.for.money|deal.seek/.test(t) ||
+    // Payment + spending-behaviour trade-offs (Cash vs Card, Save Up vs Sacrifice)
+    /cash.vs.card|pay.in.cash|pay.without|payment.method|cash.or.card/.test(t) ||
+    /save.up.vs|sacrifice.spend|save.up.to.buy|sacrifice.other.spend/.test(t) ||
+    // Acquisition mode (Ownership vs Access)
+    /ownership.vs.access|own.vs.rent|rent.vs.buy|access.over.ownership|subscription.vs.purchase/.test(t) ||
+    // Purchase preference (Products vs Experiences)
+    /products?.vs.experiences?|experiential.spend|spend.on.experiences|experiences.over.product/.test(t)
   ) return 'commerce';
 
   // ── CULTURE — demographics, attitudes, lifestyle, values, identity ─────────
@@ -61,7 +68,13 @@ function questionBucket(q: string): DataSlot['bucket'] {
     /fitness|\bsport|\bexercis|\bhealth\b|food.habit|drink.habit|\btravel\b|holiday|vacation/.test(t) ||
     /fashion|style|\bbeauty\b|grooming|environment|sustainab|social.issue|politic|religion|spirit/.test(t) ||
     /community|education|\bcareer|work.life|life.goal|parenting|identity|demograph|hobbi/.test(t) ||
-    /luxury.attit|social.cause|personal.value|cultural.identity|self.image/.test(t)
+    /luxury.attit|social.cause|personal.value|cultural.identity|self.image/.test(t) ||
+    // Identity + self-perception questions (Character Describes Consumer, Self-Perceptions)
+    /character.describ|describes.consumer|self.percep|self.descrip|self.identif|how.you.see.yourself/.test(t) ||
+    // Socio-economic class as a demographic identifier
+    /socio.econom|socioeconomic|sec.class|sec.segment|class.segment|income.tier|income.bracket/.test(t) ||
+    // Outlook + life satisfaction (Future Outlook Get Better/Worse)
+    /future.outlook|outlook.get|outlook.improve|life.outlook|world.outlook|optimis|pessimis|life.satisfact/.test(t)
   ) return 'culture';
 
   // ── SEARCH — keyword research, SEO/SEM, search analytics ─────────────────
