@@ -337,6 +337,23 @@ Each recommendation must clearly follow from the Observation and push the brief 
   If you describe a comparison in your obs or title, you MUST provide chartValues2 + chartSeries.
 • type: start with the chartSuggestion from THIS slot — override only if a better type is obvious
 
+━━ MANDATORY CHART-TYPE RULES (no fallback — apply BEFORE the guide below) ━━
+RULE A — BINARY TRADE-OFF → doughnut:
+  If the slot has exactly 2 attributes whose Audience % sum to ~100 (a trade-off
+  question like "Shop in-store vs Shop online", "Pay in cash vs Pay without using cash",
+  "Pay less for cheaper own-brand vs Pay more for a brand you know"), set type to "doughnut".
+  NEVER use hbar/bar for a binary trade-off — two-slice bars look weak; a doughnut reads
+  instantly as "she sides with X, not Y".
+
+RULE B — PERSONAS / SEGMENTATION → radar:
+  If the slot question contains "Persona", "Segmentation", "Describes Consumer",
+  "Self-Perception", or "Character Describes", AND has 5–8 attributes, set type to "radar".
+  Also set chartValues2 to an array of 100s with the same length as chartLabels (the
+  national index baseline), and chartSeries to ["Audience %", "National baseline"].
+  This lets the radar plot the audience profile against the neutral national average.
+
+These two rules ALWAYS win over the guide below.
+
 CHART TYPE GUIDE (choose the best visual for this insight):
 • hbar       → ranked lists, long category names (5–12 items) — default for audience data
 • bar        → short-label comparisons (3–8 items, vertical)

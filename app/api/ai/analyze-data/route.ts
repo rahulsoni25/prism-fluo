@@ -115,6 +115,24 @@ function suggestChart(
 ): DataSlot['chartSuggestion'] {
   const q = question.toLowerCase();
 
+  // ── MANDATORY MAPPING RULES (top priority — no fallback) ──────────────
+
+  // Rule A: Binary trade-off → doughnut.
+  // Two attributes whose Audience % sum to ~100 (e.g. "Shop in-store" vs "Shop online",
+  // "Pay in cash" vs "Pay without using cash"). Two-slice bars look weak; a doughnut
+  // reads instantly as "she sides with X, not Y".
+  if (rowCount === 2) {
+    const sum = (rows[0]?.audiencePct ?? 0) + (rows[1]?.audiencePct ?? 0);
+    if (sum >= 95 && sum <= 105) return 'doughnut';
+  }
+
+  // Rule B: Personas / segmentation → radar.
+  // 5–8 attributes that describe segments, personas, or self-perception axes.
+  // Plots the audience profile across all axes simultaneously.
+  if (/persona|segmentation|describes consumer|self.perception|character describes/i.test(q)
+      && rowCount >= 5 && rowCount <= 8)
+    return 'radar';
+
   // ── Semantic overrides (question topic takes priority) ──────────────────
 
   // Purchase / conversion journey  → funnel (stages narrowing to outcome)
@@ -676,6 +694,46 @@ const CORE_BUCKETS = ['content', 'commerce', 'communication', 'culture'] as cons
 const ALL_BUCKET_KEYS = ['content', 'commerce', 'communication', 'culture',
                          'channel', 'media', 'creative', 'pricing', 'search'] as const;
 
+// ── Mandatory chart-type enforcement (Rule A + B, no fallback) ───────────
+// Applied to every card BEFORE rebalanceCards — works for Gemini, OpenRouter,
+// and the pure-data fallback uniformly. The detection is shape-based (chartLabels +
+// chartValues) so it doesn't depend on slot-to-card index matching, which can
+// drift when a Gemini batch fails partway through.
+function enforceChartTypeRules(cards: GeminiInsightCard[]): GeminiInsightCard[] {
+  return cards.map(c => {
+    const labels = c.chartLabels || [];
+    const values = c.chartValues || [];
+    const titleU = (c.chartTitle || '').toUpperCase();
+
+    // Rule A: binary trade-off → doughnut.
+    // Detection: exactly 2 labels whose values sum to ~100 (within 5pt tolerance).
+    if (labels.length === 2 && values.length === 2) {
+      const sum = (Number(values[0]) || 0) + (Number(values[1]) || 0);
+      if (sum >= 95 && sum <= 105) {
+        return { ...c, type: 'doughnut' };
+      }
+    }
+
+    // Rule B: personas / segmentation → radar.
+    // Detection: chartTitle contains a persona/segmentation keyword AND 5–8 labels.
+    // Also seeds chartValues2 with a 100-baseline so the radar shows the audience
+    // profile vs national average (index neutral = 100).
+    if (
+      /PERSONA|SEGMENTATION|DESCRIBES CONSUMER|SELF[ \-]?PERCEPTION|CHARACTER DESCRIBES/i.test(titleU)
+      && labels.length >= 5 && labels.length <= 8
+    ) {
+      return {
+        ...c,
+        type:         'radar',
+        chartValues2: c.chartValues2 ?? new Array(labels.length).fill(100),
+        chartSeries:  c.chartSeries  ?? ['Audience %', 'National baseline'],
+      };
+    }
+
+    return c;
+  });
+}
+
 function rebalanceCards(cards: GeminiInsightCard[]): GeminiInsightCard[] {
   if (cards.length < 4) return cards;
 
@@ -860,7 +918,7 @@ export async function POST(req: NextRequest) {
               if (orCards.length > 0) {
                 console.log(`[analyze-data] OpenRouter returned ${orCards.length} cards`);
                 return NextResponse.json({
-                  insights:   rebalanceCards(orCards),
+                  insights:   rebalanceCards(enforceChartTypeRules(orCards)),
                   slots,
                   overview,
                   path:       'gwi-slots',
@@ -881,7 +939,7 @@ export async function POST(req: NextRequest) {
           const fallbackCards = generateFallbackCards(slots, toolLabel, brief);
           if (fallbackCards.length > 0) {
             return NextResponse.json({
-              insights:   rebalanceCards(fallbackCards),
+              insights:   rebalanceCards(enforceChartTypeRules(fallbackCards)),
               slots,
               overview,
               path:       'gwi-slots',
@@ -897,7 +955,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        return NextResponse.json({ insights: rebalanceCards(insights), slots, overview, path: 'gwi-slots', totalSlots: slots.length, batches: batches.length });
+        return NextResponse.json({ insights: rebalanceCards(enforceChartTypeRules(insights)), slots, overview, path: 'gwi-slots', totalSlots: slots.length, batches: batches.length });
       } catch (err: any) {
         return NextResponse.json(
           { error: `Gemini failed on GWI slots: ${err.message}`, path: 'gwi-slots', slotCount: slots.length },
