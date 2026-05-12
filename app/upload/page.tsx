@@ -9,6 +9,7 @@ import {
   inferSchema, autoGenerateLayout, detectAnomalies, generateStrategicBrief,
 } from '@/lib/inference';
 import type { ChartSpec } from '@/types/inference';
+import type { SheetMeta } from '@/types/dataset';
 
 // ─── Chart data builders (unchanged) ────────────────────────
 function buildStandardData(chart: ChartSpec, data: any[]) {
@@ -305,6 +306,8 @@ function UploadDataInner() {
   // (/upload?briefId=<id>), every uploaded file is attached to that brief
   // and the brief auto-transitions waiting_for_data → processing → ready.
   const urlBriefId   = searchParams.get('briefId');
+  // DEV TOGGLE: append ?v2=1 to use the v2 hero/foil pre-compute pipeline locally
+  const useV2Pipeline = searchParams.get('v2') === '1';
 
   // ── Brief & SLA Selection States ──
   const [selectedBrief, setSelectedBrief] = useState<any>(null);
@@ -324,6 +327,12 @@ function UploadDataInner() {
   const [firstUploadId,     setFirstUploadId]     = useState<string>('');
   const [allFileNames,      setAllFileNames]       = useState<string[]>([]);
   const [batchDone,         setBatchDone]          = useState(false);
+
+  // ── Data Mapper: sheet selection state ──
+  const [mapperPending, setMapperPending] = useState<{
+    file: File; sheets: SheetMeta[]; uploadId: string;
+  } | null>(null);
+  const sheetPickerResolveRef = useRef<((sheet: SheetMeta) => void) | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addLog = (msg: string) => setAgentLog(prev => [...prev, msg]);
@@ -351,6 +360,13 @@ function UploadDataInner() {
       addLog(`🚀 Redirecting to Intelligence Report…`);
       router.push(`/insights?id=${pendingId}&sla=${slaHours}`);
     }
+  };
+
+  // ── Data Mapper: user picked a sheet ──
+  const handleSheetPick = (sheet: SheetMeta) => {
+    setMapperPending(null);
+    sheetPickerResolveRef.current?.(sheet);
+    sheetPickerResolveRef.current = null;
   };
 
   const updateEntry = (idx: number, patch: Partial<FileEntry>) =>
@@ -419,11 +435,20 @@ function UploadDataInner() {
 
     updateEntry(entryIdx, { status: 'analyzing' });
 
-    // ── Pick the best sheet: prefer "ALL ROWS" for GWI, else first sheet ──
-    const preferredSheet =
-      sheets.find((s: any) => /all\s*rows?/i.test(s.sheetName)) ?? sheets[0];
-
-    addLog(`🔍 Reading "${preferredSheet.sheetName}" from "${file.name}"…`);
+    // ── DATA MAPPER: if multiple sheets exist, pause for user to pick one ──
+    let preferredSheet: any;
+    if (sheets.length > 1) {
+      addLog(`🗂 ${sheets.length} sheets found in "${file.name}" — select one in the DATA MAPPER below…`);
+      preferredSheet = await new Promise<any>(resolve => {
+        setMapperPending({ file, sheets, uploadId });
+        sheetPickerResolveRef.current = resolve;
+      });
+      addLog(`✅ Sheet "${preferredSheet.sheetName}" selected`);
+    } else {
+      // Auto-pick: prefer "ALL ROWS" for GWI, else first sheet
+      preferredSheet = sheets.find((s: any) => /all\s*rows?/i.test(s.sheetName)) ?? sheets[0];
+      addLog(`🔍 Auto-selected "${preferredSheet.sheetName}" from "${file.name}"…`);
+    }
 
     let rawData: any[] = [];
     try {
@@ -501,10 +526,11 @@ function UploadDataInner() {
     );
 
     // ── TABULAR BRANCH (Excel / CSV) — try Gemini 2.5 first ──────
-    addLog('🤖 Sending data to Gemini 2.5 for PRISM analysis…');
+    const analysisEndpoint = useV2Pipeline ? '/api/ai/analyze-data-v2' : '/api/ai/analyze-data';
+    addLog(`🤖 Sending data to Gemini 2.5 for PRISM analysis${useV2Pipeline ? ' (v2 hero/foil pipeline)' : ''}…`);
     let geminiError = '';
     try {
-      const aiRes = await fetch('/api/ai/analyze-data', {
+      const aiRes = await fetch(analysisEndpoint, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -512,6 +538,7 @@ function UploadDataInner() {
           sheetName: preferredSheet.sheetName,
           fileNames: [file.name],
           briefId:   briefId || null,
+          debug:     useV2Pipeline,
         }),
       });
 
@@ -778,8 +805,17 @@ function UploadDataInner() {
         padding:'36px 24px 32px',
       }}>
         <div style={{ maxWidth:760, margin:'0 auto' }}>
-          <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.14em',
-            color:'#818CF8', marginBottom:10 }}>DATA MAPPER</p>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+            <p style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.14em',
+              color:'#818CF8', margin:0 }}>DATA MAPPER</p>
+            {useV2Pipeline && (
+              <span style={{ fontSize:10, fontWeight:800, textTransform:'uppercase', letterSpacing:'.1em',
+                padding:'2px 8px', borderRadius:6, background:'#134e4a', color:'#34d399',
+                border:'1px solid #065f46' }}>
+                v2 · hero/foil pipeline
+              </span>
+            )}
+          </div>
           <h1 style={{ fontSize:30, fontWeight:900, color:'#fff', letterSpacing:'-.5px', marginBottom:10, lineHeight:1.2 }}>
             PRISM Intelligence Hub
           </h1>
@@ -1004,6 +1040,81 @@ function UploadDataInner() {
 
             <input ref={fileInputRef} type="file" multiple className="hidden"
               accept=".xlsx,.xls,.csv,.pdf,.pptx,.ppt" onChange={handleFileChange} />
+          </div>
+        )}
+
+        {/* ── DATA MAPPER: sheet selection panel ── */}
+        {mapperPending && (
+          <div style={{ marginBottom: 24, borderRadius: 20,
+            border: '2px solid #6366F1', background: '#fff',
+            overflow: 'hidden', boxShadow: '0 8px 32px rgba(99,102,241,.18)' }}>
+            {/* Header */}
+            <div style={{ background: 'linear-gradient(135deg,#1E1B4B,#1E3A8A)',
+              padding: '18px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10,
+                background: 'rgba(99,102,241,.35)', border: '1px solid rgba(165,180,252,.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                🗂
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
+                  letterSpacing: '.15em', color: '#818CF8', marginBottom: 3 }}>DATA MAPPER</p>
+                <p style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>
+                  {mapperPending.sheets.length} sheets detected in{' '}
+                  <span style={{ color: '#A5B4FC' }}>{mapperPending.file.name}</span>
+                </p>
+              </div>
+              <p style={{ marginLeft: 'auto', fontSize: 12, color: '#818CF8' }}>
+                Pick a sheet to analyse →
+              </p>
+            </div>
+            {/* Sheet cards */}
+            <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 12 }}>
+                {mapperPending.sheets.map((sheet: SheetMeta) => (
+                  <button
+                    key={sheet.sheetName}
+                    onClick={() => handleSheetPick(sheet)}
+                    style={{
+                      textAlign: 'left', cursor: 'pointer', padding: '14px 16px',
+                      borderRadius: 14, border: '1.5px solid #E2E8F0',
+                      background: '#F8FAFF', transition: 'all .15s',
+                      fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = '#6366F1';
+                      (e.currentTarget as HTMLButtonElement).style.background  = '#EEF2FF';
+                      (e.currentTarget as HTMLButtonElement).style.transform   = 'translateY(-2px)';
+                      (e.currentTarget as HTMLButtonElement).style.boxShadow   = '0 6px 20px rgba(99,102,241,.2)';
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = '#E2E8F0';
+                      (e.currentTarget as HTMLButtonElement).style.background  = '#F8FAFF';
+                      (e.currentTarget as HTMLButtonElement).style.transform   = '';
+                      (e.currentTarget as HTMLButtonElement).style.boxShadow   = '';
+                    }}
+                  >
+                    <div style={{ fontSize: 20, marginBottom: 8 }}>
+                      {sheet.type === 'gwi_time_spent' ? '📊'
+                        : sheet.type === 'keyword_plan' ? '🔍' : '📋'}
+                    </div>
+                    <p style={{ fontSize: 13, fontWeight: 800, color: '#0F172A',
+                      marginBottom: 4, lineHeight: 1.3 }}>
+                      {sheet.sheetName}
+                    </p>
+                    <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                      letterSpacing: '.1em', color: '#6366F1' }}>
+                      {sheet.type.replace(/_/g, ' ')}
+                    </p>
+                    {sheet.description && (
+                      <p style={{ fontSize: 11, color: '#64748B', marginTop: 6, lineHeight: 1.5 }}>
+                        {sheet.description}
+                      </p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

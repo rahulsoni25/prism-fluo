@@ -159,13 +159,22 @@ function suggestChart(
 // Returns ALL slots (one per question group), sorted by Index signal strength.
 // Caller decides how many to send per Gemini batch.
 function buildInsightSlots(rows: any[]): DataSlot[] {
+  // Normalise all row keys to lowercase+trimmed for case-insensitive column matching.
+  // GWI exports vary: "Short Label Question" / "short label question" / "Attributes" / "ATTRIBUTES"
+  const normRows = rows.map(r => {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return r;
+    const n: Record<string, any> = {};
+    for (const k of Object.keys(r)) n[k.toLowerCase().trim()] = r[k];
+    return n;
+  });
+
   // 1. Group by question
   const groups: Record<string, any[]> = {};
-  for (const row of rows) {
+  for (const row of normRows) {
     const q = col(row,
-      'Short Label Question', 'short_label_question',
-      'Question', 'question', 'time_bucket',
-      'Category', 'Sheet',
+      'short label question', 'short_label_question',
+      'question', 'time_bucket',
+      'category', 'sheet',
     ) || 'General';
     if (!groups[q]) groups[q] = [];
     groups[q].push(row);
@@ -175,11 +184,11 @@ function buildInsightSlots(rows: any[]): DataSlot[] {
   const questions = Object.entries(groups).map(([question, qRows]) => {
     const parsed = qRows
       .map(r => ({
-        attr:        col(r, 'Attributes', 'attributes', 'Attribute', 'audience', 'Label', 'Name'),
-        audiencePct: num(r, 'Audience %', 'audience_pct', 'Audience%'),
-        dataPct:     num(r, 'Data point %', 'data_point_pct', 'DataPoint%'),
-        index:       num(r, 'Index', 'index_score'),
-        universe:    num(r, 'Universe', 'universe'),
+        attr:        col(r, 'attributes', 'attribute', 'audience', 'label', 'name'),
+        audiencePct: num(r, 'audience %', 'audience_pct', 'audience%'),
+        dataPct:     num(r, 'data point %', 'data_point_pct', 'datapoint%'),
+        index:       num(r, 'index', 'index_score'),
+        universe:    num(r, 'universe'),
       }))
       .filter(r => r.attr && r.index > 0)
       .sort((a, b) => b.index - a.index);
