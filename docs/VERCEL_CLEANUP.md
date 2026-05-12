@@ -172,3 +172,5 @@ Vercel keeps deleted projects in a 30-day recycle bin. Open https://vercel.com/a
 | Env-var drift across copies | Possible (audit catches it) | Impossible (one project) |
 | Stale duplicate serving old code if canonical fails | Yes (silent) | No |
 | Investor demo URL stability | Fragile | Single source of truth |
+
+<!-- Verification test: only `prism-fluo` should rebuild after this commit -->
