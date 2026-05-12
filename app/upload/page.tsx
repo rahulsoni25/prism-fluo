@@ -357,9 +357,18 @@ function UploadDataInner() {
         if (aiRes.status === 503) addLog('   ↳ GEMINI_API_KEY may not be set on the server');
       } else {
         const body = await aiRes.json();
-        const { insights, fallback, overview } = body as { insights?: any[]; fallback?: 'openrouter' | 'auto' | boolean; overview?: { headline: string; audienceSnapshot: string } };
+        const { insights, fallback, overview, geminiErrors } = body as {
+          insights?: any[];
+          fallback?: 'openrouter' | 'auto' | boolean;
+          overview?: { headline: string; audienceSnapshot: string };
+          geminiErrors?: string[];
+        };
         if (fallback === 'openrouter') addLog('⚡ Gemini unavailable — switched to OpenRouter (free LLM models, conviction 82)');
         else if (fallback === 'auto' || fallback === true) addLog('⚡ AI unavailable — using auto-analysis from raw index data (conviction 70)');
+        // Surface the actual Gemini error reasons so the user can debug API-key / model / quota issues.
+        if (Array.isArray(geminiErrors) && geminiErrors.length > 0) {
+          for (const e of geminiErrors) addLog(`   ↳ Gemini ${e}`);
+        }
         if (Array.isArray(insights) && insights.length > 0) {
           const source = fallback === 'openrouter' ? 'OpenRouter' : fallback ? 'Auto-analysis' : 'Gemini';
           addLog(`✨ ${source} generated ${insights.length} PRISM insights`);

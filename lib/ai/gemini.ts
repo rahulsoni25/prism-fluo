@@ -98,13 +98,20 @@ async function callGeminiWithRetry(genAI: any, prompt: string): Promise<any> {
  *   2. Singleton promise: parallel batches that all hit getModel() at the same
  *      time share ONE selection instead of each launching their own.
  *
- * Order: 2.5-flash preview (best quality) → 2.0-flash (stable) → 2.0-flash-lite (quota-limited) → 2.5-pro preview.
+ * Order: 2.5-flash (stable GA, best quality + cost) → 2.0-flash (stable fallback)
+ *      → 2.5-pro (heavier, higher quality) → 2.0-flash-lite (last resort).
+ *
+ * The previous list referenced dated preview models like
+ * `gemini-2.5-flash-preview-05-20` and `gemini-2.5-pro-preview-05-06` which were
+ * time-limited builds and have since been replaced by the stable GA names below.
+ * Calling a deprecated preview returns 404 → cascades to next candidate →
+ * eventually exhausts the list → auto-analysis fallback runs. That's the bug.
  */
 const MODEL_CANDIDATES = [
-  'gemini-2.5-flash-preview-05-20',  // highest quality, most generous quota
-  'gemini-2.0-flash',                 // stable fallback with its own quota pool
-  'gemini-2.0-flash-lite',            // last resort — tight daily free-tier quota
-  'gemini-2.5-pro-preview-05-06',
+  'gemini-2.5-flash',       // stable GA — fast, high quality, generous quota
+  'gemini-2.0-flash',       // stable fallback, independent quota pool
+  'gemini-2.5-pro',         // higher quality, slower, lower RPM
+  'gemini-2.0-flash-lite',  // tightest quota, last resort
 ];
 let _resolvedModelName: string | null = null;
 const _failedModels   = new Set<string>();   // blacklisted for this instance lifetime

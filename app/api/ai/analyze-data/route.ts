@@ -904,10 +904,16 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Merge successful results, log failures without crashing
+        // Merge successful results, log failures without crashing.
+        // Also collect the actual failure messages so the API response can
+        // surface the real Gemini error to the upload UI — otherwise the user
+        // just sees "AI unavailable" with no actionable diagnostic.
+        const geminiErrors: string[] = [];
         const insights = batchResults.flatMap((result, i) => {
           if (result.status === 'fulfilled') return result.value;
-          console.warn(`[analyze-data] Batch ${i + 1}/${batches.length} failed:`, (result as any).reason?.message);
+          const msg = (result as any).reason?.message ?? 'unknown error';
+          console.warn(`[analyze-data] Batch ${i + 1}/${batches.length} failed:`, msg);
+          geminiErrors.push(`batch ${i + 1}: ${msg}`);
           return [];
         });
 
@@ -931,13 +937,14 @@ export async function POST(req: NextRequest) {
               if (orCards.length > 0) {
                 console.log(`[analyze-data] OpenRouter returned ${orCards.length} cards`);
                 return NextResponse.json({
-                  insights:   rebalanceCards(enforceChartTypeRules(orCards)),
+                  insights:     rebalanceCards(enforceChartTypeRules(orCards)),
                   slots,
                   overview,
-                  path:       'gwi-slots',
-                  totalSlots: slots.length,
-                  batches:    batches.length,
-                  fallback:   'openrouter',
+                  path:         'gwi-slots',
+                  totalSlots:   slots.length,
+                  batches:      batches.length,
+                  fallback:     'openrouter',
+                  geminiErrors,  // expose why Gemini failed — UI can log this
                 });
               }
             } catch (orErr: any) {
@@ -952,13 +959,14 @@ export async function POST(req: NextRequest) {
           const fallbackCards = generateFallbackCards(slots, toolLabel, brief);
           if (fallbackCards.length > 0) {
             return NextResponse.json({
-              insights:   rebalanceCards(enforceChartTypeRules(fallbackCards)),
+              insights:     rebalanceCards(enforceChartTypeRules(fallbackCards)),
               slots,
               overview,
-              path:       'gwi-slots',
-              totalSlots: slots.length,
-              batches:    batches.length,
-              fallback:   'auto',
+              path:         'gwi-slots',
+              totalSlots:   slots.length,
+              batches:      batches.length,
+              fallback:     'auto',
+              geminiErrors,  // expose why Gemini failed — UI can log this
             });
           }
           // Nothing worked and data has no index scores — genuine failure
