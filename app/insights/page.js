@@ -1039,6 +1039,7 @@ function AnalysisDetail({ id }) {
   const [activeBucket, setActiveBucket] = useState(null); // set after load
   const [printing,     setPrinting]     = useState(false);
   const [showDeckModal, setShowDeckModal] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     fetch(`/api/analyses/${id}`)
@@ -1075,6 +1076,36 @@ function AnalysisDetail({ id }) {
   }
   function handleExportExcel() {
     window.location.href = `/api/analyses/${id}/export?format=xlsx`;
+  }
+
+  // Regenerate this analysis with the latest pipeline (blueprint + chart rules +
+  // bucket classifier). Re-runs analyze-data against the original upload's rows
+  // and overwrites results_json — old pre-blueprint analyses become up-to-date
+  // for investor-facing demos.
+  async function handleRegenerate() {
+    if (regenerating) return;
+    const ok = window.confirm(
+      'Re-run the latest pipeline on this analysis?\n\n' +
+      'The current cards will be replaced with newly generated insights ' +
+      '(Main Headline, Audience Snapshot, sharper Title/Observation/Recommendation, ' +
+      'binary→doughnut + persona→radar charts, fixed bucket classification). ' +
+      'This typically takes 30–90 seconds.'
+    );
+    if (!ok) return;
+
+    setRegenerating(true);
+    try {
+      const res = await fetch(`/api/analyses/${id}/regenerate`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      // Force a fresh fetch — bypass any in-flight cache.
+      window.location.reload();
+    } catch (err) {
+      setRegenerating(false);
+      window.alert('Regeneration failed: ' + err.message);
+    }
   }
 
   if (loading) return (
@@ -1180,6 +1211,15 @@ function AnalysisDetail({ id }) {
               title="Generate a presentation deck from this analysis"
             >
               🎨 Generate Presentation
+            </button>
+            <button
+              className="btn-glass"
+              onClick={handleRegenerate}
+              disabled={regenerating}
+              style={regenerating ? { opacity: 0.6, cursor: 'wait' } : undefined}
+              title="Re-run the latest pipeline (blueprint + chart rules + bucket fixes) on this analysis"
+            >
+              {regenerating ? '⏳ Regenerating…' : '🔄 Regenerate with Latest Blueprint'}
             </button>
             <button className="btn-glass" onClick={handleExportExcel} title="Download all insights as an Excel workbook">
               ⬇ Excel
