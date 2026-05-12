@@ -327,6 +327,9 @@ function UploadDataInner() {
   const [firstUploadId,     setFirstUploadId]     = useState<string>('');
   const [allFileNames,      setAllFileNames]       = useState<string[]>([]);
   const [batchDone,         setBatchDone]          = useState(false);
+  // Main Headline + Audience Snapshot from the first file's GWI analysis.
+  // Only one overview per analysis run (the first one with content wins).
+  const [analysisOverview, setAnalysisOverview] = useState<{ headline: string; audienceSnapshot: string } | null>(null);
 
   // ── Data Mapper: sheet selection state ──
   const [mapperPending, setMapperPending] = useState<{
@@ -373,7 +376,7 @@ function UploadDataInner() {
     setFileEntries(prev => prev.map((e, i) => i === idx ? { ...e, ...patch } : e));
 
   // ── Upload + analyse one file → return { charts, uploadId } ─
-  async function processFile(entry: FileEntry, entryIdx: number): Promise<{ charts: ChartSpec[]; uploadId: string }> {
+  async function processFile(entry: FileEntry, entryIdx: number): Promise<{ charts: ChartSpec[]; uploadId: string; overview?: { headline: string; audienceSnapshot: string } }> {
     const { file } = entry;
     updateEntry(entryIdx, { status: 'uploading' });
     addLog(`📤 Uploading "${file.name}"…`);
@@ -549,16 +552,17 @@ function UploadDataInner() {
         if (aiRes.status === 503) addLog('   ↳ GEMINI_API_KEY may not be set on the server');
       } else {
         const body = await aiRes.json();
-        const { insights, fallback } = body as { insights?: any[]; fallback?: 'openrouter' | 'auto' | boolean };
+        const { insights, fallback, overview } = body as { insights?: any[]; fallback?: 'openrouter' | 'auto' | boolean; overview?: { headline: string; audienceSnapshot: string } };
         if (fallback === 'openrouter') addLog('⚡ Gemini unavailable — switched to OpenRouter (free LLM models, conviction 82)');
         else if (fallback === 'auto' || fallback === true) addLog('⚡ AI unavailable — using auto-analysis from raw index data (conviction 70)');
         if (Array.isArray(insights) && insights.length > 0) {
           const source = fallback === 'openrouter' ? 'OpenRouter' : fallback ? 'Auto-analysis' : 'Gemini';
           addLog(`✨ ${source} generated ${insights.length} PRISM insights`);
+          if (overview?.headline) addLog(`📝 Main Headline ready`);
           const charts: ChartSpec[] = insightsToCharts(insights, entryIdx);
           updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
           addLog(`✅ "${file.name}" → ${charts.length} insights ready${fallback ? ` (${source.toLowerCase()})` : ''}`);
-          return { charts, uploadId };
+          return { charts, uploadId, overview };
         } else {
           geminiError = 'No insights returned';
           addLog(`⚠ ${geminiError}`);
@@ -635,6 +639,7 @@ function UploadDataInner() {
             scorecards:     [],
             strategicBrief: null,
             anomalies:      [],
+            overview:       analysisOverview ?? null,
             meta: { domain: domainValue, title: combinedName, cls: 'content' },
           },
         }),
@@ -673,9 +678,13 @@ function UploadDataInner() {
       let batchFirstUploadId = '';
 
       for (let i = 0; i < entries.length; i++) {
-        const { charts, uploadId } = await processFile(entries[i], existingOffset + i);
+        const { charts, uploadId, overview } = await processFile(entries[i], existingOffset + i);
         if (i === 0) batchFirstUploadId = uploadId;
         batchCharts.push(...charts);
+        // Capture the first non-empty overview from this batch.
+        if (overview?.headline && !analysisOverview) {
+          setAnalysisOverview(overview);
+        }
       }
 
       if (batchCharts.length === 0 && entries.length > 0) {

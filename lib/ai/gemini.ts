@@ -245,91 +245,77 @@ RELEVANCE RULE: Frame every observation, stat, and recommendation through this b
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ` : '';
 
-  const prompt = `You are a brilliant Creative Strategist and Media Planner at PRISM, a top consumer intelligence firm in India.
-Your readers are brand managers and media planners who want clear, honest, human stories from consumer data — not jargon-heavy reports.
+  const prompt = `You are an **Insight Strategist for Ads** at PRISM, writing for brand managers, media planners, and creative directors in India.
+
+You will receive a BRIEF and one or more GWI tables (any bucket: demographics, interests, attitudes, media, purchase). Your job is to turn this into a small set of sharp, creative-ready insights.
 ${briefBlock}
 DATASET: ${context}
 
 ${slotBlock}
 
-━━ ONE CARD PER SLOT — UNIQUENESS RULE ━━
-You have ${slots.length} slots above. Write EXACTLY ${slots.length} cards — one card per slot, in order.
-Card 1 → SLOT 1 only. Card 2 → SLOT 2 only. Card 3 → SLOT 3 only. And so on.
-Do NOT mix findings from different slots into a single card.
-Do NOT repeat the same finding, stat, or sentence across any two cards.
-Before returning, verify: no two cards share the same opening sentence, same stat, or same recommendation platform.
+━━ PRIORITY OF THESE RULES (compulsory guardrails) ━━
+Treat every instruction below as a mandatory guardrail, not an optional tip. You must always:
+• Use the BRIEF as the primary lens.
+• Use ONLY the provided GWI data above for facts and numbers — no external facts, no hallucinations.
+• Follow the fixed output structure (one Insight Block per slot, with Title / Observation / Recommendation).
+• Keep language sharp, simple, and creative-friendly.
+Within these guardrails, you have strategic freedom: choose the angle and theme that best serves the brief for each slot.
 
-━━ ANTI-HALLUCINATION — MANDATORY ━━
-Every number, percentage, ratio, or statistic you write MUST come verbatim from the slot's DATA rows above.
+━━ ONE INSIGHT BLOCK PER SLOT — UNIQUENESS ━━
+You have ${slots.length} slots. Write EXACTLY ${slots.length} Insight Blocks — one per slot, in order.
+Block 1 → SLOT 1 only. Block 2 → SLOT 2 only. And so on. No mixing of slots. No repeating the same finding, stat, or platform across two blocks.
+
+━━ ANTI-HALLUCINATION (mandatory) ━━
+Every number, percentage, ratio, or statistic you write MUST come verbatim from the slot's PERMITTED NUMBERS list above.
 Do NOT invent, guess, combine, or extrapolate any value not present in the slot.
 Plain-English translation is allowed: "1.83×" → "nearly twice"; "62.0%" → "about 3 in 5".
-⚠️  The ✅ example sentences below contain FORMAT TEMPLATES, not real data.
-    The placeholders ([N]×, [X]%, etc.) are illustrative only — NEVER copy them into your output.
-    Every number you write must be traceable to a specific row in the slot above — if you cannot point to it, do not write it.
+If a useful detail (a platform, age band, attitude) is not in the data, do NOT guess it — write around it or omit it.
+Example sentences below are FORMAT TEMPLATES only — placeholders like [X]%, [N]× are illustrative; never copy them.
 
-━━ TONE ━━
-Write like a brilliant colleague explaining a finding over coffee — not a consultant writing a deck.
-• A 16-year-old and a CMO should both find every card interesting and easy to read
+━━ TONE & LANGUAGE ━━
+Write like a brilliant strategist explaining a finding over coffee — not a consultant writing a deck.
+• A 16-year-old and a CMO should both find every block easy to read.
 • Short sentences. Active voice. Plain English.
-• Banned words: over-index, leverage, cohort, synergy, touchpoint, whitespace, holistic, robust, utilize, paradigm, seamless
-• Use: people, families, buyers, young Indians, 1 in 3, nearly twice, here is the thing, think about this
+• No tables. No raw data dumps. No research jargon ("row %", "column %", "stat sig", "over-index", "cohort", "leverage", "synergy", "touchpoint", "whitespace", "holistic", "robust", "utilize", "paradigm", "seamless").
+• Use: people, families, buyers, young Indians, 1 in 3, nearly twice, here is the thing.
 
-━━ CARD FORMAT — follow exactly ━━
+━━ INSIGHT BLOCK FORMAT — follow exactly ━━
 
-TITLE (max 12 words — strictly enforced):
-Magazine cover line or newspaper headline. Must do TWO things at once: state the key number AND signal what it means for the brand. Be punchy, specific, and directional — a strategist reading only the title should know what to do.
-✅ "Short-Form Video Drives 4× Higher Engagement — Shift Budget Now"
+TITLE (max 12 words):
+One short, punchy headline. Combines DATA + BRIEF. Uses contrasts or levers where possible.
+A strategist reading only the title should know what to do.
+✅ "2.8× More Likely to Watch Reels — Anchor the Launch Here"
+✅ "Joint Families, Not Urban Singles — Reframe the Pack Story"
+✅ "Promo-Driven, Not Brand-Loyal — Lead With Value, Not Heritage"
 ✅ "1 in 3 Research on Instagram Before Buying — Close the Social-to-DTC Gap"
-✅ "Nike Underindexes Adidas 40% on Amazon — A Search Gap Worth Closing"
-✅ "Purpose-Led Messaging Drives 41% Higher Brand Affinity — Lead With It"
-✅ "Marathon Season Spikes Search 3.4× — Nike's Calendar Doesn't Reflect This"
-❌ "Consumers Over-Index on Full Price vs Sale Purchase Behaviour" (jargon, no direction)
-❌ "29% of This Audience Are Using Social Media Less" (pure data, no signal)
-❌ "Key Insight: Audience Prioritises Local Shopping" (vague, no number, filler opener)
-❌ "Strong Performance on Health & Wellness Metric" (no number, no direction)
-NEVER: "— Worth Planning Around", "— Worth Building Into the Brief", "— Worth Watching", "— a Clear Signal", "Key Insight:", "This Audience".
+❌ "Demographic Insight" (generic label, no direction)
+❌ "Consumers Over-Index on Full Price" (jargon, no direction)
+❌ "29% of Audience Use Social Media Less" (pure data, no signal)
+NEVER use: "— Worth Planning Around", "— Worth Building Into the Brief", "— a Clear Signal", "Key Insight:", "This Audience".
 
-OBSERVATION — 2 to 3 sentences. Write like a senior strategist briefing a creative team — a connected story, not a stats list.
+OBSERVATION — 2 to 3 sentences. Tone pattern: "The data shows… which means… for this task."
+Start from the key metrics (Audience %, multiplier vs national avg; Universe where it adds weight). Explain in natural language what this says about WHO the audience is or HOW they behave. Then connect EXPLICITLY back to the brief's objective or challenge.
 
-Use the BRAND, TARGET AUDIENCE, and GEOGRAPHY from the brief to name the audience specifically.
-Never write "this audience" — always say "Nike 18–34 consumers in India" or "Adidas target segment in Mumbai" or whatever the brief says.
-
-Sentence 1 — WHO + WHAT + IN WHAT CONTEXT:
-  Name the exact audience (brand + demographics + geography from brief) and the top behaviour from the slot, then give the context or destination — what do they do WITH this behaviour? Where does it lead?
-  ✅ Write: "[Slot %] of [brand] [age] [market] consumers research on [top attr from slot] before visiting [relevant brand destination from brief]."
-  ❌ Never write: "About [X] in [Y] of this audience are [attr] — [N]× the national average." (that's a stat readout, not a story)
-
-Sentence 2 — THE BREAKDOWN: Show how the category splits across the top 2–3 attributes with their actual percentages.
-  Name specific platforms, formats, or behaviours by name. Show the journey or funnel if one exists.
-  ✅ Write: "[2nd attr from slot] accounts for [its %], while [3rd attr] adds [its %] — [brief implication of this split for the brand]."
-
-Sentence 3 — THE GAP OR TENSION: Name a specific gap, competitive disadvantage, or underserved opportunity.
-  Use the brand name and competitor names from the brief. Quantify the gap from the slot data.
-  ✅ Write: "[Brand]'s [specific metric from slot] vs. [competitor or category average from slot] — a [gap] worth closing before [relevant moment from brief]."
-  If no competitive data in the slot, describe the strategic implication in one plain sentence.
-
-RULE: All numbers must be in the PERMITTED NUMBERS list for this slot. Do NOT invent trends, YoY growth, engagement ratios, or benchmarks not in the slot data.
+• Name the audience using the BRIEF's brand, demographics, and geography — never "this audience".
+• Sentence 1 — WHO + WHAT + CONTEXT: Name the exact audience and the top behaviour from the slot, then give the context or destination — what they do WITH this behaviour. Lead with a story, not a stat readout.
+• Sentence 2 — THE BREAKDOWN: Show how the category splits across the top 2–3 attributes with their actual percentages, naming specific platforms, formats, or behaviours.
+• Sentence 3 — THE GAP OR TENSION: Name a specific gap, competitive disadvantage, or underserved opportunity for the brand, quantified from the slot data. If no competitive data is in the slot, describe the strategic implication in one plain sentence.
 
 STAT — one line. One number. The sentence a strategist would screenshot and send to their client.
-Lead with the data point that would make a room go quiet. Write it as a plain sentence, not a formula.
-✅ Write: "[top behaviour from slot] among [brief audience in brief geography] — [plain-English multiplier] the national rate"
-❌ "Index 168 · Full Price behaviour" (raw index number — never write this)
-❌ "21.8% of this audience (1.3× the national average)" (bracket-heavy, not memorable)
-Max 18 words. No brackets. No bullet points. No "Index" numbers. One crisp, memorable sentence only.
+Plain English, no brackets, no "Index" numbers, max 18 words.
+✅ "Nearly 2 in 5 Nike target consumers prioritise short-form video — almost twice the national average."
+❌ "Index 168 · Full Price behaviour"
+❌ "21.8% of audience (1.3× national avg)"
 
-RECOMMENDATION — 3 concrete sentences. A direct brief to a media buyer or creative director.
+RECOMMENDATION — 3 to 5 sentences (or 3 concise points) that give practical direction across THREE angles:
+• CREATIVE — what to show, how to frame, which tensions/hooks to use, what to avoid.
+• BRAND — how to position, which benefits/RTBs or variants to lead with.
+• MEDIA — where/how to reach them, which formats/contexts to prioritise or test.
 
-Each sentence must START with a specific action verb: Integrate, Build, Invest, Prioritise, Launch, Shift, Close.
-Sentence 1 — INTEGRATE or BUILD: Name a specific product feature, integration, or content type. What to create and where to put it.
-  ✅ "Integrate Instagram Shopping and YouTube product tagging to create shoppable content at the discovery moment."
-  ✅ "Build A+ content on the top 5 SKUs on Flipkart and Amazon India with lifestyle imagery and comparison tables."
-Sentence 2 — INVEST or PRIORITISE: Name what to invest in to bridge the gap found in the observation.
-  ✅ "Invest in retargeting that bridges [platform in obs] discovery to [conversion destination in obs]."
-  ✅ "Prioritise creator briefs over polished brand content — this group responds to peer signal, not brand voice."
-Sentence 3 — CLOSE THE GAP: Use a specific number from the slot to quantify what closing the gap looks like.
-  ✅ "Prioritise DTC website UX improvements to close the [gap]-point conversion shortfall vs. category peers."
-  ✅ "Close the [N]× search presence gap vs. [competitor from brief] before the next peak season."
-❌ "Consider digital advertising on social platforms to reach this audience" (too vague — no feature, no gap, no action)
+Use directive language: "Show…", "Lead with…", "Avoid…", "Prioritise…", "Test…", "Integrate…", "Build…", "Shift…", "Close…".
+Each recommendation must clearly follow from the Observation and push the brief forward.
+✅ "Show joint families breaking bread together rather than urban singletons — the data points the brand at multi-generational moments. Lead with the 'shared trust' RTB, not heritage prestige. Prioritise prime-time TV and YouTube CTV with regional language cuts; test Instagram Reels for the youngest sub-segment."
+❌ "Consider digital advertising on social platforms to reach this audience" (too vague — no creative, no brand, no media angle, no specifics).
 
 ━━ CHART DATA ━━
 • chartLabels: use the exact attribute names from THIS slot (up to 8)
@@ -433,6 +419,97 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
   } catch (err) {
     console.error('[Gemini] analyzeDataForPRISM failed:', (err as Error).message);
     throw err; // surface real reason to the API route
+  }
+}
+
+// ── GWI Overview (Main Headline + Audience Snapshot) ──────────
+
+export interface GwiOverview {
+  headline:        string;  // Main Headline — one bold client-facing sentence
+  audienceSnapshot: string; // 3–5 sentence character sketch
+}
+
+/**
+ * Generates the Main Headline + Audience Snapshot for a GWI upload, per the
+ * Insight Strategist blueprint. Reads ALL slots once and synthesises the
+ * single biggest story (headline) plus a one-paragraph audience portrait.
+ *
+ * Anti-hallucination: same as analyzeDataForPRISM — only uses numbers from
+ * the slots provided. If nothing strong is found, returns empty strings and
+ * the caller can omit the overview block.
+ */
+export async function generateGwiOverview(
+  slots:        DataSlot[],
+  context:      string,
+  briefContext: string = '',
+): Promise<GwiOverview> {
+  const genAI = await getGenAI();
+  if (!genAI) throw new Error('GEMINI_API_KEY is not set');
+  if (slots.length === 0) return { headline: '', audienceSnapshot: '' };
+
+  await getModel(genAI);
+
+  // Compact summary across ALL slots — top 3 rows per slot to keep tokens bounded
+  const slotSummary = slots.slice(0, 18).map((slot, i) => {
+    const topRows = slot.rows.slice(0, 3).map(r =>
+      `    • ${r.attr}: ${r.audiencePct.toFixed(1)}% audience | ${(r.index / 100).toFixed(2)}× national avg`,
+    ).join('\n');
+    return `SLOT ${i + 1} — ${slot.question}\n${topRows}`;
+  }).join('\n\n');
+
+  const briefBlock = briefContext ? `\n━━ CLIENT BRIEF (primary lens) ━━\n${briefContext}\n` : '';
+
+  const prompt = `You are an Insight Strategist for Ads at PRISM, writing for brand managers, media planners, and creative directors in India.
+${briefBlock}
+DATASET: ${context}
+
+You will read the GWI signals below across all slots and produce TWO things only:
+
+1. MAIN HEADLINE — one bold, client-facing sentence (max 22 words).
+   • Combines the essence of the BRIEF with the SINGLE strongest insight in the data.
+   • Answers: "What is the one big thing we should know about this audience for this task?"
+   • Use a number only when it genuinely sharpens the message (e.g., "2.8× more likely").
+   • Punchy, specific, directional. No jargon.
+
+2. AUDIENCE SNAPSHOT — 3 to 5 sentences (one short paragraph, not a list).
+   • Describe WHO we are really talking to, using only the strongest signals across the slots.
+   • Combine demographic, lifestyle, attitude, interest, media, and purchase signals where available.
+   • Start with: "For this brief, we are really talking to…"
+   • Feel like a one-paragraph character sketch a creative team can instantly visualise.
+
+━━ ANTI-HALLUCINATION ━━
+Every number, percentage, ratio, or stat MUST come verbatim from the SLOT DATA below or be a simple plain-English translation ("1.83×" → "nearly twice").
+Do NOT invent platforms, brands, segments, or behaviours not visible in the data.
+No jargon: avoid over-index, leverage, cohort, synergy, touchpoint, whitespace, holistic.
+
+━━ SLOT DATA ━━
+${slotSummary}
+
+Return ONLY valid JSON — no markdown, no fences, no preamble:
+{
+  "headline": "string",
+  "audienceSnapshot": "string"
+}`;
+
+  try {
+    const result = await callGeminiWithRetry(genAI, prompt);
+    const rawText = result?.response?.text?.()?.trim() ?? '';
+    if (!rawText) {
+      invalidateModelCache(_resolvedModelName ?? undefined);
+      throw new Error('Gemini returned empty text for GWI overview');
+    }
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('No JSON object in Gemini overview response');
+    const parsed = JSON.parse(match[0]);
+    return {
+      headline:         String(parsed.headline || '').trim(),
+      audienceSnapshot: String(parsed.audienceSnapshot || '').trim(),
+    };
+  } catch (err) {
+    console.error('[Gemini] generateGwiOverview failed:', (err as Error).message);
+    // Soft failure — caller decides whether to omit the overview block
+    return { headline: '', audienceSnapshot: '' };
   }
 }
 

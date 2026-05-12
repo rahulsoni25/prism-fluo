@@ -1099,9 +1099,10 @@ function AnalysisDetail({ id }) {
     </div>
   );
 
-  const r      = analysis.results_json;
-  const charts = r?.charts ?? [];
-  const meta   = r?.meta;
+  const r        = analysis.results_json;
+  const charts   = r?.charts ?? [];
+  const meta     = r?.meta;
+  const overview = r?.overview && (r.overview.headline || r.overview.audienceSnapshot) ? r.overview : null;
 
   const domain        = (meta?.domain ?? 'general').toLowerCase();
   const sourceBadge   = SOURCE_BADGE_MAP[domain] || domain.toUpperCase();
@@ -1129,6 +1130,46 @@ function AnalysisDetail({ id }) {
 
             {analysis.brief?.sla_due_at && (
               <SlaStrip brief={analysis.brief} />
+            )}
+
+            {/* ── Main Headline + Audience Snapshot (Insight Strategist blueprint) ── */}
+            {overview && (
+              <div
+                style={{
+                  marginTop: 18,
+                  padding: '18px 22px',
+                  background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08))',
+                  border: '1px solid rgba(139,92,246,0.25)',
+                  borderRadius: 14,
+                  maxWidth: 920,
+                }}
+              >
+                {overview.headline && (
+                  <div
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 800,
+                      lineHeight: 1.25,
+                      color: 'var(--text, #0F172A)',
+                      marginBottom: overview.audienceSnapshot ? 12 : 0,
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    {overview.headline}
+                  </div>
+                )}
+                {overview.audienceSnapshot && (
+                  <div
+                    style={{
+                      fontSize: 14.5,
+                      lineHeight: 1.6,
+                      color: 'var(--muted, #475569)',
+                    }}
+                  >
+                    {overview.audienceSnapshot}
+                  </div>
+                )}
+              </div>
             )}
           </div>
           <div className="ins-actions no-print">

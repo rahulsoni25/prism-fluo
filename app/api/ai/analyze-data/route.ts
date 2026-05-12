@@ -9,7 +9,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM } from '@/lib/ai/gemini';
+import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM, generateGwiOverview } from '@/lib/ai/gemini';
+import type { GwiOverview } from '@/lib/ai/gemini';
 import { analyzeWithOpenRouter, analyzeGenericWithOpenRouter, analyzeSocialWithOpenRouter } from '@/lib/ai/openrouter';
 import type { DataSlot, GeminiInsightCard } from '@/lib/ai/gemini';
 import { getPool } from '@/lib/db/client';
@@ -795,6 +796,18 @@ export async function POST(req: NextRequest) {
         // Limit to 18 slots max → always exactly 3 parallel calls, never 4+
         const batches    = chunkSlots(slots.slice(0, 18), BATCH_SIZE);
 
+        // Kick off the Main Headline + Audience Snapshot generator in parallel
+        // with the per-slot batches. Soft-fails: returns empty strings on error,
+        // so the UI can simply omit the overview block.
+        const overviewPromise: Promise<GwiOverview> = withTimeout(
+          generateGwiOverview(slots.slice(0, 18), gwiContext, briefContext),
+          30_000,
+          'Gemini overview',
+        ).catch((err: any) => {
+          console.warn('[analyze-data] Overview generation failed:', err?.message);
+          return { headline: '', audienceSnapshot: '' } as GwiOverview;
+        });
+
         // Run batches SEQUENTIALLY — not in parallel.
         // Why: parallel fires 3 simultaneous Gemini calls per file.
         // With multiple files uploading concurrently that hits 429 (rate limit)
@@ -827,6 +840,9 @@ export async function POST(req: NextRequest) {
           return [];
         });
 
+        // Await overview (already in-flight). Will be empty on failure.
+        const overview = await overviewPromise;
+
         if (insights.length === 0) {
           console.warn('[analyze-data] All Gemini batches failed — trying OpenRouter fallback');
 
@@ -846,6 +862,7 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({
                   insights:   rebalanceCards(orCards),
                   slots,
+                  overview,
                   path:       'gwi-slots',
                   totalSlots: slots.length,
                   batches:    batches.length,
@@ -866,6 +883,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({
               insights:   rebalanceCards(fallbackCards),
               slots,
+              overview,
               path:       'gwi-slots',
               totalSlots: slots.length,
               batches:    batches.length,
@@ -879,7 +897,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        return NextResponse.json({ insights: rebalanceCards(insights), slots, path: 'gwi-slots', totalSlots: slots.length, batches: batches.length });
+        return NextResponse.json({ insights: rebalanceCards(insights), slots, overview, path: 'gwi-slots', totalSlots: slots.length, batches: batches.length });
       } catch (err: any) {
         return NextResponse.json(
           { error: `Gemini failed on GWI slots: ${err.message}`, path: 'gwi-slots', slotCount: slots.length },
