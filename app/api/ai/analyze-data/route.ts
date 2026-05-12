@@ -330,11 +330,20 @@ function cleanAttrText(attr: string): string {
  * ❌ "1 in 3 in This Audience Are Using Social Media Less Than Before" (no direction)
  * ❌ "Young Parents Make Up 12% of This Audience" (pure data, no signal)
  */
-function buildTitle(attr: string, pctNum: string | null, multFmt: string): string {
+function buildTitle(attr: string, pctNum: string | null, multFmt: string, question?: string): string {
   const clean   = cleanAttrText(attr);
   const short   = clean.length > 40 ? clean.slice(0, 38) + '…' : clean;
   const wasIAm  = /^I am /i.test(attr);
   const wasVerb = /^I (am |)(using|watch|buy|prefer|trust|worry|think|feel|read|listen|spend|value|choos|believ|driv|own|follow|support|creat|shar|post|play|cook|exercis|travel)/i.test(attr);
+
+  // Ordinal-only labels ("5th", "4th", "3rd") are SEC class codes — make them readable
+  const isOrdinal = /^\d+(st|nd|rd|th)$/.test(attr.trim());
+  if (isOrdinal) {
+    const qCtx = question ? question.replace(/^which|^what|^how/i, '').trim().slice(0, 30) : 'segment';
+    return pctNum
+      ? `${pctNum} of Your Audience Are SEC ${attr} — ${multFmt} the National Average`
+      : `SEC ${attr} Segment Over-Indexes ${multFmt} Here — A High-Value Targeting Opportunity`;
+  }
 
   const frac = pctNum ? pctToWords(parseFloat(pctNum)) : null;
   const fracStr = frac && !frac.startsWith('about') && !frac.startsWith('roughly') ? frac : null;
@@ -417,13 +426,22 @@ function buildS2(attr1: string, attr2: string, pct2Raw: number, index2: number):
   const pct2Str  = pct2Raw > 0 ? `${pct2Raw.toFixed(1)}%` : null;
   const mult2    = `${(index2 / 100).toFixed(1)}×`;
 
+  // Vary the closing phrase so all cards don't end identically
+  const closings = [
+    'a pattern that confirms this is a deliberate audience orientation, not a one-off reading.',
+    'together these signals point to a clear strategic opportunity worth building into the brief.',
+    'the two signals reinforce each other — this is a consistent audience lean, not noise.',
+    'this spread shows the category has depth beyond the headline number.',
+  ];
+  const closing = closings[Math.abs(attr1.length + attr2.length) % closings.length];
+
   if (wasVerb2 && pct2Str) {
-    return `${pct2Str} are also ${clean2} (${mult2} the national rate), reinforcing a consistent pattern across this category.`;
+    return `${pct2Str} are also ${clean2} (${mult2} the national rate) — ${closing}`;
   }
   if (pct2Str) {
-    return `${cap(clean2)} follows at ${pct2Str} — ${mult2} the national average — confirming this is a consistent audience orientation, not a one-off signal.`;
+    return `${cap(clean2)} follows at ${pct2Str} (${mult2} the national rate) — ${closing}`;
   }
-  return `${cap(clean2)} follows closely at ${mult2} the national average.`;
+  return `${cap(clean2)} follows closely at ${mult2} the national average — ${closing}`;
 }
 
 /**
@@ -445,6 +463,18 @@ function buildRec(slot: DataSlot, topAttr: string, pctNum: string | null): strin
 
   if (/purchas|buy|shop|price|store|retail|ecomm|discount|full.price/i.test(q + attr))
     return `Integrate Instagram Shopping tags and Flipkart in-app placements into the media plan. This audience researches heavily before buying — invest in retargeting sequences that bridge social discovery to purchase, and prioritise DTC trust signals over discount-led creative.`;
+
+  if (/health|fitness|wellness|wellbeing|body|exercise|gym|sport|yoga|diet|nutrition|weight|active|physical/i.test(q + attr))
+    return `Invest in health-and-wellness creator content on Instagram and YouTube — short-form videos featuring real Indians achieving fitness goals outperform polished brand ads with this group by a wide margin. Prioritise Moj and Josh for vernacular reach, and brief creators on the specific behaviour showing the strongest signal rather than generic "healthy living" messaging.`;
+
+  if (/beauty|grooming|skin|personal.care|cosmetic|haircare|makeup|fragrance|hygiene/i.test(q + attr))
+    return `Build a creator-first beauty strategy on Instagram Reels and YouTube Shorts — tutorial and review formats from mid-tier Indian creators (50K–500K followers) outperform celebrity-led content with this audience. Invest in Nykaa and Flipkart Beauty in-app placements to close the discovery-to-purchase gap at the point of intent.`;
+
+  if (/interest|hobby|leisure|pop.culture|entertain|music|gaming|fashion|style|travel|festival/i.test(q + attr))
+    return `Build interest-cluster content on Instagram Reels and YouTube Shorts — place the brand inside genuine passion communities (fitness, gaming, fashion, music) rather than interrupting them. Audiences that find a brand in their interest feed, not their ad break, deliver significantly higher organic engagement and brand recall.`;
+
+  if (/sec|socio.econom|class|income.bracket|household.income|affluent|premium|tier/i.test(q + attr))
+    return `Concentrate premium product messaging on this SEC segment across OTT pre-rolls (JioCinema, Hotstar) and Instagram — these households have both the intent and the spending power to convert. Avoid discount-first creative; this group responds to quality signals and aspirational but attainable brand positioning.`;
 
   if (/challeng|aspir|ambiti|goal|learn|grow|improv|achiev/i.test(attr))
     return `Run 15-second Instagram Reels and YouTube pre-rolls built around personal progress moments — real Indians setting and hitting goals, not aspirational models. This audience responds to creative that mirrors their own ambitions rather than selling a lifestyle.`;
@@ -550,7 +580,7 @@ function generateFallbackCards(
     const multFmt = `${(top.index / 100).toFixed(1)}×`;
 
     // ── TITLE ────────────────────────────────────────────────────────────────
-    const title = buildTitle(top.attr, pctNum, multFmt);
+    const title = buildTitle(top.attr, pctNum, multFmt, slot.question);
 
     // ── OBSERVATION — use top-3 rows for a rich, multi-stat picture ─────────
     const s1 = buildS1(top.attr, pctNum, pctFrac, multFmt, brief);
@@ -592,10 +622,10 @@ function generateFallbackCards(
     const isVerb    = /^I (am |)(using|watch|buy|prefer|trust|worry|think|feel|read|listen|spend|value|choos|believ|driv|own|follow|support|creat|shar|post|play|cook|exercis|travel)/i.test(top.attr);
     const stat = hasPct && pctFrac
       ? isVerb
-        ? `${cap(pctFrac)} of this audience are ${cleanAttr} — ${multFmt} the national average`
+        ? `${cap(pctFrac)} of your audience are ${cleanAttr} — ${multFmt} the national average`
         : `${cap(pctFrac)} prioritise ${cleanAttr} — ${multFmt} more common here than the national average`
       : hasPct
-        ? `${pctNum} of this audience prioritise ${cleanAttr} — ${multFmt} the national average`
+        ? `${pctNum} of your audience prioritise ${cleanAttr} — ${multFmt} the national average`
         : `${cap(cleanAttr)} is ${multFmt} more prevalent here than in the general Indian population`;
 
     // ── RECOMMENDATION ───────────────────────────────────────────────────────
