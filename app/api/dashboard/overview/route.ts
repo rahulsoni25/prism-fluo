@@ -33,12 +33,16 @@ function getDemoBriefs() {
       brand: 'Coca-Cola',
       category: 'FMCG — Food & Beverages',
       objective: 'Summer Campaign Analysis',
-      status: 'ready',
-      analysis_id: 'demo-analysis-1',
+      // Status downgraded from 'ready' to 'processing' for the demo brief
+      // because 'ready' renders a "View Analysis" link that points at
+      // analysis_id, and no real analysis exists for the placeholder UUID.
+      // Routing to a fake UUID produced "Analysis not Found" / 404 from
+      // /api/analyses/<id>. New users now see all 3 demo briefs as
+      // non-clickable previews until they create their own.
+      status: 'processing',
       created_at: new Date(Date.now() - 3600000).toISOString(),
       sla_hours: 4,
       sla_due_at: new Date(Date.now() + 7200000).toISOString(),
-      actual_completed_at: new Date(Date.now() - 1200000).toISOString(),
     },
     {
       id: 'demo-brief-2',
