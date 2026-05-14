@@ -191,12 +191,26 @@ export interface DataSlot {
   bucket:          'content' | 'commerce' | 'communication' | 'culture' | 'channel' | 'media' | 'creative' | 'pricing' | 'search';
   question:        string;
   chartSuggestion: ChartType;
+  // ── Two-audience comparison metadata (set when GWI export had paired
+  // audience columns: "Audience %, Audience %, Data point %, Data point %, ...")
+  // Single-audience slots leave these undefined so downstream code branches
+  // on `slot.isTwoAudience` to decide whether to compare. ────────────────
+  isTwoAudience?:  boolean;
+  audienceALabel?: string;
+  audienceBLabel?: string;
   rows: Array<{
     attr:        string;
     audiencePct: number;
     dataPct:     number;
     index:       number;
     universe:    number;
+    // Audience B values — only populated when slot.isTwoAudience === true.
+    // Use audiencePct2 / index2 in prompts and chart builders that want the
+    // second audience; otherwise these stay undefined.
+    audiencePct2?: number;
+    dataPct2?:     number;
+    index2?:       number;
+    universe2?:    number;
   }>;
 }
 

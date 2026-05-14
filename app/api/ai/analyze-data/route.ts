@@ -212,23 +212,61 @@ function buildInsightSlots(rows: any[]): DataSlot[] {
     groups[q].push(row);
   }
 
-  // 2. For each question compute rows sorted by Index (high signal first)
+  // ── Two-audience detection (parser stamps __audienceA / __audienceB
+  // on every row of a comparison export — see parseGwiCore in
+  // lib/uploads/handler.ts) ──────────────────────────────────────────
+  const sampleMeta = normRows.find(r =>
+    r && typeof r === 'object' && (r['__audiencea'] || r['__audienceb'])
+  );
+  const audienceALabel: string | undefined =
+    sampleMeta?.['__audiencea'] ? String(sampleMeta['__audiencea']) : undefined;
+  const audienceBLabel: string | undefined =
+    sampleMeta?.['__audienceb'] ? String(sampleMeta['__audienceb']) : undefined;
+  const isTwoAudience = !!(audienceALabel && audienceBLabel);
+
+  // 2. For each question compute rows sorted by Index (high signal first).
+  // For 2-audience uploads, the parser disambiguated metric columns with a
+  // " (B)" suffix, which gets lowercased here to "audience % (b)" etc.
   const questions = Object.entries(groups).map(([question, qRows]) => {
     const parsed = qRows
-      .map(r => ({
-        attr:        col(r, 'attributes', 'attribute', 'audience', 'label', 'name'),
-        audiencePct: num(r, 'audience %', 'audience_pct', 'audience%'),
-        dataPct:     num(r, 'data point %', 'data_point_pct', 'datapoint%'),
-        index:       num(r, 'index', 'index_score'),
-        universe:    num(r, 'universe'),
-      }))
-      .filter(r => r.attr && r.index > 0)
-      .sort((a, b) => b.index - a.index);
+      .map(r => {
+        const audiencePct2 = isTwoAudience
+          ? num(r, 'audience % (b)', 'audience_pct_b', 'audience%(b)')
+          : 0;
+        const dataPct2 = isTwoAudience
+          ? num(r, 'data point % (b)', 'data_point_pct_b', 'datapoint%(b)')
+          : 0;
+        const index2 = isTwoAudience
+          ? num(r, 'index (b)', 'index_score_b')
+          : 0;
+        const universe2 = isTwoAudience
+          ? num(r, 'universe (b)')
+          : 0;
+        return {
+          attr:        col(r, 'attributes', 'attribute', 'audience', 'label', 'name'),
+          audiencePct: num(r, 'audience %', 'audience_pct', 'audience%'),
+          dataPct:     num(r, 'data point %', 'data_point_pct', 'datapoint%'),
+          index:       num(r, 'index', 'index_score'),
+          universe:    num(r, 'universe'),
+          // Only attach B fields when this slot is part of a 2-audience export;
+          // single-audience consumers must keep seeing undefined.
+          ...(isTwoAudience ? { audiencePct2, dataPct2, index2, universe2 } : {}),
+        };
+      })
+      // Keep a row if EITHER audience has a real index signal — a strong
+      // signal on audience B alone should still surface for comparison.
+      .filter(r => r.attr && (r.index > 0 || ((r as any).index2 ?? 0) > 0))
+      // Sort by the stronger of the two audiences so the most informative
+      // attributes come first regardless of which side carries the signal.
+      .sort((a, b) =>
+        Math.max(b.index, (b as any).index2 ?? 0) -
+        Math.max(a.index, (a as any).index2 ?? 0)
+      );
 
     return {
       question,
       bucket: questionBucket(question),
-      maxIndex: parsed[0]?.index ?? 0,
+      maxIndex: Math.max(parsed[0]?.index ?? 0, (parsed[0] as any)?.index2 ?? 0),
       // Send top 10 rows per slot (was 7) for richer Gemini context
       topRows: parsed.slice(0, 10),
       rowCount: parsed.length,
@@ -278,6 +316,11 @@ function buildInsightSlots(rows: any[]): DataSlot[] {
     question: q.question,
     chartSuggestion: suggestChart(q.rowCount, q.topRows, q.question),
     rows: q.topRows,
+    // Carry 2-audience metadata onto every slot when the upload was a
+    // comparison export. Downstream consumers (Gemini prompt, chart-data
+    // builder, enforceChartTypeRules) branch on isTwoAudience to decide
+    // whether to render comparison framing.
+    ...(isTwoAudience ? { isTwoAudience: true, audienceALabel, audienceBLabel } : {}),
   }));
 }
 
