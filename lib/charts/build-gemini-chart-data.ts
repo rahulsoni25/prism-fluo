@@ -32,7 +32,10 @@ export function buildGeminiChartData(
 ) {
   const bg     = BUCKET_CHART_COLORS[bucket]  || 'rgba(37,99,235,0.85)';
   const border = BUCKET_CHART_BORDERS[bucket] || 'rgba(37,99,235,1)';
-  const PIE_COLORS = ['#1E3A8A','#4C1D95','#065F46','#78350F','#1D4ED8','#7C3AED','#059669','#D97706'];
+  // GWI-style two-tone palette: deep navy alternating with mid blue so each
+  // doughnut reads as "primary vs secondary" rather than a multi-coloured pie.
+  // Matches the GWI report look (limited palette, high contrast within chart).
+  const PIE_COLORS = ['#1E3A8A','#60A5FA','#1E3A8A','#60A5FA','#1E3A8A','#60A5FA','#1E3A8A','#60A5FA'];
 
   // ── SVG-based charts: store labels + values directly ─────────────
   if (type === 'waterfall' || type === 'funnel') {
@@ -138,9 +141,12 @@ export function buildGeminiChartData(
           borderWidth: 1, borderRadius: 4,
         },
         {
+          // GWI-style: second audience uses teal instead of orange, so the
+          // two-audience comparison reads as a tight palette (navy vs teal)
+          // matching the GWI report look.
           label: s2Label, data: values2,
-          backgroundColor: 'rgba(249,115,22,0.85)',
-          borderColor:     'rgba(194,65,12,1)',
+          backgroundColor: 'rgba(20,184,166,0.85)',
+          borderColor:     'rgba(15,118,110,1)',
           borderWidth: 1, borderRadius: 4,
         },
       ],
