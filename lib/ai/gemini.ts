@@ -233,29 +233,101 @@ export async function analyzeDataForPRISM(
 
   await getModel(genAI); // warm model cache; actual model resolved inside callGeminiWithRetry
 
-  // Build structured slot block — exact numbers, clearly labelled
-  const slotBlock = slots.map((slot, i) => {
-    const rowLines = slot.rows.map(r =>
-      `    • ${r.attr}: ${r.audiencePct.toFixed(1)}% audience` +
-      ` | ${(r.index / 100).toFixed(2)}× national avg` +
-      (r.universe > 0 ? ` | ~${(r.universe / 1e6).toFixed(1)}M people in India` : ''),
-    ).join('\n');
+  // Detect whether ANY slot is a 2-audience comparison so we can inject
+  // a comparison-specific rubric into the prompt header.
+  const anyTwoAudience = slots.some(s => s.isTwoAudience);
 
-    // Explicit NUMBER BANK — every number the AI is permitted to use for this card
+  // Build structured slot block — exact numbers, clearly labelled.
+  // For 2-audience slots, each row shows BOTH audiences' values plus the
+  // explicit gap so Gemini can quote the difference without inventing it.
+  const slotBlock = slots.map((slot, i) => {
+    const twoAud = !!slot.isTwoAudience;
+    const audA   = slot.audienceALabel || 'Audience A';
+    const audB   = slot.audienceBLabel || 'Audience B';
+
+    const rowLines = slot.rows.map(r => {
+      if (twoAud) {
+        const pctA = r.audiencePct.toFixed(1);
+        const pctB = (r.audiencePct2 ?? 0).toFixed(1);
+        const idxA = (r.index / 100).toFixed(2);
+        const idxB = ((r.index2 ?? 0) / 100).toFixed(2);
+        const gapN = r.audiencePct - (r.audiencePct2 ?? 0);
+        const gap  = `${gapN >= 0 ? '+' : ''}${gapN.toFixed(1)} pts`;
+        return `    • ${r.attr}: ${audA} = ${pctA}% (${idxA}× nat) | ${audB} = ${pctB}% (${idxB}× nat) | gap = ${gap}`;
+      }
+      return `    • ${r.attr}: ${r.audiencePct.toFixed(1)}% audience`
+        + ` | ${(r.index / 100).toFixed(2)}× national avg`
+        + (r.universe > 0 ? ` | ~${(r.universe / 1e6).toFixed(1)}M people in India` : '');
+    }).join('\n');
+
+    // Explicit NUMBER BANK — every number the AI is permitted to use for this card.
+    // 2-audience mode enumerates both audiences and the gap so Gemini can quote
+    // the gap as a real number, not a derived guess.
     const bankLines = slot.rows.map(r => {
+      if (twoAud) {
+        const pctA = r.audiencePct.toFixed(1);
+        const pctB = (r.audiencePct2 ?? 0).toFixed(1);
+        const idxA = (r.index / 100).toFixed(2);
+        const idxB = ((r.index2 ?? 0) / 100).toFixed(2);
+        const gapN = r.audiencePct - (r.audiencePct2 ?? 0);
+        const gap  = `${gapN >= 0 ? '+' : ''}${gapN.toFixed(1)}pts`;
+        return `  ${r.attr}: ${audA}=${pctA}%/${idxA}× | ${audB}=${pctB}%/${idxB}× | gap=${gap}`;
+      }
       const parts = [`${r.audiencePct.toFixed(1)}%`, `${(r.index / 100).toFixed(2)}×`];
       if (r.universe > 0) parts.push(`~${(r.universe / 1e6).toFixed(1)}M`);
       return `  ${r.attr}: ${parts.join(' | ')}`;
     }).join('\n');
 
+    const audienceHeader = twoAud
+      ? `Audiences in this slot: A = "${audA}" | B = "${audB}" — every observation must name them and call out the gap.\n`
+      : '';
+
     return `
 SLOT ${i + 1} | PRISM Bucket: ${slot.bucket.toUpperCase()} | Topic: ${slot.question}
 Suggested chart: ${slot.chartSuggestion}
-DATA ROWS (sorted by signal strength):
+${audienceHeader}DATA ROWS (sorted by signal strength):
 ${rowLines}
 PERMITTED NUMBERS for this card — use only these (or plain-English translations). Any number not listed here is forbidden:
 ${bankLines}`;
   }).join('\n');
+
+  // Two-audience comparison rubric — only injected when ANY slot is 2-audience.
+  // Single-audience uploads never see this block; behaviour unchanged.
+  const twoAudienceRubric = anyTwoAudience ? `
+━━ TWO-AUDIENCE COMPARISON MODE ━━
+Some slots are marked "Audiences in this slot: A = ... | B = ...". For THOSE slots only,
+follow this comparison rubric in addition to the standard Insight Block format below:
+
+• TITLE must name BOTH audiences or call out the gap explicitly. Examples:
+  ✅ "Audience A Leads on Online Discovery by 12 Points — Reframe the Pitch"
+  ✅ "Same Heritage, Different Habits — A Skips TV, B Watches Daily"
+  ❌ "Strong Online Discovery Behaviour" (no comparison, no audience names)
+
+• OBSERVATION — 3 sentences with this pattern:
+  Sentence 1 — WHO + WHAT + THE GAP: name BOTH audiences, the dimension being compared,
+                and the direction (A leads / B leads), using both percentages from the bank.
+  Sentence 2 — THE BREAKDOWN: split the top 2–3 attributes across both audiences with their
+                exact percentages from PERMITTED NUMBERS (do not aggregate).
+  Sentence 3 — THE STRATEGIC IMPLICATION: what the brand should DO differently for A vs B
+                based on the divergence — not generic; tied to the brief.
+
+• STAT line is the single biggest gap, plain English. Use the gap value from the bank.
+  ✅ "Audience A are nearly twice as likely to discover brands on Instagram than Audience B."
+
+• RECOMMENDATION must explicitly address BOTH audiences. Either give one direction per audience,
+  or explain why one of the two is the priority for this brief.
+
+• CHART DATA for 2-audience slots:
+  chartLabels  = the attribute names (top up to 8)
+  chartValues  = Audience A's % per attribute
+  chartValues2 = Audience B's % per attribute (NEVER leave empty for 2-audience slots)
+  chartSeries  = [exact name of Audience A, exact name of Audience B] from the slot header.
+  This renders side-by-side navy + teal bars (or a two-polygon radar for personas) — the
+  GWI report look. If you describe a comparison in obs/title, chartValues2 + chartSeries
+  are MANDATORY.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` : '';
 
   const briefBlock = briefContext ? `
 ━━ CLIENT BRIEF — READ THIS BEFORE WRITING ANY CARD ━━
@@ -269,7 +341,7 @@ RELEVANCE RULE: Frame every observation, stat, and recommendation through this b
   const prompt = `You are an **Insight Strategist for Ads** at PRISM, writing for brand managers, media planners, and creative directors in India.
 
 You will receive a BRIEF and one or more GWI tables (any bucket: demographics, interests, attitudes, media, purchase). Your job is to turn this into a small set of sharp, creative-ready insights.
-${briefBlock}
+${briefBlock}${twoAudienceRubric}
 DATASET: ${context}
 
 ${slotBlock}
@@ -369,9 +441,13 @@ RULE A — BINARY TRADE-OFF → doughnut:
 RULE B — PERSONAS / SEGMENTATION → radar:
   If the slot question contains "Persona", "Segmentation", "Describes Consumer",
   "Self-Perception", or "Character Describes", AND has 5–8 attributes, set type to "radar".
-  Also set chartValues2 to an array of 100s with the same length as chartLabels (the
-  national index baseline), and chartSeries to ["Audience %", "National baseline"].
-  This lets the radar plot the audience profile against the neutral national average.
+  • Single-audience slots: set chartValues2 to an array of 100s with the same length as
+    chartLabels (the national index baseline), and chartSeries to ["Audience %", "National baseline"].
+    This lets the radar plot the audience profile against the neutral national average.
+  • TWO-AUDIENCE slots (those marked "Audiences in this slot"): set chartValues2 to
+    Audience B's exact %s from the bank (NOT the 100-baseline), and chartSeries to
+    [exact A name, exact B name]. This renders two polygons (A in navy, B in teal) — the
+    GWI persona radar look.
 
 These two rules ALWAYS win over the guide below.
 
@@ -487,18 +563,51 @@ export async function generateGwiOverview(
 
   await getModel(genAI);
 
-  // Compact summary across ALL slots — top 3 rows per slot to keep tokens bounded
+  const anyTwoAudience = slots.some(s => s.isTwoAudience);
+
+  // Compact summary across ALL slots — top 3 rows per slot to keep tokens bounded.
+  // 2-audience slots show both audiences' values plus the gap so the overview can
+  // call out the single biggest A-vs-B divergence.
   const slotSummary = slots.slice(0, 18).map((slot, i) => {
-    const topRows = slot.rows.slice(0, 3).map(r =>
-      `    • ${r.attr}: ${r.audiencePct.toFixed(1)}% audience | ${(r.index / 100).toFixed(2)}× national avg`,
-    ).join('\n');
-    return `SLOT ${i + 1} — ${slot.question}\n${topRows}`;
+    const twoAud = !!slot.isTwoAudience;
+    const audA   = slot.audienceALabel || 'Audience A';
+    const audB   = slot.audienceBLabel || 'Audience B';
+    const topRows = slot.rows.slice(0, 3).map(r => {
+      if (twoAud) {
+        const pctA = r.audiencePct.toFixed(1);
+        const pctB = (r.audiencePct2 ?? 0).toFixed(1);
+        const idxA = (r.index / 100).toFixed(2);
+        const idxB = ((r.index2 ?? 0) / 100).toFixed(2);
+        const gapN = r.audiencePct - (r.audiencePct2 ?? 0);
+        const gap  = `${gapN >= 0 ? '+' : ''}${gapN.toFixed(1)} pts`;
+        return `    • ${r.attr}: A(${audA})=${pctA}%/${idxA}× | B(${audB})=${pctB}%/${idxB}× | gap=${gap}`;
+      }
+      return `    • ${r.attr}: ${r.audiencePct.toFixed(1)}% audience | ${(r.index / 100).toFixed(2)}× national avg`;
+    }).join('\n');
+    const audHeader = twoAud
+      ? `  Audiences: A = "${audA}" | B = "${audB}"\n`
+      : '';
+    return `SLOT ${i + 1} — ${slot.question}\n${audHeader}${topRows}`;
   }).join('\n\n');
 
   const briefBlock = briefContext ? `\n━━ CLIENT BRIEF (primary lens) ━━\n${briefContext}\n` : '';
 
+  // Surface the two-audience framing once, near the top, when ANY slot has it.
+  const audA = slots.find(s => s.isTwoAudience)?.audienceALabel || 'Audience A';
+  const audB = slots.find(s => s.isTwoAudience)?.audienceBLabel || 'Audience B';
+  const twoAudienceBlock = anyTwoAudience ? `
+━━ TWO-AUDIENCE COMPARISON DATASET ━━
+This upload compares two audiences: A = "${audA}" and B = "${audB}".
+• The MAIN HEADLINE must be the SINGLE biggest A-vs-B gap from the data — name both audiences
+  and quantify the divergence (e.g. "2× more likely than", "12 points ahead of"). Use the
+  exact gap values from the slot data — never invent magnitudes.
+• The AUDIENCE SNAPSHOT must sketch BOTH audiences in one paragraph: how A behaves, how B
+  behaves, and the dimension on which they diverge most. Start with: "For this brief, we are
+  really comparing two audiences…"
+` : '';
+
   const prompt = `You are an Insight Strategist for Ads at PRISM, writing for brand managers, media planners, and creative directors in India.
-${briefBlock}
+${briefBlock}${twoAudienceBlock}
 DATASET: ${context}
 
 You will read the GWI signals below across all slots and produce TWO things only:
