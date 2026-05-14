@@ -222,16 +222,62 @@ function parseGwiCore(
   if (!detected) return [];
 
   const { columnRowIdx } = detected;
-  const columnRow = (allRows[columnRowIdx] || []) as any[];  // Short Label Question, Attributes, Segment...
-  const metricRow = columnRowIdx > 0 ? (allRows[columnRowIdx - 1] || []) as any[] : []; // Audience %, ...
+  const columnRow = (allRows[columnRowIdx] || []) as any[];  // Short Label Question, Attributes, <audience names...>
+  const metricRow = columnRowIdx > 0 ? (allRows[columnRowIdx - 1] || []) as any[] : []; // Audience %, Audience %, Data point %, Data point %, ...
 
-  // Build merged column names:
-  //   - If metricRow[idx] has a value (Audience %, Data point %, ...) → use it
-  //   - Else use columnRow[idx] (Short Label Question, Attributes)
-  const headers = columnRow.map((v: any, idx: number) => {
+  // ── 2-audience detection ─────────────────────────────────────
+  // GWI's two-audience export repeats each metric in the metricRow
+  // (Audience %, Audience %, Data point %, Data point %, Universe, Universe, ...)
+  // and lists the audience names beneath those columns in the columnRow.
+  // If we see at least two distinct non-empty audience names beneath the
+  // "Audience %" cells, treat this as a comparison export.
+  const audPctIndices: number[] = [];
+  metricRow.forEach((v: any, idx: number) => {
+    if (String(v ?? '').trim().toLowerCase() === 'audience %') audPctIndices.push(idx);
+  });
+
+  let audienceA: string | null = null;
+  let audienceB: string | null = null;
+  if (audPctIndices.length >= 2) {
+    const nameA = String(columnRow[audPctIndices[0]] ?? '').trim();
+    const nameB = String(columnRow[audPctIndices[1]] ?? '').trim();
+    if (nameA && nameB && nameA !== nameB) {
+      audienceA = nameA;
+      audienceB = nameB;
+    }
+  }
+  const isTwoAudience = audienceA !== null && audienceB !== null;
+
+  // ── Build merged column names ────────────────────────────────
+  // Single-audience (original behaviour): metric name takes priority for cols
+  // that have one; else use the column name.
+  // Two-audience: for each metric column, use the audience name in columnRow[idx]
+  // to decide whether it belongs to A (unsuffixed) or B (" (B)" suffix). This is
+  // resilient to A/B/A/B vs A/A/B/B column orderings — we pair by audience name,
+  // not by position. Falls back to first-occurrence-wins if names are missing.
+  const metricSeenCount: Record<string, number> = {};
+  const headers: string[] = [];
+  columnRow.forEach((v: any, idx: number) => {
     const metric = String(metricRow[idx] ?? '').trim();
     const col    = String(v ?? '').trim();
-    return metric || col; // metric names take priority for cols 3+
+    if (!metric) {
+      headers[idx] = col;            // "Short Label Question", "Attributes"
+      return;
+    }
+    if (isTwoAudience) {
+      if (col === audienceA) {
+        headers[idx] = metric;        // audience A → unsuffixed
+      } else if (col === audienceB) {
+        headers[idx] = `${metric} (B)`;
+      } else {
+        // Unknown / ambiguous audience name: fall back to first-occurrence wins
+        const lower = metric.toLowerCase();
+        metricSeenCount[lower] = (metricSeenCount[lower] || 0) + 1;
+        headers[idx] = metricSeenCount[lower] === 1 ? metric : `${metric} (B)`;
+      }
+    } else {
+      headers[idx] = metric || col;
+    }
   });
 
   const result: Array<{ uploadId: string; sheetName: string; toolType: string; rowData: Record<string, any> }> = [];
@@ -249,9 +295,20 @@ function parseGwiCore(
       }
       obj[h] = raw ?? null;
     });
+    // Stamp every 2-audience row with the audience labels so downstream code
+    // (slot builder, Gemini prompt) can name the audiences without re-parsing.
+    if (isTwoAudience) {
+      obj['__audienceA'] = audienceA;
+      obj['__audienceB'] = audienceB;
+    }
     const nonEmpty = Object.values(obj).filter(v => v != null && v !== '').length;
     if (nonEmpty < 2) continue;
-    result.push({ uploadId, sheetName, toolType: 'gwi_core', rowData: obj });
+    result.push({
+      uploadId,
+      sheetName,
+      toolType: isTwoAudience ? 'gwi_core_two_audience' : 'gwi_core',
+      rowData: obj,
+    });
   }
   return result;
 }
