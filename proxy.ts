@@ -1,9 +1,12 @@
 /**
- * middleware.ts
+ * proxy.ts
  *
- * Edge middleware — runs before every request. Redirects unauthenticated
+ * Edge proxy — runs before every request. Redirects unauthenticated
  * users to /login for app routes, and returns 401 JSON for unprotected
  * API routes that need a session.
+ *
+ * (Next.js 16 renamed "middleware" to "proxy" — same convention, new file
+ * name. The functionality is unchanged.)
  *
  * Whitelisted paths (no auth required):
  *   /login                — the login page itself
@@ -37,7 +40,7 @@ function isStatic(pathname: string): boolean {
   );
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (isStatic(pathname)) return NextResponse.next();

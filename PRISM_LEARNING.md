@@ -774,7 +774,7 @@ Forgetting `await params` makes `params.id = undefined`, causing "Page not found
 | `app/api/briefs/[id]/route.js` | DELETE handler for brief deletion |
 | `app/api/dashboard/overview/route.ts` | Single round-trip overview with DB-aggregated stats |
 | `app/api/migrate/route.ts` | DB migration: pages table, is_admin column, all schema |
-| `middleware.ts` | Auth gates, public route list |
+| `proxy.ts` | Auth gates, public route list (Next.js 16 renamed `middleware` → `proxy`) |
 | `lib/db/schema.sql` | DB schema (idempotent ALTER statements) |
 
 ---
