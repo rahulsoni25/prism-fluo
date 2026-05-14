@@ -1162,46 +1162,9 @@ function AnalysisDetail({ id }) {
             {analysis.brief?.sla_due_at && (
               <SlaStrip brief={analysis.brief} />
             )}
-
-            {/* ── Main Headline + Audience Snapshot (Insight Strategist blueprint) ── */}
-            {overview && (
-              <div
-                style={{
-                  marginTop: 18,
-                  padding: '18px 22px',
-                  background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08))',
-                  border: '1px solid rgba(139,92,246,0.25)',
-                  borderRadius: 14,
-                  maxWidth: 920,
-                }}
-              >
-                {overview.headline && (
-                  <div
-                    style={{
-                      fontSize: 22,
-                      fontWeight: 800,
-                      lineHeight: 1.25,
-                      color: 'var(--text, #0F172A)',
-                      marginBottom: overview.audienceSnapshot ? 12 : 0,
-                      letterSpacing: '-0.01em',
-                    }}
-                  >
-                    {overview.headline}
-                  </div>
-                )}
-                {overview.audienceSnapshot && (
-                  <div
-                    style={{
-                      fontSize: 14.5,
-                      lineHeight: 1.6,
-                      color: 'var(--muted, #475569)',
-                    }}
-                  >
-                    {overview.audienceSnapshot}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Main Headline + Audience Snapshot moved out of the dark hero
+                into a full-width light banner below — see .insights-overview
+                section after this hero closes. */}
           </div>
           <div className="ins-actions no-print">
             <button
@@ -1239,7 +1202,30 @@ function AnalysisDetail({ id }) {
             <button className="btn-glass" onClick={() => router.push('/insights')}>← All Analyses</button>
           </div>
         </div>
+      </div>
 
+      {/* ── Executive Summary banner ──
+          Lifted out of the dark hero so the Main Headline + Audience Snapshot
+          get full page width on a light surface (dark-on-dark was unreadable
+          when wedged into the hero's left column next to the actions). */}
+      {overview && (
+        <section className="insights-overview">
+          <div className="insights-overview-inner">
+            <div className="insights-overview-eyebrow">Executive Summary</div>
+            {overview.headline && (
+              <h2 className="insights-overview-headline">{overview.headline}</h2>
+            )}
+            {overview.audienceSnapshot && (
+              <p className="insights-overview-snapshot">{overview.audienceSnapshot}</p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── Bucket tab navigation ──
+          Moved out of the dark hero so reading order is hero → summary →
+          choose-a-section → cards. Light surface; tab pills restyled in CSS. */}
+      <div className="insights-tabs-wrap">
         <div className="bucket-tabs-bar">
           <div className="bucket-tabs">
             {BUCKET_TABS.filter(b => (bucketedCharts[b.key] || []).length > 0).map(b => (
