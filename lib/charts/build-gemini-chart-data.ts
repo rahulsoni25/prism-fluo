@@ -32,7 +32,11 @@ export function buildGeminiChartData(
 ) {
   const bg     = BUCKET_CHART_COLORS[bucket]  || 'rgba(37,99,235,0.85)';
   const border = BUCKET_CHART_BORDERS[bucket] || 'rgba(37,99,235,1)';
-  const PIE_COLORS = ['#1E3A8A','#4C1D95','#065F46','#78350F','#1D4ED8','#7C3AED','#059669','#D97706'];
+  // GWI-style two-tone palette: deep navy alternating with mid blue so each
+  // doughnut reads as "primary vs secondary" rather than a multi-coloured pie.
+  // (Same change ships on `charts/gwi-look` — duplicated here so the
+  // two-audience feature renders correctly even without that branch merged.)
+  const PIE_COLORS = ['#1E3A8A','#60A5FA','#1E3A8A','#60A5FA','#1E3A8A','#60A5FA','#1E3A8A','#60A5FA'];
 
   // ── SVG-based charts: store labels + values directly ─────────────
   if (type === 'waterfall' || type === 'funnel') {
@@ -110,7 +114,40 @@ export function buildGeminiChartData(
   }
 
   // ── Radar ─────────────────────────────────────────────────────────
+  // Two-audience comparison emits TWO polygons (audience A in bucket colour,
+  // audience B in teal). Persona-radar single-audience input still gets the
+  // 100-baseline second dataset via the existing route.ts override path.
   if (type === 'radar') {
+    const hasSecondSeries =
+      Array.isArray(values2) && values2.length === values.length && values2.some(v => v !== 0);
+    if (hasSecondSeries) {
+      const s1Label = series?.[0] || 'Audience A';
+      const s2Label = series?.[1] || 'Audience B';
+      return {
+        labels,
+        datasets: [
+          {
+            label: s1Label,
+            data: values,
+            backgroundColor: bg.replace('0.85)', '0.2)'),
+            borderColor: border,
+            borderWidth: 2,
+            pointBackgroundColor: border,
+          },
+          {
+            // GWI-style second polygon: teal so A-vs-B reads as two
+            // distinct outlines layered over the octagonal grid.
+            label: s2Label,
+            data: values2!,
+            backgroundColor: 'rgba(20,184,166,0.2)',
+            borderColor:     'rgba(15,118,110,1)',
+            borderWidth: 2,
+            pointBackgroundColor: 'rgba(15,118,110,1)',
+          },
+        ],
+      };
+    }
+    // Single-series radar — unchanged behaviour.
     return {
       labels,
       datasets: [{
@@ -138,9 +175,15 @@ export function buildGeminiChartData(
           borderWidth: 1, borderRadius: 4,
         },
         {
+          // GWI-style: second audience uses teal instead of orange, so the
+          // two-audience comparison reads as a tight palette (navy vs teal)
+          // matching the GWI report look.
+          // (Same change ships on `charts/gwi-look` — duplicated here so the
+          // two-audience feature renders correctly even without that branch
+          // merged.)
           label: s2Label, data: values2,
-          backgroundColor: 'rgba(249,115,22,0.85)',
-          borderColor:     'rgba(194,65,12,1)',
+          backgroundColor: 'rgba(20,184,166,0.85)',
+          borderColor:     'rgba(15,118,110,1)',
           borderWidth: 1, borderRadius: 4,
         },
       ],
