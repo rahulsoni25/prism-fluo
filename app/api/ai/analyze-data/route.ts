@@ -125,6 +125,7 @@ function suggestChart(
   rowCount: number,
   rows:     DataSlot['rows'],
   question: string = '',
+  isTwoAudience: boolean = false,
 ): DataSlot['chartSuggestion'] {
   const q = question.toLowerCase();
 
@@ -134,6 +135,8 @@ function suggestChart(
   // Two attributes whose Audience % sum to ~100 (e.g. "Shop in-store" vs "Shop online",
   // "Pay in cash" vs "Pay without using cash"). Two-slice bars look weak; a doughnut
   // reads instantly as "she sides with X, not Y".
+  // (2-audience caveat: still doughnut for now; renders the trade-off for
+  // audience A. Paired side-by-side doughnuts are a follow-up.)
   if (rowCount === 2) {
     const sum = (rows[0]?.audiencePct ?? 0) + (rows[1]?.audiencePct ?? 0);
     if (sum >= 95 && sum <= 105) return 'doughnut';
@@ -142,9 +145,21 @@ function suggestChart(
   // Rule B: Personas / segmentation → radar.
   // 5–8 attributes that describe segments, personas, or self-perception axes.
   // Plots the audience profile across all axes simultaneously.
+  // For 2-audience comparisons the radar gets a second polygon (audience B)
+  // instead of the 100-baseline — wired in build-gemini-chart-data.ts and
+  // in enforceChartTypeRules below.
   if (/persona|segmentation|describes consumer|self.perception|character describes/i.test(q)
       && rowCount >= 5 && rowCount <= 8)
     return 'radar';
+
+  // Rule C: Two-audience comparison → grouped bar / hbar (default).
+  // Once Rules A and B haven't matched, every other question for a 2-audience
+  // upload should render as a side-by-side comparison. This shadows the
+  // existing semantic overrides (funnel / area / waterfall / histogram) which
+  // make less sense once the framing is "A vs B".
+  if (isTwoAudience) {
+    return rowCount <= 7 ? 'bar' : 'hbar';
+  }
 
   // ── Semantic overrides (question topic takes priority) ──────────────────
 
@@ -314,7 +329,7 @@ function buildInsightSlots(rows: any[]): DataSlot[] {
   return [...distributed, ...overflow].slice(0, MAX_SLOTS).map(q => ({
     bucket: q.bucket,
     question: q.question,
-    chartSuggestion: suggestChart(q.rowCount, q.topRows, q.question),
+    chartSuggestion: suggestChart(q.rowCount, q.topRows, q.question, isTwoAudience),
     rows: q.topRows,
     // Carry 2-audience metadata onto every slot when the upload was a
     // comparison export. Downstream consumers (Gemini prompt, chart-data
@@ -707,15 +722,44 @@ function generateFallbackCards(
     const rec = buildRec(slot, top.attr, pctNum);
 
     // ── CHART — enforce variety across all cards ──────────────────────────
-    const preferred    = slot.chartSuggestion as GeminiInsightCard['type'];
-    const chartType    = pickFallbackType(preferred, typeUsed, lastType, topN.length);
+    // For 2-audience comparison slots, override the variety-picker and
+    // force grouped bar/hbar (or keep the radar/doughnut from Rule A/B) so
+    // every non-binary, non-persona card renders as A vs B. Single-audience
+    // slots keep the existing variety logic untouched.
+    const preferred = slot.chartSuggestion as GeminiInsightCard['type'];
+    const isTwoAudienceSlot = !!slot.isTwoAudience;
+    let chartType: GeminiInsightCard['type'];
+    if (isTwoAudienceSlot && preferred !== 'doughnut' && preferred !== 'radar') {
+      chartType = topN.length <= 7 ? 'bar' : 'hbar';
+    } else {
+      chartType = pickFallbackType(preferred, typeUsed, lastType, topN.length);
+    }
     typeUsed[chartType] = (typeUsed[chartType] ?? 0) + 1;
     lastType            = chartType;
 
     const useAudiencePct = topN.some(r => r.audiencePct > 0);
+    const chartLabels    = topN.map(r => r.attr);
     const chartValues    = topN.map(r => useAudiencePct ? r.audiencePct : r.index);
-    // scatter needs a second series (index as multiplier on Y axis)
-    const chartValues2   = chartType === 'scatter' ? topN.map(r => +(r.index / 100).toFixed(2)) : undefined;
+
+    // chartValues2: precedence is
+    //   1. 2-audience slot + non-scatter, non-pure-doughnut → audience B's actuals
+    //      (renders as grouped bar/hbar or 2-polygon radar via the chart-data builder)
+    //   2. scatter (single-audience) → index multiplier on Y axis
+    //   3. otherwise undefined (chart-data builder treats absence as "no compare")
+    let chartValues2: number[] | undefined;
+    let chartSeries:  string[] | undefined;
+    if (isTwoAudienceSlot && chartType !== 'doughnut' && chartType !== 'pie' && chartType !== 'scatter') {
+      // For each top attribute, pair audience A's value with audience B's value.
+      // useAudiencePct decides whether to compare pct or index — same metric across both
+      // audiences keeps the magnitude comparable.
+      chartValues2 = topN.map(r => useAudiencePct ? (r.audiencePct2 ?? 0) : (r.index2 ?? 0));
+      chartSeries  = [
+        slot.audienceALabel || 'Audience A',
+        slot.audienceBLabel || 'Audience B',
+      ];
+    } else if (chartType === 'scatter') {
+      chartValues2 = topN.map(r => +(r.index / 100).toFixed(2));
+    }
 
     // Build a short uppercase chart descriptor from the slot question
     const chartTitle = slot.question.length <= 60
@@ -731,9 +775,10 @@ function generateFallbackCards(
       stat,
       rec,
       toolLabel,   // no "· Auto-Analysis" suffix — shows as normal PRISM analysis
-      chartLabels: topN.map(r => r.attr),
+      chartLabels,
       chartValues,
       chartValues2,
+      chartSeries,
       chartTitle,
     });
   }
@@ -772,12 +817,24 @@ function enforceChartTypeRules(cards: GeminiInsightCard[]): GeminiInsightCard[] 
 
     // Rule B: personas / segmentation → radar.
     // Detection: chartTitle contains a persona/segmentation keyword AND 5–8 labels.
-    // Also seeds chartValues2 with a 100-baseline so the radar shows the audience
-    // profile vs national average (index neutral = 100).
+    // For single-audience uploads, seeds chartValues2 with a 100-baseline so
+    // the radar shows the audience profile vs national average.
+    // For 2-audience uploads, chartValues2 already holds audience B's real
+    // values (set in generateFallbackCards / Gemini prompt) — leave them
+    // alone so build-gemini-chart-data renders two polygons.
     if (
       /PERSONA|SEGMENTATION|DESCRIBES CONSUMER|SELF[ \-]?PERCEPTION|CHARACTER DESCRIBES/i.test(titleU)
       && labels.length >= 5 && labels.length <= 8
     ) {
+      // Two-audience detection: chartValues2 present, same length as values,
+      // and NOT the all-100 baseline (some value != 100).
+      const has2Audience =
+        Array.isArray(c.chartValues2)
+        && c.chartValues2.length === labels.length
+        && c.chartValues2.some(v => Number(v) !== 100);
+      if (has2Audience) {
+        return { ...c, type: 'radar' };  // keep values2 + series as-is
+      }
       return {
         ...c,
         type:         'radar',
