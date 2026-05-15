@@ -21,6 +21,115 @@ function fmtTs(ts) {
 }
 
 /**
+ * Derive a human-readable report title from the analysis record.
+ * Prefers brief metadata; falls back to a cleaned filename. For 2-audience
+ * comparison reports, appends "A vs B" so the masthead names the comparison.
+ */
+function deriveDisplayTitle(analysis) {
+  const brief = analysis?.brief;
+
+  // Try to find audience names by scanning any 2-audience chart in the result.
+  // chartSeries[0] / chartSeries[1] (or datasets[0].label / datasets[1].label)
+  // hold the audience names from the GWI export. Skip persona radars whose
+  // second dataset is the all-100 national baseline.
+  let audA, audB;
+  const charts = analysis?.results_json?.charts ?? [];
+  for (const c of charts) {
+    const ds = c?.computedChartData?.datasets;
+    if (Array.isArray(ds) && ds.length >= 2 && ds[1]?.label) {
+      const v2 = ds[1]?.data;
+      if (Array.isArray(v2) && v2.every(v => Number(v) === 100)) continue;
+      // Apply the shortener so legacy analyses (uploaded before the parser
+      // change) still get clean comparison labels in the title.
+      [audA, audB] = shortenAudiencePair(ds[0]?.label, ds[1]?.label);
+      break;
+    }
+  }
+
+  // 1. Best path: brand + objective from the brief.
+  if (brief?.brand && brief?.objective) {
+    let title = `${brief.brand} — ${brief.objective}`;
+    if (audA && audB) title += ` · ${audA} vs ${audB}`;
+    return title;
+  }
+  // 2. Brand only.
+  if (brief?.brand) {
+    return brief.brand;
+  }
+  // 3. Fallback: clean the filename / sheet_name.
+  const raw = analysis?.sheet_name || analysis?.filename || 'Untitled Analysis';
+  return String(raw)
+    .replace(/🎯/g, '')
+    .replace(/\.(xlsx?|csv)(\s|$|\+)/gi, '$3')
+    .replace(/\s*-\s*Export\s*\([0-9]+\)?/gi, '')
+    .replace(/_+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*\+\s*/g, ' + ')
+    .trim();
+}
+
+/**
+ * Parse a Gemini-produced recommendation paragraph into its Creative / Brand /
+ * Media components. The Insight Strategist blueprint instructs Gemini to write
+ * across these three angles; this surfaces that structure in the UI.
+ * Returns null if no clear structure is found (caller falls back to one
+ * paragraph render).
+ */
+function parseRecommendation(rec) {
+  if (!rec || typeof rec !== 'string') return null;
+  const text = rec.replace(/\s+/g, ' ').trim();
+
+  // Pattern 1: explicit "CREATIVE: ... BRAND: ... MEDIA: ..." labels
+  // Pattern 2: bullet-style "• Creative: ... • Brand: ... • Media: ..."
+  // Pattern 3: bold-style "**Creative:** ... **Brand:** ..."
+  const labels = ['creative', 'brand', 'media'];
+  const re = /(?:^|[\s•\-*]+|\*\*)\s*(creative|brand|media)\s*[:—-]\s*/gi;
+  const splits = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    splits.push({ label: m[1].toLowerCase(), start: m.index, contentStart: m.index + m[0].length });
+  }
+  if (splits.length < 2) return null; // need at least 2 labels to consider it structured
+
+  const out = {};
+  for (let i = 0; i < splits.length; i++) {
+    const end = i + 1 < splits.length ? splits[i + 1].start : text.length;
+    const content = text.slice(splits[i].contentStart, end)
+      .replace(/[*•\-]+\s*$/, '')
+      .trim();
+    if (content) out[splits[i].label] = content;
+  }
+
+  // Require at least 2 of the 3 to be populated for it to be a real structured rec
+  const filled = labels.filter(k => out[k]).length;
+  if (filled < 2) return null;
+  return out;
+}
+
+/**
+ * Collapse whitespace and (when an A/B pair shares a common prefix) shorten
+ * audience names so only the differentiating tail remains.
+ *   "Ghadi Detergent  Female 2" + "Ghadi Detergent  Female"
+ *     -> "Female 2" + "Female"
+ */
+function shortenAudiencePair(a, b) {
+  const cleanA = String(a || '').replace(/\s+/g, ' ').trim();
+  const cleanB = String(b || '').replace(/\s+/g, ' ').trim();
+  if (!cleanA || !cleanB || cleanA === cleanB) return [cleanA, cleanB];
+  // Find longest common prefix that ends at a word boundary.
+  let i = 0;
+  const maxI = Math.min(cleanA.length, cleanB.length);
+  while (i < maxI && cleanA[i] === cleanB[i]) i++;
+  // Walk back to a space so we don't break mid-word.
+  while (i > 0 && cleanA[i - 1] !== ' ') i--;
+  // Only shorten if the kept tail is non-empty for BOTH.
+  const tailA = cleanA.slice(i).trim();
+  const tailB = cleanB.slice(i).trim();
+  if (tailA && tailB) return [tailA, tailB];
+  return [cleanA, cleanB];
+}
+
+/**
  * BriefContextStrip — clean, organized brief summary card under the report title.
  * Three-section layout: meta row → objective → audience + competitors side-by-side.
  * Falls back to source badge + time ago when no brief is linked.
@@ -59,8 +168,8 @@ function BriefContextStrip({ brief, sourceBadge, createdAt }) {
 
   const sectionLabel = {
     fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em',
-    textTransform: 'uppercase', color: 'rgba(255,255,255,0.38)',
-    marginBottom: 5,
+    textTransform: 'uppercase', color: 'rgba(255,255,255,0.42)',
+    marginRight: 4, alignSelf: 'center',
   };
 
   const chip = (bg, border, color) => ({
@@ -70,94 +179,125 @@ function BriefContextStrip({ brief, sourceBadge, createdAt }) {
     background: bg, border: `1px solid ${border}`, color,
   });
 
+  // Flat layout: pills + meta sit directly on the dark hero gradient (no
+  // bordered card-in-card wrapper). Information density unchanged — just
+  // less visual noise. Audience + Competitors collapse to one inline row.
   return (
-    <div style={{
-      marginTop: 12,
-      background: 'rgba(255,255,255,0.05)',
-      border: '1px solid rgba(255,255,255,0.1)',
-      borderRadius: 14,
-      padding: '14px 18px',
-      maxWidth: 700,
-    }}>
-
-      {/* ── TOP ROW: brand · category  |  source · time ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        {/* Brand + category */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={chip('rgba(99,102,241,0.22)', 'rgba(99,102,241,0.4)', '#C7D2FE')}>
-            🏢 {brief.brand}
+    <div className="hero-context">
+      {/* Row 1 — brand · category · source · time (all chips on one row) */}
+      <div className="hero-context-row">
+        <span style={chip('rgba(99,102,241,0.22)', 'rgba(99,102,241,0.4)', '#C7D2FE')}>
+          🏢 {brief.brand}
+        </span>
+        {brief.category && (
+          <span style={chip('rgba(255,255,255,0.08)', 'rgba(255,255,255,0.14)', 'rgba(255,255,255,0.7)')}>
+            {brief.category}
           </span>
-          {brief.category && (
-            <span style={chip('rgba(255,255,255,0.08)', 'rgba(255,255,255,0.12)', 'rgba(255,255,255,0.65)')}>
-              {brief.category}
-            </span>
-          )}
-        </div>
-        {/* Source + time — pushed right */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          <span style={chip('rgba(255,255,255,0.07)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0.5)')}>
-            📊 {sourceBadge}
-          </span>
-          <span style={chip('rgba(255,255,255,0.05)', 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.38)')}>
-            {timeAgo(createdAt)}
-          </span>
-        </div>
+        )}
+        <span className="hero-context-divider" />
+        <span style={chip('rgba(255,255,255,0.06)', 'rgba(255,255,255,0.1)', 'rgba(255,255,255,0.52)')}>
+          📊 {sourceBadge}
+        </span>
+        <span className="hero-context-meta">{timeAgo(createdAt)}</span>
       </div>
 
-      {/* ── DIVIDER ── */}
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginBottom: 12 }} />
-
-      {/* ── OBJECTIVE ── */}
+      {/* Row 2 — objective (short, prominent) */}
       {brief.objective && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={sectionLabel}>Objective</div>
-          <div style={{
-            fontSize: 12.5, fontWeight: 500, lineHeight: 1.55,
-            color: 'rgba(255,255,255,0.85)',
-            display: '-webkit-box', WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical', overflow: 'hidden',
-          }}>
-            {brief.objective}
-          </div>
+        <div className="hero-context-objective">
+          <span className="hero-context-objective-label">Objective</span>
+          <span className="hero-context-objective-value">{brief.objective}</span>
         </div>
       )}
 
-      {/* ── BOTTOM ROW: audience left | competitors right ── */}
+      {/* Row 3 — audience + competitors (inline pills, separated by a thin divider) */}
       {(audience.length > 0 || competitors.length > 0) && (
-        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-
-          {/* Audience */}
+        <div className="hero-context-row hero-context-row--wrap">
           {audience.length > 0 && (
-            <div style={{ flex: 1, minWidth: 160 }}>
-              <div style={sectionLabel}>Target Audience</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {audience.map((a, i) => (
-                  <span key={i} style={chip('rgba(16,185,129,0.12)', 'rgba(16,185,129,0.25)', 'rgba(167,243,208,0.9)')}>
-                    {a.label}
-                  </span>
-                ))}
-              </div>
-            </div>
+            <>
+              <span style={sectionLabel}>Audience</span>
+              {audience.map((a, i) => (
+                <span key={`a${i}`} style={chip('rgba(16,185,129,0.14)', 'rgba(16,185,129,0.28)', 'rgba(167,243,208,0.95)')}>
+                  {a.label}
+                </span>
+              ))}
+            </>
           )}
-
-          {/* Vertical divider between audience and competitors */}
           {audience.length > 0 && competitors.length > 0 && (
-            <div style={{ width: 1, background: 'rgba(255,255,255,0.08)', alignSelf: 'stretch', flexShrink: 0 }} />
+            <span className="hero-context-divider hero-context-divider--inline" />
           )}
-
-          {/* Competitors */}
           {competitors.length > 0 && (
-            <div style={{ flex: 1, minWidth: 160 }}>
-              <div style={sectionLabel}>Competing Against</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {competitors.map((c, i) => (
-                  <span key={i} style={chip('rgba(239,68,68,0.12)', 'rgba(239,68,68,0.28)', 'rgba(252,165,165,0.9)')}>
-                    {c}
-                  </span>
-                ))}
-              </div>
-            </div>
+            <>
+              <span style={sectionLabel}>vs</span>
+              {competitors.map((c, i) => (
+                <span key={`c${i}`} style={chip('rgba(239,68,68,0.14)', 'rgba(239,68,68,0.3)', 'rgba(252,165,165,0.95)')}>
+                  {c}
+                </span>
+              ))}
+            </>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * ActionOverflowMenu — collapses Regenerate/Excel/PDF/Template/All-Analyses
+ * behind a single "⋯" button. Click-outside + Escape close it. The primary
+ * "Generate Presentation" CTA stays inline next to it.
+ */
+function ActionOverflowMenu({ regenerating, onRegenerate, onExportExcel, onExportPdf, briefId, router }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const close = () => setOpen(false);
+  const run = (fn) => () => { close(); fn?.(); };
+
+  return (
+    <div className="action-overflow" ref={wrapRef}>
+      <button
+        className="btn-glass"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+        title="More actions"
+      >
+        ⋯ More
+      </button>
+      {open && (
+        <div className="action-overflow-menu" role="menu">
+          <button
+            role="menuitem"
+            onClick={run(onRegenerate)}
+            disabled={regenerating}
+            style={regenerating ? { opacity: 0.6, cursor: 'wait' } : undefined}
+          >
+            {regenerating ? '⏳ Regenerating…' : '🔄 Regenerate with latest blueprint'}
+          </button>
+          <button role="menuitem" onClick={run(onExportExcel)}>⬇ Export to Excel</button>
+          <button role="menuitem" onClick={run(onExportPdf)}>⬇ Export to PDF</button>
+          {briefId && (
+            <button role="menuitem" onClick={run(() => router.push(`/brief/new?from=${briefId}`))}>
+              ⎘ Use as template for a new brief
+            </button>
+          )}
+          <button role="menuitem" onClick={run(() => router.push('/insights'))}>
+            ← Back to all analyses
+          </button>
         </div>
       )}
     </div>
@@ -1142,6 +1282,43 @@ function AnalysisDetail({ id }) {
   const bucketedCharts = assignChartsToBuckets(charts, primaryBucket);
   const currentBucket  = activeBucket || primaryBucket;
 
+  // Top 3 audience-A vs audience-B gaps for the Executive Summary stat strip.
+  // Only fires on 2-audience reports — single-audience cards have one dataset
+  // OR a 100-baseline (persona radar) which we explicitly skip.
+  const topGaps = (() => {
+    const all = Object.values(bucketedCharts).flat();
+    return all
+      .map(c => {
+        const ds = c.computedChartData?.datasets;
+        const v1 = ds?.[0]?.data;
+        const v2 = ds?.[1]?.data;
+        const labels = c.computedChartData?.labels;
+        if (!Array.isArray(v1) || !Array.isArray(v2) || v1.length !== v2.length || !Array.isArray(labels)) return null;
+        // Skip persona radars (audience vs all-100 national baseline).
+        if (v2.every(v => Number(v) === 100)) return null;
+        const [labelA, labelB] = shortenAudiencePair(ds[0]?.label, ds[1]?.label);
+        let bestI = -1, bestGap = -Infinity, bestLeader = '';
+        for (let i = 0; i < v1.length; i++) {
+          const gap = Math.abs((Number(v1[i]) || 0) - (Number(v2[i]) || 0));
+          if (gap > bestGap) {
+            bestGap = gap;
+            bestI = i;
+            bestLeader = (Number(v1[i]) || 0) >= (Number(v2[i]) || 0) ? labelA : labelB;
+          }
+        }
+        if (bestI < 0 || bestGap <= 0) return null;
+        const attr = String(labels[bestI] || '').replace(/\s+/g, ' ').trim();
+        return {
+          gap: bestGap,
+          leader: bestLeader,
+          attribute: attr.length > 48 ? attr.slice(0, 46).trim() + '…' : attr,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.gap - a.gap)
+      .slice(0, 3);
+  })();
+
   const chartTypes    = [...new Set(charts.map(c => c.type).filter(Boolean))];
   const totalInsights = charts.length;
 
@@ -1153,10 +1330,13 @@ function AnalysisDetail({ id }) {
       <div className="insights-hero">
         <div className="insights-top">
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="ins-eyebrow">Intelligence Report — Ready</div>
-            <div className="ins-title">{analysis.sheet_name || analysis.filename}</div>
+            <div className="ins-eyebrow">
+              Intelligence Report
+              {analysis.brief?.objective ? ` · ${analysis.brief.objective}` : ' — Ready'}
+            </div>
+            <div className="ins-title">{deriveDisplayTitle(analysis)}</div>
 
-            {/* ── Brief context strip (replaces raw filename dump) ── */}
+            {/* ── Brief context strip — flat, no card-in-card ── */}
             <BriefContextStrip brief={analysis.brief} sourceBadge={sourceBadge} createdAt={analysis.created_at} />
 
             {analysis.brief?.sla_due_at && (
@@ -1168,55 +1348,51 @@ function AnalysisDetail({ id }) {
           </div>
           <div className="ins-actions no-print">
             <button
-              className="btn-glass"
-              style={{ background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)', color: 'white' }}
+              className="btn-glass btn-primary-cta"
               onClick={() => setShowDeckModal(true)}
               title="Generate a presentation deck from this analysis"
             >
               🎨 Generate Presentation
             </button>
-            <button
-              className="btn-glass"
-              onClick={handleRegenerate}
-              disabled={regenerating}
-              style={regenerating ? { opacity: 0.6, cursor: 'wait' } : undefined}
-              title="Re-run the latest pipeline (blueprint + chart rules + bucket fixes) on this analysis"
-            >
-              {regenerating ? '⏳ Regenerating…' : '🔄 Regenerate with Latest Blueprint'}
-            </button>
-            <button className="btn-glass" onClick={handleExportExcel} title="Download all insights as an Excel workbook">
-              ⬇ Excel
-            </button>
-            <button className="btn-glass" onClick={handleExportPdf} title="Open the browser print dialog — choose 'Save as PDF'">
-              ⬇ PDF
-            </button>
-            {analysis.brief?.id && (
-              <button
-                className="btn-glass"
-                onClick={() => router.push(`/brief/new?from=${analysis.brief.id}`)}
-                title="Start a new brief pre-filled from this one"
-              >
-                ⎘ Use as Template
-              </button>
-            )}
-            <button className="btn-glass" onClick={() => router.push('/insights')}>← All Analyses</button>
+            <ActionOverflowMenu
+              regenerating={regenerating}
+              onRegenerate={handleRegenerate}
+              onExportExcel={handleExportExcel}
+              onExportPdf={handleExportPdf}
+              briefId={analysis.brief?.id}
+              router={router}
+            />
           </div>
         </div>
       </div>
 
       {/* ── Executive Summary banner ──
-          Lifted out of the dark hero so the Main Headline + Audience Snapshot
-          get full page width on a light surface (dark-on-dark was unreadable
-          when wedged into the hero's left column next to the actions). */}
+          prose on the left, top-3 audience-gap stat cards on the right.
+          For single-audience reports topGaps is empty and the strip is
+          hidden — the prose column expands to full width. */}
       {overview && (
         <section className="insights-overview">
           <div className="insights-overview-inner">
-            <div className="insights-overview-eyebrow">Executive Summary</div>
-            {overview.headline && (
-              <h2 className="insights-overview-headline">{overview.headline}</h2>
-            )}
-            {overview.audienceSnapshot && (
-              <p className="insights-overview-snapshot">{overview.audienceSnapshot}</p>
+            <div className="insights-overview-main">
+              <div className="insights-overview-eyebrow">Executive Summary</div>
+              {overview.headline && (
+                <h2 className="insights-overview-headline">{overview.headline}</h2>
+              )}
+              {overview.audienceSnapshot && (
+                <p className="insights-overview-snapshot">{overview.audienceSnapshot}</p>
+              )}
+            </div>
+            {topGaps.length > 0 && (
+              <aside className="insights-overview-stats" aria-label="Top audience gaps">
+                {topGaps.map((g, i) => (
+                  <div key={i} className="stat-card">
+                    <div className="stat-card-value">+{g.gap.toFixed(1)} pts</div>
+                    <div className="stat-card-leader">{g.leader} leads</div>
+                    <div className="stat-card-divider" />
+                    <div className="stat-card-label">{g.attribute}</div>
+                  </div>
+                ))}
+              </aside>
             )}
           </div>
         </section>
@@ -1293,19 +1469,29 @@ function AnalysisDetail({ id }) {
                           <ApiChartRenderer chart={chart} />
                         </div>
                       )}
+                      {(chart.obs || chart.rec) && <hr className="ic-hairline" />}
                       {chart.obs && (
-                        <div className="ic-section">
-                          <div className="ic-label obs">📊 Observation</div>
-                          <div className="ic-text">{chart.obs}</div>
-                          {chart.stat && <div className="ic-stat">{chart.stat}</div>}
-                        </div>
+                        <div className="ic-prose">{chart.obs}</div>
                       )}
-                      {chart.rec && (
-                        <div className="ic-section">
-                          <div className="ic-label rec">💡 Recommendation</div>
-                          <div className="ic-text">{chart.rec}</div>
-                        </div>
-                      )}
+                      {chart.rec && (() => {
+                        const parsed = parseRecommendation(chart.rec);
+                        if (parsed) {
+                          return (
+                            <div className="ic-rec-rows">
+                              {parsed.creative && (
+                                <div className="ic-rec-row"><span className="ic-rec-label">Creative</span><span className="ic-rec-text">{parsed.creative}</span></div>
+                              )}
+                              {parsed.brand && (
+                                <div className="ic-rec-row"><span className="ic-rec-label">Brand</span><span className="ic-rec-text">{parsed.brand}</span></div>
+                              )}
+                              {parsed.media && (
+                                <div className="ic-rec-row"><span className="ic-rec-label">Media</span><span className="ic-rec-text">{parsed.media}</span></div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return <div className="ic-prose ic-prose--rec">{chart.rec}</div>;
+                      })()}
                     </AnimatedCard>
                   );
                 })}
