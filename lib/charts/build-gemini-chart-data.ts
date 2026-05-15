@@ -124,7 +124,42 @@ export function buildGeminiChartData(
   }
 
   // ── Line / Area ──────────────────────────────────────────────────
+  // Two-audience uploads emit TWO lines (A in bucket colour, B in teal) so
+  // pickFallbackType can rotate line/area into the comparison view without
+  // silently dropping audience B.
   if (type === 'line' || type === 'area') {
+    const hasSecondSeries =
+      Array.isArray(values2) && values2.length === values.length && values2.some(v => v !== 0);
+    if (hasSecondSeries) {
+      const s1Label = series?.[0] || 'Audience A';
+      const s2Label = series?.[1] || 'Audience B';
+      return {
+        labels,
+        datasets: [
+          {
+            label: s1Label,
+            data: values,
+            borderColor: border,
+            backgroundColor: `${border.replace('1)', '0.12)')}`,
+            borderWidth: 2.5,
+            tension: 0.4,
+            fill: type === 'area',
+            pointRadius: labels.length <= 12 ? 3 : 0,
+          },
+          {
+            label: s2Label,
+            data: values2!,
+            borderColor: 'rgba(15,118,110,1)',
+            backgroundColor: type === 'area' ? 'rgba(20,184,166,0.14)' : 'transparent',
+            borderWidth: 2.5,
+            tension: 0.4,
+            fill: type === 'area',
+            pointRadius: labels.length <= 12 ? 3 : 0,
+          },
+        ],
+      };
+    }
+    // Single-series line / area — unchanged.
     return {
       labels,
       datasets: [{

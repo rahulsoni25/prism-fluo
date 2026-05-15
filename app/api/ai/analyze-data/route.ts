@@ -152,38 +152,45 @@ function suggestChart(
       && rowCount >= 5 && rowCount <= 8)
     return 'radar';
 
-  // Rule C: Two-audience comparison → grouped bar / hbar (default).
-  // Once Rules A and B haven't matched, every other question for a 2-audience
-  // upload should render as a side-by-side comparison. This shadows the
-  // existing semantic overrides (funnel / area / waterfall / histogram) which
-  // make less sense once the framing is "A vs B".
-  if (isTwoAudience) {
-    return rowCount <= 7 ? 'bar' : 'hbar';
-  }
+  // ── Semantic overrides (question topic takes priority over Rule C) ──────
+  // These fire for BOTH single-audience and 2-audience uploads where the
+  // chart type supports 2 series. For the types that DON'T support 2 series
+  // (funnel, waterfall, histogram), we restrict them to single-audience.
 
-  // ── Semantic overrides (question topic takes priority) ──────────────────
-
-  // Purchase / conversion journey  → funnel (stages narrowing to outcome)
-  if (/purchas|funnel|convert|journey|path.*buy|awareness.*intent|stage/i.test(q) && rowCount <= 8)
-    return 'funnel';
-
-  // Temporal / trend data → area (richer fill than bare line)
-  if (/week|month|quarter|season|over time|trend|yearly|annual|growth|longitudinal/i.test(q))
-    return 'area';
-
-  // Multi-attribute profile / attitude / lifestyle → radar
-  if (/attitude|value|lifestyle|personalit|psycho|dimension|profile|attribute|habit|charact/i.test(q)
+  // Multi-attribute profile / attitude / lifestyle → radar (2-polygon-capable)
+  // Promoted ABOVE Rule C so 2-audience attitude/lifestyle questions render
+  // as paired radars instead of grouped bars — key chart-variety win.
+  if (/attitude|value|lifestyle|personalit|psycho|dimension|profile|attribute|habit|charact|device|brand.qual|brand.rel/i.test(q)
       && rowCount >= 3 && rowCount <= 8)
     return 'radar';
 
-  // Revenue / spend / budget component breakdown → waterfall
-  if (/revenue|spend|budget|breakdown|bridge|contribut|cost.*break|decompos/i.test(q)
-      && rowCount >= 3 && rowCount <= 10)
-    return 'waterfall';
+  // Temporal / trend data → area (supports 2 lines via build-gemini-chart-data)
+  if (/week|month|quarter|season|over time|trend|yearly|annual|growth|longitudinal/i.test(q))
+    return 'area';
 
-  // Distribution / frequency across ranges → histogram
-  if (/distribut|frequenc|range|bucket|bracket|spread/i.test(q) && rowCount >= 4)
-    return 'histogram';
+  // Single-audience-only semantic overrides — these chart types don't
+  // visualise A vs B, so for 2-audience uploads we fall through to Rule C.
+  if (!isTwoAudience) {
+    // Purchase / conversion journey  → funnel (stages narrowing to outcome)
+    if (/purchas|funnel|convert|journey|path.*buy|awareness.*intent|stage/i.test(q) && rowCount <= 8)
+      return 'funnel';
+
+    // Revenue / spend / budget component breakdown → waterfall
+    if (/revenue|spend|budget|breakdown|bridge|contribut|cost.*break|decompos/i.test(q)
+        && rowCount >= 3 && rowCount <= 10)
+      return 'waterfall';
+
+    // Distribution / frequency across ranges → histogram
+    if (/distribut|frequenc|range|bucket|bracket|spread/i.test(q) && rowCount >= 4)
+      return 'histogram';
+  }
+
+  // Rule C: Two-audience comparison default → grouped bar / hbar.
+  // Falls through to here ONLY when no semantic radar/area override matched.
+  // Variety across cards is enforced downstream in pickFallbackType.
+  if (isTwoAudience) {
+    return rowCount <= 7 ? 'bar' : 'hbar';
+  }
 
   // ── Data-shape overrides ─────────────────────────────────────────────────
 
@@ -611,17 +618,26 @@ const VARIETY_ROTATION: GeminiInsightCard['type'][] = [
 ];
 
 /** Return a chart type that hasn't been over-used and doesn't repeat the last card. */
+// Chart types that visualise TWO audiences as side-by-side series. Used to
+// constrain pickFallbackType's variety rotation when the slot is 2-audience —
+// without this, the variety enforcer could pick (e.g.) histogram or funnel,
+// which only show one distribution and silently drop audience B.
+const TWO_AUDIENCE_SAFE_TYPES: GeminiInsightCard['type'][] = ['hbar', 'bar', 'radar', 'area', 'line'];
+
 function pickFallbackType(
   preferred: GeminiInsightCard['type'],
   typeUsed:  Record<string, number>,
   lastType:  GeminiInsightCard['type'] | null,
   rowCount:  number,
+  isTwoAudience: boolean = false,
 ): GeminiInsightCard['type'] {
   // funnel / waterfall only make sense for 3–8 items; strip them from candidate list if too few/many
   const safePool = VARIETY_ROTATION.filter(t => {
     if ((t === 'funnel' || t === 'waterfall') && (rowCount < 3 || rowCount > 8)) return false;
     if ((t === 'radar')     && rowCount < 3) return false;
     if ((t === 'histogram') && rowCount < 4) return false;
+    // 2-audience: only keep types whose chart-data builder produces TWO datasets.
+    if (isTwoAudience && !TWO_AUDIENCE_SAFE_TYPES.includes(t)) return false;
     return true;
   });
 
@@ -721,19 +737,17 @@ function generateFallbackCards(
     // ── RECOMMENDATION ───────────────────────────────────────────────────────
     const rec = buildRec(slot, top.attr, pctNum);
 
-    // ── CHART — enforce variety across all cards ──────────────────────────
-    // For 2-audience comparison slots, override the variety-picker and
-    // force grouped bar/hbar (or keep the radar/doughnut from Rule A/B) so
-    // every non-binary, non-persona card renders as A vs B. Single-audience
-    // slots keep the existing variety logic untouched.
-    const preferred = slot.chartSuggestion as GeminiInsightCard['type'];
+    // ── CHART — variety enforcement (handles 2-audience too) ───────────────
+    // Phase 3c: removed the unconditional bar/hbar override for 2-audience.
+    // pickFallbackType now knows the audience mode and restricts its rotation
+    // to types that visualise A vs B (hbar/bar/radar/area/line). This
+    // recovers chart-type variety across the 18-card grid — without it the
+    // page was rendering ~14 grouped bars and reading monotonous.
+    const preferred        = slot.chartSuggestion as GeminiInsightCard['type'];
     const isTwoAudienceSlot = !!slot.isTwoAudience;
-    let chartType: GeminiInsightCard['type'];
-    if (isTwoAudienceSlot && preferred !== 'doughnut' && preferred !== 'radar') {
-      chartType = topN.length <= 7 ? 'bar' : 'hbar';
-    } else {
-      chartType = pickFallbackType(preferred, typeUsed, lastType, topN.length);
-    }
+    const chartType = pickFallbackType(
+      preferred, typeUsed, lastType, topN.length, isTwoAudienceSlot,
+    );
     typeUsed[chartType] = (typeUsed[chartType] ?? 0) + 1;
     lastType            = chartType;
 
