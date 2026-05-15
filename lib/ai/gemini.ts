@@ -161,7 +161,7 @@ export type ChartType =
   | 'hbar' | 'bar' | 'line' | 'area'
   | 'pie' | 'doughnut'
   | 'scatter' | 'combo' | 'histogram' | 'radar'
-  | 'waterfall' | 'funnel';
+  | 'waterfall' | 'funnel' | 'dumbbell';
 
 export interface GeminiInsightCard {
   title:         string;
@@ -372,43 +372,191 @@ Write like a brilliant strategist explaining a finding over coffee — not a con
 • No tables. No raw data dumps. No research jargon ("row %", "column %", "stat sig", "over-index", "cohort", "leverage", "synergy", "touchpoint", "whitespace", "holistic", "robust", "utilize", "paradigm", "seamless").
 • Use: people, families, buyers, young Indians, 1 in 3, nearly twice, here is the thing.
 
+━━ McKINSEY-STYLE DISCIPLINE (writing rubric on top of the blueprint) ━━
+Every block obeys the pyramid principle: lead with the ANSWER, then the evidence.
+• The Title IS the answer. A reader who only sees the title should already know what to do.
+• The Observation is the evidence — the WHY behind the title. Two sentences max.
+• The Recommendation is the so-what — what to DO. One short directive per angle (Creative / Brand / Media), 12 words each.
+• No throat-clearing. No "this audience...". No "interestingly...". No "it is important to note...". Cut every word that doesn't add information.
+• Every number earns its place. Do NOT list three percentages when one tells the story. Pick the strongest signal; drop the rest.
+• End every Observation on a "therefore" implication that the Recommendation picks up. The connection between the two should feel inevitable.
+• When the slot is a 2-audience comparison, the answer IS the gap. State the gap in pts, name which audience leads, then the so-what.
+
+━━ STORYTELLING DISCIPLINE — voice rules (the McKinsey rubric gave you SHAPE; this gives you VOICE) ━━
+
+Every block must read like a strategist explaining the audience to a creative director over coffee — NOT a deck bullet a consultant dictated.
+
+THE OPENING MOVE — never begin an Observation with:
+✗ "The data shows that…"
+✗ "'Ghadi Detergent Female 2' demonstrates / engages / shows…"
+✗ "The 'Ghadi Detergent Female 2' audience…"
+✗ "Interestingly," / "Notably," / "It is important to note,"
+
+Instead open with the HUMAN or the MOMENT. The data point is the punchline, not the lead.
+
+USE TENSION — every title needs a "but/yet/still/not" hinge OR a specific image:
+✓ "Buys New Tech Early — But Blocks Every Ad She Sees"
+✓ "Reels at 11pm Beat Prime-Time TV Two-to-One"
+✓ "Trusts WhatsApp Forwards More Than Brand Ads"
+✓ "Five Apps Open, Brand Loyalty in None of Them"
+✗ "Female 2 Lead in Online Shopping by 13 Points"  ← data readout, no hook
+✗ "Female 2 Seek Brand & Expert Content More"  ← describes, doesn't dramatise
+
+USE INDIA-SPECIFIC IMAGERY when the data supports it — pressure cookers, evening tea, WhatsApp groups, monthly grocery runs, festive shopping, prime-time saas-bahu, regional language Reels. Tier 1/2 metros are real places, not census codes.
+
+ACTIVE VERBS over passive descriptors:
+✓ "She juggles five apps at once"
+✗ "Demonstrates high cross-platform engagement"
+
+BANNED CONSULTANCY WORDS — anywhere in the block (Title, Obs, or Rec):
+"demonstrates", "demonstrating", "engages with", "engaging with", "engagement opportunity",
+"leverage", "leveraging", "diversify", "diversifying", "thrive across", "thrives across",
+"ecosystem", "synergise", "synergy", "omnichannel", "drive engagement", "drives engagement",
+"amplify", "amplifying", "value-add", "value-added", "build presence", "build a presence",
+"establish brand", "establishing brand", "design adaptable formats", "adaptable formats",
+"explore opportunities", "consider testing", "consider exploring",
+"compelling content", "engaging content", "high-quality content", "rich content",
+"target audience", "target consumers", "target demographic", "key audience",
+"showcasing", "showcase", "highlighting" (use "show" instead),
+"actively engages", "highly engaged", "deeply engaged", "significantly more likely",
+"digital savvy", "digitally savvy", "digital-first" (use the actual behaviour instead),
+"insights-driven", "data-driven", "audience-centric", "consumer-centric",
+"unlock value", "tap into", "harness".
+If you wrote any of these, REWRITE the sentence using a specific verb + specific Indian app/moment/context. Dead language fails. Specifically:
+✗ "Design adaptable content formats that thrive across diverse social ecosystems"
+✗ "Diversify media spend beyond single-platform dominance for broader reach"
+✗ "Develop expert-led content showcasing product benefits"
+✓ "Show her stirring dal with Reels playing — sound off, captions on. Real kitchen, not a set."
+✓ "Sponsor Tanishq's Friday Reels slot; skip the Sunday cricket pre-roll."
+✓ "Run 9-second Hindi voiceovers in cinema slots before romantic releases."
+
+━━ FORCING FUNCTION — every Insight Block must contain AT LEAST ONE of these four anchors:
+1. A SPECIFIC MOMENT: time of day, day of week, festive event, kitchen / commute / bedtime ritual.
+2. A SPECIFIC INDIAN APP or PLACE: Blinkit / BigBasket / Hotstar / JioCinema / Insta Reels / YouTube Music / WhatsApp aunty group / Tier 1 metro / kirana / Tanishq cinema slot.
+3. A COUNTERINTUITIVE REFRAME: "not aspirational — already winning" / "the brief is wrong" / "this is a UX problem, not a marketing one".
+4. A BOLD MEDIA REALLOCATION CALL: "cut TV by half" / "kill the 30-sec film" / "skip pre-roll, sponsor in-app".
+
+If your block reads like it could describe ANY audience in ANY market, it fails — rewrite with one of the four anchors above.
+
+━━ MAKE A BET, NOT A SUGGESTION ━━
+Recommendations are bets, not options. Consultancy says "consider testing X" — a strategist says "kill X, do Y instead". Use verbs that commit budget:
+✓ "Kill the 30-sec film. Run only 9-second cuts."
+✓ "Cut FMCG TV by half. Redirect to Blinkit category sponsorships."
+✓ "Drop the heritage RTB. Lead with 'works while she watches Reels'."
+✓ "Skip influencer megastars. Pay 50 Tier-1 women with 5K followers each."
+✗ "Explore opportunities for video content across platforms."
+✗ "Consider diversifying media mix."
+✗ "Engage with the digitally savvy audience."
+
+━━ VOICE EXAMPLES — this is the bar ━━
+
+DATA POINT: 46% Female 2 shop online vs 33% Female (+13 pts gap on online shopping)
+
+✗ DECK-SPEAK:
+TITLE: "Female 2 Lead in Online Shopping by 13 Points"
+OBS: "'Ghadi Detergent Female 2' demonstrates significantly higher online shopping behaviour, with 46.3% reporting online shopping compared to 33.3% for Female. This indicates a strong digital commerce inclination requiring focused e-commerce strategy."
+REC: CREATIVE: Develop compelling e-commerce content. BRAND: Establish digital accessibility. MEDIA: Drive traffic to e-commerce platforms.
+
+✓ STRATEGIST (the bar):
+TITLE: "She's Already on Blinkit by the Time Your Cricket Ad Loads"
+OBS: 46% of Ghadi Female 2 buys detergent online — and the choice happens in the four seconds it takes Blinkit to suggest a re-order. By the time your demo finishes loading on Hotstar, she's already swiped past it.
+REC: CREATIVE: Kill the 30-sec demo film. Make a 9-second product card sized for the Blinkit grid.
+BRAND: Drop "heritage of trust". Lead with "always in the basket, never the brief".
+MEDIA: Cut FMCG TV by half. Redirect to Blinkit / BigBasket / Amazon Pantry category sponsorships in metros.
+
+═══════════════════════════════
+
+DATA POINT: 26% Female 2 buy new tech at launch (early adopter) BUT 47% block intrusive ads
+
+✗ DECK-SPEAK:
+TITLE: "Early Adopters But Wary of Digital Trust"
+OBS: "Female 2 are notably more likely to buy new tech products as soon as they are available (26.3% vs 20.X%), but also more likely to block intrusive advertising."
+REC: CREATIVE: Highlight innovative features while assuring data security. BRAND: Position as forward-thinking, trustworthy. MEDIA: Use platforms with strong privacy policies.
+
+✓ STRATEGIST:
+TITLE: "Buys New Tech First, Blocks Your Ad Second"
+OBS: 26% try new tech the day it launches — and 47% block the ads that tell them about it. Female 2 is digitally curious AND digitally defensive; she'll find your product on her own terms, and resent the brand that tries to force the find.
+REC: CREATIVE: Show real Female 2s unboxing the product on Reels — UGC, not commercial.
+BRAND: Position SArgam 3 as the detergent her smart home picked for her, not the one TV told her about.
+MEDIA: Skip Hotstar pre-rolls (where she ad-blocks). Sponsor in-app moments inside Blinkit / Mi Home / Alexa skills instead.
+
+═══════════════════════════════
+
+DATA POINT: Female 2 uses 5+ social platforms (25.9%) vs Female (17.X%)
+
+✗ DECK-SPEAK:
+TITLE: "Female 2 Juggle More Platforms, Female Keep It Simple"
+OBS: "The 'Ghadi Detergent Female 2' audience engages with significantly more social media services, with 25.9% using 5 or more platforms compared to just 17.X% for Female."
+REC: CREATIVE: Design adaptable content formats that thrive across diverse social ecosystems.
+
+✓ STRATEGIST:
+TITLE: "Insta, YouTube, Pinterest, WhatsApp — All Open by 11pm"
+OBS: 1 in 4 Female 2 has five or more apps running at any moment after the kids are asleep — she's not on a platform, she's between them. The campaign that picks Instagram and calls it a "social strategy" reaches her one-fifth of the time.
+REC: CREATIVE: Make one 15-second hero, then 6 cuts — each shot for a different app's native vibe (Reels punchline, YouTube Shorts hook, WhatsApp forward, Pinterest aesthetic).
+BRAND: Drop the "consistent brand voice" obsession. Be the brand that meets her on each app speaking that app's language.
+MEDIA: Cut single-platform digital buys. Run a Tier-1 women influencer program (50 women, 5K-50K followers each) that posts NATIVELY to each platform.
+
+═══════════════════════════════
+
+DATA POINT: Female 2 discovers brands via social media updates (18.2%) and cinema ads (18.X%)
+
+✗ DECK-SPEAK:
+TITLE: "Female 2 Discover Brands Via Social Updates & Cinema Ads"
+OBS: "Female 2 are more likely to discover new brands through updates on social media pages (18.2%) and ads seen at the cinema (18.X%)."
+REC: CREATIVE: Develop engaging social media content and high-quality cinema ads.
+
+✓ STRATEGIST:
+TITLE: "She Finds Brands Between Films and Between Friends"
+OBS: 1 in 5 Female 2 discovers brands in two places almost no FMCG brief is buying: the 90 seconds before a Bollywood film starts, and her cousin's Insta repost. Both are accidental, both are unguarded — and both are where her purchase shortlist is actually built.
+REC: CREATIVE: Make a 22-second film that works WITHOUT sound for cinema, and a 7-second cut sharable via WhatsApp forward.
+BRAND: Position SArgam 3 as "the detergent her smart aunt told her about" — earned recommendation, not paid persuasion.
+MEDIA: Book PVR / Inox Friday-Saturday primetime slots before Hindi releases. Pay 20 mid-tier women creators to repost organically (no #ad).
+
+═══════════════════════════════
+
+THE BAR: every Title should make a CMO either laugh, wince, or lean forward. If it reads safe, it's wrong.
+
 ━━ INSIGHT BLOCK FORMAT — follow exactly ━━
 
-TITLE (max 12 words):
-One short, punchy headline. Combines DATA + BRIEF. Uses contrasts or levers where possible.
-A strategist reading only the title should know what to do.
-✅ "2.8× More Likely to Watch Reels — Anchor the Launch Here"
-✅ "Joint Families, Not Urban Singles — Reframe the Pack Story"
-✅ "Promo-Driven, Not Brand-Loyal — Lead With Value, Not Heritage"
-✅ "1 in 3 Research on Instagram Before Buying — Close the Social-to-DTC Gap"
+TITLE (max 10 words):
+Punchy, specific, directional. Pyramid: the title IS the answer.
+Use contrasts/levers: "2.8× More Likely…", "Joint Families, Not Urban Singles", "Promo-Driven, Not Brand-Loyal".
+✅ "2.8× More Likely to Watch Reels — Anchor the Launch"
+✅ "Joint Families, Not Urban Singles — Reframe the Pack"
+✅ "Promo-Driven, Not Brand-Loyal — Lead With Value"
+✅ "1 in 3 Research on Instagram First — Close the Gap"
 ❌ "Demographic Insight" (generic label, no direction)
 ❌ "Consumers Over-Index on Full Price" (jargon, no direction)
 ❌ "29% of Audience Use Social Media Less" (pure data, no signal)
 NEVER use: "— Worth Planning Around", "— Worth Building Into the Brief", "— a Clear Signal", "Key Insight:", "This Audience".
 
-OBSERVATION — 2 to 3 sentences. Tone pattern: "The data shows… which means… for this task."
-Start from the key metrics (Audience %, multiplier vs national avg; Universe where it adds weight). Explain in natural language what this says about WHO the audience is or HOW they behave. Then connect EXPLICITLY back to the brief's objective or challenge.
+OBSERVATION — EXACTLY 2 SENTENCES.
+Sentence 1 (the evidence): name the exact audience using the BRIEF's brand + demographics, state the single strongest data point as a story (NOT a stat readout). Use ONE number, the most decisive one. For 2-audience slots: name BOTH audiences and the gap in points.
+Sentence 2 (the so-what): name the strategic implication for the brand — the gap, tension, or opportunity that the Recommendation will address. End on "therefore" / "which means" / "the brand should" framing.
+Never write "this audience" — always name the brand + demographics from the brief.
+Avoid throat-clearing: do not start with "interestingly", "notably", "it is worth noting", "the data shows that". Lead with the noun.
+✅ "Ghadi Detergent Female 2 are 1.7× more likely than Female to block intrusive ads. The brand's launch creative cannot rely on pre-roll interruption — it must earn the watch."
+❌ Three sentences. Multiple stats. Throat-clearing openers.
 
-• Name the audience using the BRIEF's brand, demographics, and geography — never "this audience".
-• Sentence 1 — WHO + WHAT + CONTEXT: Name the exact audience and the top behaviour from the slot, then give the context or destination — what they do WITH this behaviour. Lead with a story, not a stat readout.
-• Sentence 2 — THE BREAKDOWN: Show how the category splits across the top 2–3 attributes with their actual percentages, naming specific platforms, formats, or behaviours.
-• Sentence 3 — THE GAP OR TENSION: Name a specific gap, competitive disadvantage, or underserved opportunity for the brand, quantified from the slot data. If no competitive data is in the slot, describe the strategic implication in one plain sentence.
-
-STAT — one line. One number. The sentence a strategist would screenshot and send to their client.
+STAT — one line. The sentence a strategist would screenshot.
 Plain English, no brackets, no "Index" numbers, max 18 words.
 ✅ "Nearly 2 in 5 Nike target consumers prioritise short-form video — almost twice the national average."
 ❌ "Index 168 · Full Price behaviour"
 ❌ "21.8% of audience (1.3× national avg)"
 
-RECOMMENDATION — 3 to 5 sentences (or 3 concise points) that give practical direction across THREE angles:
-• CREATIVE — what to show, how to frame, which tensions/hooks to use, what to avoid.
-• BRAND — how to position, which benefits/RTBs or variants to lead with.
-• MEDIA — where/how to reach them, which formats/contexts to prioritise or test.
+RECOMMENDATION — THREE LABELED DIRECTIVES, ONE LINE EACH (max 14 words per line).
+Emit exactly these three labels in this exact order, each followed by a colon and ONE directive sentence:
+CREATIVE: <show… / lead with… / avoid… / build…> — what to show, how to frame, what to avoid.
+BRAND: <position… / lead with… / shift…> — how to position, which RTB to lead with.
+MEDIA: <prioritise… / test… / integrate… / shift spend to…> — where/how to reach, which format to use.
 
-Use directive language: "Show…", "Lead with…", "Avoid…", "Prioritise…", "Test…", "Integrate…", "Build…", "Shift…", "Close…".
-Each recommendation must clearly follow from the Observation and push the brief forward.
-✅ "Show joint families breaking bread together rather than urban singletons — the data points the brand at multi-generational moments. Lead with the 'shared trust' RTB, not heritage prestige. Prioritise prime-time TV and YouTube CTV with regional language cuts; test Instagram Reels for the youngest sub-segment."
+Directive language only. No "consider", "explore", "possibly". Each line must be specific enough to brief an agency tomorrow.
+✅
+CREATIVE: Show joint families breaking bread, not urban singletons in cafés.
+BRAND: Lead with shared-trust RTB, not heritage prestige messaging.
+MEDIA: Prioritise prime-time TV and YouTube CTV in regional languages.
 ❌ "Consider digital advertising on social platforms to reach this audience" (too vague — no creative, no brand, no media angle, no specifics).
+❌ A flowing paragraph that runs all three angles into one sentence.
 
 ━━ CHART DATA ━━
 • chartLabels: use the exact attribute names from THIS slot (up to 8)
@@ -455,15 +603,16 @@ CHART TYPE GUIDE (choose the best visual for this insight):
 • hbar       → ranked lists, long category names (5–12 items) — default for audience data
 • bar        → short-label comparisons (3–8 items, vertical)
 • line       → trends over time with 10+ continuous data points
-• area       → cumulative volumes or stacked trends over time
+• area       → cumulative volumes or stacked trends over time (2-audience: two lines)
 • pie        → proportional splits, 2–6 segments only (e.g. Yes/No, sentiment)
 • doughnut   → cleaner pie for dashboards (2–6 segments)
 • scatter    → two numeric axes — Audience% (X) vs Index multiplier (Y)
 • combo      → two metrics on one chart: bar (primary) + line overlay (secondary trend)
 • histogram  → how values spread across ranges / frequency distribution
-• radar      → compare 3–8 attributes simultaneously for 1–3 items
+• radar      → compare 3–8 attributes simultaneously for 1–3 items (2-audience: two polygons)
 • waterfall  → how +/− components add up to a total (bridge/waterfall chart)
 • funnel     → conversion or dropout flow (Awareness → Consideration → Purchase)
+• dumbbell   → TWO-AUDIENCE A-vs-B comparison: one row per attribute with two dots (A in navy, B in teal) connected by a gap line. The GAP is the focal point. Use this when the slot has 4–10 attributes and the strategic story IS the divergence between the two audiences. PREFERRED over hbar/bar for 2-audience slots in this size range — it makes the gap impossible to miss.
 
 ━━ CHART VARIETY — MANDATORY ━━
 Across all ${slots.length} cards you MUST use at least 4 DIFFERENT chart types.
@@ -471,21 +620,31 @@ NEVER assign the same type to more than 2 consecutive cards.
 If your current card would create a third repetition in a row, override with a different type that still fits the data.
 Distribution target: use hbar/bar for at most 3 cards total — fill remaining cards with area, doughnut, scatter, radar, funnel, waterfall, or combo wherever data supports it.
 
+━━ JSON WIRE FORMAT — strict ━━
+- "type" valid values: hbar | bar | line | area | pie | doughnut | scatter | combo | histogram | radar | waterfall | funnel | dumbbell
+- "rec" MUST be a SINGLE STRING with the three labels embedded on separate lines, joined by "\\n":
+    "rec": "CREATIVE: Show real Indian families exchanging trust, not abstract data icons.\\nBRAND: Lead with heritage-trust positioning over performance promises.\\nMEDIA: Prioritise contextual placements; avoid heavy retargeting flows."
+- Do NOT return rec as an object like { "creative": ..., "brand": ..., "media": ... } — it must be a string.
+- "title" hard cap: 10 words. Count them before writing.
+- "obs" hard cap: 2 sentences. Count them before writing.
+- "stat" hard cap: 18 words.
+- For 2-audience slots, "chartValues2" and "chartSeries" are mandatory.
+
 Return ONLY valid JSON — no markdown, no fences, no explanation:
 [
   {
-    "title": "string",
+    "title": "string (≤10 words)",
     "bucket": "content|commerce|communication|culture|channel|media|creative|pricing|search",
-    "type": "hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel",
+    "type": "hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel|dumbbell",
     "conviction": 90,
-    "obs": "string",
-    "stat": "string",
-    "rec": "string",
+    "obs": "string (exactly 2 sentences)",
+    "stat": "string (≤18 words)",
+    "rec": "CREATIVE: <directive>\\nBRAND: <directive>\\nMEDIA: <directive>",
     "chartTitle": "ALL CAPS DESCRIPTION OF WHAT THIS CHART SHOWS — MAX 12 WORDS",
     "chartLabels": ["label1","label2"],
     "chartValues": [42.5, 38.1],
     "chartValues2": [1.97, 1.54],
-    "chartSeries": ["Series 1 Name", "Series 2 Name"]
+    "chartSeries": ["Audience A name", "Audience B name"]
   }
 ]`;
 
@@ -514,14 +673,18 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       'scatter','combo','histogram','radar','waterfall','funnel',
     ];
 
-    return parsed.slice(0, 8).map(c => ({
+    return parsed.slice(0, 18).map(c => ({
       title:        String(c.title || 'Insight'),
       bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'content') as GeminiInsightCard['bucket'],
       type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as ChartType,
       conviction:   Number(c.conviction) || 88,
       obs:          String(c.obs  || ''),
       stat:         String(c.stat || ''),
-      rec:          String(c.rec  || ''),
+      // Gemini sometimes returns rec as a structured object { creative, brand,
+      // media } even when the prompt asks for a single string. Serialise back
+      // to the labeled multi-line string format that parseRecommendation +
+      // the card renderer expect, so both prompt styles work.
+      rec:          normaliseRec(c.rec),
       toolLabel,
       chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
       chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
@@ -534,6 +697,131 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     console.error('[Gemini] analyzeDataForPRISM failed:', (err as Error).message);
     throw err; // surface real reason to the API route
   }
+}
+
+/**
+ * Normalise the `rec` field coming back from Gemini. The prompt asks for a
+ * single string with CREATIVE: / BRAND: / MEDIA: labels embedded, but Gemini
+ * sometimes returns a structured object instead. Serialise either shape to
+ * the labeled-string format that the UI's `parseRecommendation` consumes.
+ */
+function normaliseRec(rec: any): string {
+  if (rec == null) return '';
+  if (typeof rec === 'string') return rec;
+  if (Array.isArray(rec)) {
+    // ["CREATIVE: ...", "BRAND: ...", "MEDIA: ..."] form — join with newlines.
+    return rec.map((r: any) => typeof r === 'string' ? r : '').filter(Boolean).join('\n');
+  }
+  if (typeof rec === 'object') {
+    // { creative: "...", brand: "...", media: "..." } form — case-insensitive lookup.
+    const lower: Record<string, any> = {};
+    for (const k of Object.keys(rec)) lower[k.toLowerCase().trim()] = rec[k];
+    const parts: string[] = [];
+    const creative = lower.creative ?? lower.cr;
+    const brand    = lower.brand    ?? lower.br;
+    const media    = lower.media    ?? lower.md;
+    if (creative) parts.push(`CREATIVE: ${String(creative).trim()}`);
+    if (brand)    parts.push(`BRAND: ${String(brand).trim()}`);
+    if (media)    parts.push(`MEDIA: ${String(media).trim()}`);
+    if (parts.length > 0) return parts.join('\n');
+    // Unknown object shape — drop to JSON last resort so SOMETHING shows up
+    return JSON.stringify(rec);
+  }
+  return String(rec);
+}
+
+/**
+ * Enforce length caps as a safety net AFTER Gemini returns. The McKinsey-style
+ * prompt asks for tight outputs (Title ≤10 words, Observation 2 sentences),
+ * but Gemini doesn't always obey. These helpers truncate at sentence/word
+ * boundaries so the rendered cards always respect the caps the design needs.
+ */
+function capTitleWords(t: string, maxWords: number = 10): string {
+  if (!t) return '';
+  const words = t.trim().split(/\s+/);
+  if (words.length <= maxWords) return t.trim();
+  return words.slice(0, maxWords).join(' ').replace(/[,;:—\-]\s*$/, '').trim();
+}
+function capSentences(t: string, maxSentences: number = 2): string {
+  if (!t) return '';
+  // Split on terminal punctuation followed by space + capital letter, OR end of string.
+  const matches = t.match(/[^.!?]+[.!?]+\s*/g) || [t];
+  if (matches.length <= maxSentences) return t.trim();
+  return matches.slice(0, maxSentences).join('').trim();
+}
+
+/**
+ * Deterministic post-processing pass over Gemini-generated cards. Catches the
+ * grammar artifacts and verbose patterns that the prompt asks Gemini to avoid
+ * but Gemini still occasionally produces. Runs BEFORE the route returns cards
+ * to the client. Does NOT touch numbers — preserves the anti-hallucination
+ * guarantee.
+ *
+ * Fixes:
+ *  • Doubled-up plurals from GWI attributes ("experts s", "tutorials s", "videoss")
+ *  • "are feel <X>" pattern → "say <X>" (a common Gemini transcription of GWI
+ *    attribute phrases that ARE feelings already)
+ *  • Trailing parenthetical metadata in attribute names like "(Any device)",
+ *    "(Select Markets Only)" — drops when it adds noise inside prose
+ *  • Multiple whitespace, leading/trailing whitespace
+ *  • Common throat-clearing openers ("Interestingly,", "Notably,", "It is
+ *    worth noting that") — strips at sentence start
+ *  • Triple-decimal precision ("21.83%") → one-decimal ("21.8%") for readability
+ */
+export function polishGeminiCards(cards: GeminiInsightCard[]): GeminiInsightCard[] {
+  const polish = (s: string | undefined): string => {
+    if (!s || typeof s !== 'string') return s ?? '';
+    let out = s
+      // Collapse whitespace
+      .replace(/\s+/g, ' ')
+      .trim()
+      // Doubled-up plural ("experts s" / "videoss" / "tutorialss")
+      .replace(/(\b\w+?)s\s+s\b/gi, '$1s')
+      .replace(/(\b\w+?)ss\b(?!\w)/gi, (m, root) => {
+        // keep "less", "pass", "miss" etc — only collapse if root already plural
+        if (/^(less|pass|mass|miss|kiss|boss|loss|guess|class|cross|press)$/i.test(root)) return m;
+        return `${root}s`;
+      })
+      // "are feel X" → "say X" (when X is a phrase). Common Gemini artifact when
+      // a GWI attribute reads like an opinion: "Feel using social media causes me anxiety"
+      .replace(/\bare\s+feel\s+/gi, 'say ')
+      .replace(/\bis\s+feel\s+/gi, 'says ')
+      // Throat-clearing at sentence start
+      .replace(/(^|\.\s+)(Interestingly|Notably|It is worth noting that|It is important to note that|Importantly|Crucially)[,\s]+/gi,
+               (_, lead, _word) => lead)
+      // Three-decimal-or-more percentages → 1 decimal
+      .replace(/(\d+)\.(\d{2,})%/g, (_, whole, frac) => `${whole}.${frac.slice(0, 1)}%`)
+      // Drop double spaces that survived (after the above edits)
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    return out;
+  };
+
+  return cards.map(c => ({
+    ...c,
+    // Title: clean grammar → cap at 10 words (McKinsey discipline).
+    title:       capTitleWords(polish(c.title), 10),
+    // Observation: clean grammar → cap at exactly 2 sentences.
+    obs:         capSentences(polish(c.obs), 2),
+    stat:        polish(c.stat),
+    rec:         polish(c.rec),
+    chartTitle:  c.chartTitle ? polish(c.chartTitle) : c.chartTitle,
+    chartLabels: Array.isArray(c.chartLabels)
+      ? c.chartLabels.map(l => {
+          // Normalise attribute names for chart use: collapse whitespace, drop
+          // certain trailing parens that add noise ("(Any device)", "(Select
+          // Markets Only)") — but keep parens that ADD information.
+          const cleaned = String(l ?? '')
+            .replace(/\s+/g, ' ')
+            .replace(/\s*\((Any device|Select Markets Only|Select Markets only)\)\s*$/i, '')
+            .trim();
+          return cleaned;
+        })
+      : c.chartLabels,
+    chartSeries: Array.isArray(c.chartSeries)
+      ? c.chartSeries.map(s => String(s ?? '').replace(/\s+/g, ' ').trim())
+      : c.chartSeries,
+  }));
 }
 
 // ── GWI Overview (Main Headline + Audience Snapshot) ──────────
@@ -610,19 +898,36 @@ This upload compares two audiences: A = "${audA}" and B = "${audB}".
 ${briefBlock}${twoAudienceBlock}
 DATASET: ${context}
 
+━━ McKINSEY-STYLE DISCIPLINE — pyramid principle ━━
+Lead with the answer, then the evidence. The Headline IS the answer. The Snapshot is the WHO + the one strategic tension worth knowing.
+• Cut throat-clearing. No "interestingly", "notably", "it is important to note", "the data shows that".
+• Every number earns its place. Pick the strongest signal. Drop the rest.
+• Short, declarative sentences. No corporate hedging ("could possibly", "may suggest").
+• Brevity is non-negotiable below.
+
+━━ STORYTELLING DISCIPLINE — voice ━━
+Write like a strategist describing the audience to a creative director, not a researcher reading the table.
+• Headline uses a TENSION hinge (but / yet / still / not / more than / despite) OR a specific image.
+  ✓ "She trusts WhatsApp forwards more than brand ads"
+  ✓ "Buys new tech early but blocks every ad she sees"
+  ✗ "Female 2 is 10.2 points more likely than Female to block ads"  (data readout, no story)
+• Snapshot opens with a HUMAN moment, not "The data shows" or "Female 2 demonstrates". One concrete image (kitchen, WhatsApp group, evening tea, music videos at 11pm) when the data supports it.
+• Banned: "leverage", "engage", "ecosystem", "diversify", "amplify", "drive engagement", "build presence". Use specific verbs.
+
 You will read the GWI signals below across all slots and produce TWO things only:
 
 1. MAIN HEADLINE — one bold, client-facing sentence (max 22 words).
-   • Combines the essence of the BRIEF with the SINGLE strongest insight in the data.
-   • Answers: "What is the one big thing we should know about this audience for this task?"
-   • Use a number only when it genuinely sharpens the message (e.g., "2.8× more likely").
-   • Punchy, specific, directional. No jargon.
+   • Pyramid: this IS the answer. A reader who only sees the Headline already knows the one big thing.
+   • Combines the essence of the BRIEF with the SINGLE strongest insight (the biggest gap or the strongest signal).
+   • Use a number ONLY when it sharpens the message (e.g., "2.8× more likely", "10.2 pts ahead").
+   • Punchy, specific, directional. No jargon. No "this audience". End on an action implication.
 
-2. AUDIENCE SNAPSHOT — 3 to 5 sentences (one short paragraph, not a list).
-   • Describe WHO we are really talking to, using only the strongest signals across the slots.
-   • Combine demographic, lifestyle, attitude, interest, media, and purchase signals where available.
-   • Start with: "For this brief, we are really talking to…"
-   • Feel like a one-paragraph character sketch a creative team can instantly visualise.
+2. AUDIENCE SNAPSHOT — EXACTLY 2 SENTENCES (one short paragraph, not a list).
+   • Sentence 1: WHO they are — name BOTH audiences when comparing, one sharp character sketch.
+   • Sentence 2: the ONE strategic tension or divergence that matters most for this brief.
+   • Start with: "For this brief, we are really talking to…" (single-audience) or "For this brief, we are really comparing two audiences:" (2-audience).
+   • Do NOT enumerate specific stats here — those live in the cards. Snapshot is character + tension only.
+   • Feel like the deck cover line a strategist would speak before showing slides.
 
 ━━ ANTI-HALLUCINATION ━━
 Every number, percentage, ratio, or stat MUST come verbatim from the SLOT DATA below or be a simple plain-English translation ("1.83×" → "nearly twice").

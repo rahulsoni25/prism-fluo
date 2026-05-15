@@ -52,29 +52,113 @@ Extract brand, category, objective, audience, markets, channels, and constraints
 - Phrase as: "For this brief, we are really talking to…".
 - Feel like a one-paragraph character sketch a creative team can instantly visualise.
 
+## Storytelling discipline (voice layer)
+
+Every block must read like a strategist explaining the audience to a creative director, **not** like a deck bullet a consultant dictated. The McKinsey discipline gives the SHAPE (pyramid, 2-sentence obs, labeled rec). This gives the VOICE.
+
+### Opening moves — banned
+
+- ✗ *"The data shows that…"*
+- ✗ *"'Female 2' demonstrates / engages / shows…"*
+- ✗ *"The audience…"* (the brand + demographics from the brief is the subject — always)
+- ✗ Throat-clearing: *"Interestingly,"*, *"Notably,"*, *"It is important to note,"*
+
+Open with the **human** or the **moment**. The data point is the punchline, not the lead.
+
+### Title hinge — tension or image
+
+Every Title uses a TENSION hinge (*but / yet / still / not / more than / despite*) OR a specific image.
+
+- ✓ *"Buys New Tech Early — But Blocks Every Ad She Sees"*
+- ✓ *"Reels at 11pm Beat Prime-Time TV Two-to-One"*
+- ✓ *"Trusts WhatsApp Forwards More Than Brand Ads"*
+- ✗ *"Female 2 Lead in Online Shopping by 13 Points"* — data readout, no hook
+- ✗ *"Female 2 Seek Brand & Expert Content More"* — describes, doesn't dramatise
+
+### India-specific imagery when the data supports it
+
+Pressure cookers, evening tea, WhatsApp groups, monthly grocery runs, festive shopping, prime-time saas-bahu, regional language Reels, Blinkit/BigBasket runs, Tier 1/2 metros as real places.
+
+### Banned consultancy words in Recommendations
+
+*"leverage"*, *"diversify"*, *"thrive across"*, *"ecosystem"*, *"synergise"*, *"omnichannel"*, *"drive engagement"*, *"amplify"*, *"value-add"*, *"build presence"*, *"establish brand"*, *"design adaptable formats"*. Use specific verbs and specific Indian platforms/contexts instead.
+
+### Forcing function — every block must contain at least ONE of these anchors
+
+1. **A specific moment**: time of day, day of week, festive event, kitchen/commute/bedtime ritual.
+2. **A specific Indian app or place**: Blinkit, BigBasket, Hotstar, JioCinema, Insta Reels, YouTube Music, WhatsApp aunty group, Tier 1 metro, kirana, Tanishq cinema slot.
+3. **A counterintuitive reframe**: "not aspirational — already winning" / "the brief is wrong" / "this is a UX problem, not a marketing one".
+4. **A bold media reallocation call**: "cut TV by half" / "kill the 30-sec film" / "skip pre-roll, sponsor in-app".
+
+If a block reads like it could describe ANY audience in ANY market, it fails. Rewrite.
+
+### Make a bet, not a suggestion
+
+Recommendations are bets, not options. Consultancy says *"consider testing X"* — a strategist says *"kill X, do Y instead"*. Use verbs that commit budget.
+
+- ✓ "Kill the 30-sec film. Run only 9-second cuts."
+- ✓ "Cut FMCG TV by half. Redirect to Blinkit category sponsorships."
+- ✓ "Skip influencer megastars. Pay 50 Tier-1 women with 5K followers each."
+- ✗ "Explore opportunities for video content across platforms."
+
+### Before / After — the bar
+
+**Data point:** 46% Female 2 shop online vs 33% Female (+13 pt gap)
+
+**✗ Deck-speak:**
+> *Female 2 Lead in Online Shopping by 13 Points*
+> *"'Female 2' demonstrates significantly higher online shopping behaviour, with 46.3% reporting online shopping compared to 33.3% for Female. This indicates a strong digital commerce inclination requiring focused e-commerce strategy."*
+> *CREATIVE: Develop compelling e-commerce content. BRAND: Establish digital accessibility. MEDIA: Drive traffic to e-commerce platforms.*
+
+**✓ Strategist (the bar):**
+> *She's Already on Blinkit by the Time Your Cricket Ad Loads*
+> *"46% of Ghadi Female 2 buys detergent online — and the choice happens in the four seconds it takes Blinkit to suggest a re-order. By the time your demo finishes loading on Hotstar, she's already swiped past it."*
+> *CREATIVE: Kill the 30-sec demo film. Make a 9-second product card sized for the Blinkit grid.*
+> *BRAND: Drop "heritage of trust". Lead with "always in the basket, never the brief".*
+> *MEDIA: Cut FMCG TV by half. Redirect to Blinkit / BigBasket / Amazon Pantry category sponsorships in metros.*
+
+### The bar, restated
+
+Every Title should make a CMO either laugh, wince, or lean forward. If it reads safe, it's wrong.
+
+## McKinsey-style discipline (layered on top of the blueprint)
+
+Every block obeys the **pyramid principle**: lead with the ANSWER, then the evidence.
+
+- The Title IS the answer. A reader who sees only the title should already know what to do.
+- The Observation is the evidence — the WHY behind the title.
+- The Recommendation is the so-what — what to DO. Three labeled directives (Creative / Brand / Media), one short line each.
+- Cut throat-clearing. No *"interestingly"*, *"notably"*, *"it is worth noting"*, *"the data shows that"*.
+- Every number earns its place. Pick the strongest signal; drop the rest.
+- Every Observation ends on a "therefore" implication that the Recommendation picks up.
+- For 2-audience comparisons the answer IS the gap — state the gap in pts, name which audience leads, then the so-what.
+
 ## Insight Block rules
 
-### Title
-- Punchy, specific, directional. Combines data + brief.
+### Title (max 10 words — tightened from 12)
+- Pyramid: the title IS the answer.
 - Use contrasts/levers: "2.8× More Likely…", "Joint Families, Not Urban Singles", "Promo-Driven, Not Brand-Loyal".
 - A strategist reading only the title should know what to do.
 - AVOID generic labels: "Demographic Insight", "Key Insight:", "— Worth Planning Around".
 
-### Observation
-- 2–3 sentences. Tone pattern: "The data shows… which means… for this task."
-- Lead from key metrics (Audience %, multiplier vs national avg; Universe when it adds weight).
-- Sentence 1 — WHO + WHAT + CONTEXT: name the exact audience (brand + demographics + geography from brief) and the top behaviour with destination/context.
-- Sentence 2 — THE BREAKDOWN: split the category across top 2–3 attributes with actual percentages.
-- Sentence 3 — THE GAP OR TENSION: name a specific competitive disadvantage or underserved opportunity, quantified from slot data.
+### Observation — EXACTLY 2 sentences
+- Sentence 1 (evidence): name the audience using BRIEF's brand + demographics, state the SINGLE strongest data point as a story. One number, the most decisive. For 2-audience slots: name BOTH audiences and the gap in points.
+- Sentence 2 (so-what): name the strategic implication for the brand — gap, tension, or opportunity that the Recommendation will address. End on "therefore" / "which means" / "the brand should" framing.
 - Never write "this audience" — always name the brand + demographics from the brief.
 
-### Recommendation
-Three angles required:
-- **Creative** — what to show, how to frame, which tensions/hooks, what to avoid.
-- **Brand** — how to position, which benefits/RTBs or variants to lead with.
-- **Media** — where/how to reach them, formats/contexts to prioritise or test.
+### Recommendation — THREE LABELED DIRECTIVES (one short line each, max 14 words per line)
+Emit exactly these three labels in this exact order, each followed by a colon and ONE directive sentence:
 
-Directive language only: "Show…", "Lead with…", "Avoid…", "Prioritise…", "Test…", "Integrate…", "Build…", "Shift…", "Close…".
+- **CREATIVE:** what to show, how to frame, what to avoid.
+- **BRAND:** how to position, which RTB to lead with.
+- **MEDIA:** where/how to reach, which format/context to prioritise.
+
+Directive language only: *"Show…"*, *"Lead with…"*, *"Avoid…"*, *"Prioritise…"*, *"Test…"*, *"Integrate…"*, *"Build…"*, *"Shift…"*, *"Close…"*. No *"consider"*, *"explore"*, *"possibly"*.
+
+### Audience Snapshot — EXACTLY 2 sentences (tightened from 3–5)
+- Sentence 1: WHO they are. Name both audiences when comparing. Sharp character sketch.
+- Sentence 2: the ONE strategic tension or divergence that matters most for this brief.
+- Do NOT enumerate specific stats here — those live in the cards. Snapshot is character + tension only.
 
 ## Anti-hallucination (mandatory)
 
@@ -102,7 +186,15 @@ Applied at three layers: `suggestChart()` slot suggestion, `enforceChartTypeRule
 ### Rule B — Personas / segmentation → `radar`
 - Trigger: question contains `persona | segmentation | describes consumer | self-perception | character describes` AND has 5–8 attributes.
 - Set `chartValues2` to `[100, 100, …]` (national index baseline) and `chartSeries` to `["Audience %", "National baseline"]`.
+- For TWO-AUDIENCE uploads: `chartValues2` holds audience B's actual values (not the 100-baseline) and `chartSeries` is `[A name, B name]`. Renders as two polygons (navy + teal).
 - Examples: Lifestyle Personas, Socio-Economic Segmentation, Character Describes Consumer.
+
+### Rule C — Two-audience comparison → `dumbbell` (default for 4–10 attrs)
+- Trigger: slot is marked `isTwoAudience` AND has 4–10 attributes AND Rules A/B did not match.
+- Renders as one row per attribute with two dots (Audience A in navy, Audience B in teal) connected by a gap line. The gap IS the message.
+- Fewer than 4 attrs → grouped `bar` (dumbbell looks sparse).
+- More than 10 attrs → grouped `hbar` (dumbbell rows get too tall).
+- Single-audience uploads NEVER pick dumbbell.
 
 ### Existing variety rules (untouched)
 - At least 4 different chart types across all cards.
