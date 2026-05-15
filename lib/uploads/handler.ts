@@ -36,7 +36,7 @@ import { parseSocialListening }    from '@/lib/social/parser';
 
 import { parseGenericSheet } from '@/lib/generic/parser';
 import { parsePdf }          from '@/lib/pdf/parser';
-import { extractPptxText }   from '@/lib/pptx/parser';
+import { extractPptxText, extractPptxStructured } from '@/lib/pptx/parser';
 
 import type { UploadSummary, SheetMeta, SheetType } from '@/types/dataset';
 
@@ -650,6 +650,57 @@ async function handlePdfUpload(
   return sheetsMeta;
 }
 
+// ── PPTX handler ─────────────────────────────────────────────
+//
+// PowerPoint decks from agencies are structurally rich (titles, bullets,
+// tables of keywords/personas/platforms) but historically we dumped them
+// straight into Gemini as a single blob of slide text. That worked, but
+// it forced Gemini to re-parse tables every time and threw away slide
+// boundaries — so insights couldn't cite "the keyword table on slide 5".
+//
+// extractPptxStructured returns per-slide structure (title, bullets,
+// tables[]); we persist one tool_data row per slide so the analyzer can
+// pivot on slideNumber, table headers, etc.
+
+async function handlePptxUpload(
+  buffer: Buffer,
+  filename: string,
+  uploadId: string,
+): Promise<SheetMeta[]> {
+  let slides;
+  try {
+    slides = await extractPptxStructured(buffer);
+  } catch (err: any) {
+    logger.warn('upload:pptx_structured_failed', { filename, error: err.message });
+    return [];
+  }
+  if (slides.length === 0) return [];
+
+  const rows = slides.map(s => ({
+    uploadId,
+    sheetName: filename,
+    toolType:  'pptx_deck' as const,
+    rowData:   {
+      slideNumber: s.slideNumber,
+      title:       s.title,
+      bullets:     s.bullets,
+      tables:      s.tables,
+      notes:       s.notes,
+    } as Record<string, any>,
+  }));
+  await bulkInsertToolData(rows);
+
+  const tableCount = slides.reduce((n, s) => n + s.tables.length, 0);
+  logger.info('upload:pptx_deck', { filename, slides: slides.length, tables: tableCount });
+
+  return [{
+    sheetName:   filename,
+    type:        'generic_table',
+    question:    `Deck — ${filename.replace(/\.[^.]+$/, '')}`,
+    description: `${slides.length} slides, ${tableCount} tables extracted from PowerPoint deck`,
+  } as SheetMeta];
+}
+
 // ── Main handler ─────────────────────────────────────────────
 
 export async function handleUpload(
@@ -706,10 +757,12 @@ export async function handleUpload(
     const sheets = await handlePdfUpload(buffer, filename, uploadId);
     sheetsMeta.push(...sheets);
   } else if (ext === 'pptx' || ext === 'ppt') {
-    // PowerPoint decks: extract slide text → leave structured sheets empty so
-    // the rawText fallback below routes the deck to Gemini text analysis
-    // (same path the frontend uses for unstructured CSVs and PDFs).
-    // We don't attempt structured parsing — slides are not tabular.
+    // Structured PPTX path: per-slide rows with titles, bullets, tables,
+    // notes. If structured extraction returns 0 slides (corrupt deck or a
+    // legacy .ppt binary), the rawText fallback further down still gives
+    // Gemini a shot at the deck via plain extractPptxText.
+    const sheets = await handlePptxUpload(buffer, filename, uploadId);
+    sheetsMeta.push(...sheets);
   } else {
     const sheets = await handleExcelUpload(buffer, filename, uploadId);
     sheetsMeta.push(...sheets);
