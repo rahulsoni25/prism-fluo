@@ -71,20 +71,29 @@ export async function POST(
         'Responses':            r.responses,
       }));
     } else {
+      // ── Three-tier cascade for finding the original rows ──────────
+      // Tier 1 (most specific): exact upload_id + sheet_name match. Works for
+      //   single-file, single-sheet analyses.
+      // Tier 2: upload_id only. Covers analyses whose sheet_name is the
+      //   filename (with emoji prefixes etc.) but whose tool_data is keyed
+      //   by per-question sheet labels ("ALL ROWS", "5. Online Activities…").
+      // Tier 3: brief_id wide. Covers multi-source uploads where the analysis
+      //   carries a synthetic "PRISM Combined — N sources" label.
       let toolRes = await db.query(
         `SELECT row_data FROM tool_data
           WHERE upload_id = $1 AND sheet_name = $2
           ORDER BY id ASC LIMIT 2000`,
         [analysis.upload_id, analysis.sheet_name],
       );
-      // Multi-source ("PRISM Combined — N sources") case: the analyses row
-      // carries a synthetic sheet_name that doesn't match any tool_data row
-      // (each tool_data row is keyed by its real per-sheet name like
-      // "1. Personal Interests" or "ALL ROWS"). Fall back to aggregating
-      // tool_data across every upload tied to the same brief.
-      if (toolRes.rows.length === 0
-          && /PRISM Combined/i.test(String(analysis.sheet_name || ''))
-          && analysis.brief_id) {
+      if (toolRes.rows.length === 0 && analysis.upload_id) {
+        toolRes = await db.query(
+          `SELECT row_data FROM tool_data
+            WHERE upload_id = $1
+            ORDER BY id ASC LIMIT 5000`,
+          [analysis.upload_id],
+        );
+      }
+      if (toolRes.rows.length === 0 && analysis.brief_id) {
         toolRes = await db.query(
           `SELECT td.row_data FROM tool_data td
              JOIN uploads u ON u.id = td.upload_id
