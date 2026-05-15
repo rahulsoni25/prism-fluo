@@ -7,7 +7,7 @@ import Copilot from '@/components/Copilot';
 import {
   ChartBar, ChartLine, ChartPie, ChartDoughnut, ChartScatter, ChartHBar,
   ChartArea, ChartCombo, ChartHistogram, ChartRadar,
-  ChartWaterfall, ChartFunnel,
+  ChartWaterfall, ChartFunnel, ChartDumbbell,
   Heatmap, Scorecard, PALETTE,
 } from '@/components/charts/AppChart';
 import { ID, HM_DATA, SCATTER_COLORS, SCATTER_LABELS, PLATFORMS_DATA } from '@/lib/data';
@@ -1076,6 +1076,12 @@ function NikeInsights() {
 /* ─── Guard: returns true only when chart data has real points ─── */
 function chartHasContent(data) {
   if (!data) return false;
+  // Dumbbell SVG chart stores { type:'dumbbell', labels, valuesA, valuesB }
+  if (data.type === 'dumbbell' && Array.isArray(data.valuesA) && Array.isArray(data.valuesB)) {
+    return data.valuesA.length >= 2
+        && data.valuesA.length === data.valuesB.length
+        && (data.valuesA.some(v => Number(v) !== 0) || data.valuesB.some(v => Number(v) !== 0));
+  }
   // SVG charts (waterfall / funnel) store { labels, values }
   if (Array.isArray(data.values)) {
     return data.values.length >= 2 && data.values.some(v => Number(v) !== 0);
@@ -1178,6 +1184,7 @@ function ApiChartRenderer({ chart }) {
     case 'radar':     chartEl = <ChartRadar     data={data} />; break;
     case 'waterfall': chartEl = <ChartWaterfall labels={data?.labels ?? []} values={data?.values ?? []} />; break;
     case 'funnel':    chartEl = <ChartFunnel    labels={data?.labels ?? []} values={data?.values ?? []} />; break;
+    case 'dumbbell':  chartEl = <ChartDumbbell  labels={data?.labels ?? []} valuesA={data?.valuesA ?? []} valuesB={data?.valuesB ?? []} series={data?.series} />; break;
     default: return null;
   }
   // Only render chart.lbl as a descriptive title when it is long enough to be a

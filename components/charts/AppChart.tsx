@@ -389,6 +389,114 @@ export function ChartFunnel({ labels, values }: SvgProps) {
   );
 }
 
+// ── 13. Dumbbell — custom SVG (A vs B comparison) ─────────────
+// One row per attribute. Two dots per row: Audience A in deep navy
+// (left dot), Audience B in teal (right dot, but plotted at its own
+// horizontal value). A connecting line shows the GAP between them.
+// Designed for GWI 2-audience reports where the strategic question is
+// "how far apart are A and B on each attribute".
+interface DumbbellProps {
+  labels:  string[];
+  valuesA: number[];
+  valuesB: number[];
+  series?: [string, string]; // ["Audience A name", "Audience B name"]
+}
+export function ChartDumbbell({ labels, valuesA, valuesB, series }: DumbbellProps) {
+  if (!labels.length || !valuesA.length || !valuesB.length) return null;
+  // Filter to rows where both audiences have data + at least one non-zero
+  const rows = labels
+    .map((lbl, i) => ({ label: String(lbl), a: Number(valuesA[i]) || 0, b: Number(valuesB[i]) || 0 }))
+    .filter(r => r.a > 0 || r.b > 0)
+    .slice(0, 10); // cap at 10 rows for readability
+  if (rows.length === 0) return null;
+
+  const aLabel = series?.[0] || 'Audience A';
+  const bLabel = series?.[1] || 'Audience B';
+  const NAVY = 'rgba(30,58,138,1)';
+  const TEAL = 'rgba(15,118,110,1)';
+
+  // Layout — explicit pixel scale, scaled by SVG viewBox
+  const W = 720;
+  const ROW_H = 36;
+  const PAD_T = 36; // room for legend
+  const PAD_B = 14;
+  const H = PAD_T + rows.length * ROW_H + PAD_B;
+
+  // Column widths
+  const LABEL_W = 220;
+  const PLOT_X = LABEL_W + 12;
+  const VALUE_W = 64;        // right-side value labels per row
+  const PLOT_W = W - PLOT_X - VALUE_W - 12;
+
+  // Pick a max that gives the longest dot room without crowding
+  const maxV = Math.max(100, ...rows.flatMap(r => [r.a, r.b]));
+  const toX = (v: number) => PLOT_X + (v / maxV) * PLOT_W;
+
+  // Round-up tick step
+  const tickStep = maxV <= 50 ? 10 : maxV <= 100 ? 20 : 25;
+  const ticks: number[] = [];
+  for (let t = 0; t <= maxV; t += tickStep) ticks.push(t);
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
+      {/* Legend (top right of plot) */}
+      <g transform={`translate(${PLOT_X},14)`}>
+        <circle cx={6} cy={6} r={5} fill={NAVY} />
+        <text x={18} y={9.5} fontSize={11} fill={MUTED} fontFamily="Inter, sans-serif" fontWeight={600}>
+          {aLabel.length > 22 ? aLabel.slice(0, 21) + '…' : aLabel}
+        </text>
+        <circle cx={Math.min(190, aLabel.length * 6.6 + 30)} cy={6} r={5} fill={TEAL} />
+        <text x={Math.min(190, aLabel.length * 6.6 + 30) + 12} y={9.5} fontSize={11} fill={MUTED} fontFamily="Inter, sans-serif" fontWeight={600}>
+          {bLabel.length > 22 ? bLabel.slice(0, 21) + '…' : bLabel}
+        </text>
+      </g>
+
+      {/* Vertical gridlines + tick labels */}
+      {ticks.map((t, i) => (
+        <g key={`t${i}`}>
+          <line x1={toX(t)} y1={PAD_T - 4} x2={toX(t)} y2={H - PAD_B}
+                stroke={BORDER} strokeWidth={1} strokeDasharray={t === 0 ? '0' : '2,3'} />
+          <text x={toX(t)} y={PAD_T - 10} textAnchor="middle" fontSize={9} fill={MUTED}
+                fontFamily="Inter, sans-serif">{t}%</text>
+        </g>
+      ))}
+
+      {/* Rows */}
+      {rows.map((r, i) => {
+        const cy = PAD_T + i * ROW_H + ROW_H / 2;
+        const xA = toX(r.a);
+        const xB = toX(r.b);
+        const gap = Math.abs(r.a - r.b);
+        const leadIsA = r.a >= r.b;
+        const lineX1 = Math.min(xA, xB);
+        const lineX2 = Math.max(xA, xB);
+        const rowStyle = { animation: `svgFadeIn 0.45s ease-out ${i * 0.05}s both` } as React.CSSProperties;
+        return (
+          <g key={i} style={rowStyle}>
+            {/* Attribute label (left) */}
+            <text x={LABEL_W} y={cy + 3.5} textAnchor="end" fontSize={11} fill="#1F2937"
+                  fontFamily="Inter, sans-serif" fontWeight={500}>
+              {r.label.length > 30 ? r.label.slice(0, 29) + '…' : r.label}
+            </text>
+            {/* Gap connector line */}
+            <line x1={lineX1} y1={cy} x2={lineX2} y2={cy}
+                  stroke="#94A3B8" strokeWidth={2.5} strokeLinecap="round" opacity={0.55} />
+            {/* Audience A dot (navy) */}
+            <circle cx={xA} cy={cy} r={6} fill={NAVY} stroke="#FFFFFF" strokeWidth={1.5} />
+            {/* Audience B dot (teal) */}
+            <circle cx={xB} cy={cy} r={6} fill={TEAL} stroke="#FFFFFF" strokeWidth={1.5} />
+            {/* Right-side gap label */}
+            <text x={W - VALUE_W} y={cy + 3.5} fontSize={10.5} fill={leadIsA ? NAVY : TEAL}
+                  fontFamily="Inter, sans-serif" fontWeight={700}>
+              {leadIsA ? '▲' : '▼'} {gap.toFixed(1)} pts
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 // ── Bubble ────────────────────────────────────────────────────
 export function ChartBubble({ data, extraOptions = {} }: ChartProps) {
   const options = { ...BASE, aspectRatio: 2.1, scales: { x: XA, y: YA }, ...extraOptions };

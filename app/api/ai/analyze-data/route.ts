@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM, generateGwiOverview } from '@/lib/ai/gemini';
+import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM, generateGwiOverview, polishGeminiCards } from '@/lib/ai/gemini';
 import type { GwiOverview } from '@/lib/ai/gemini';
 import { analyzeWithOpenRouter, analyzeGenericWithOpenRouter, analyzeSocialWithOpenRouter } from '@/lib/ai/openrouter';
 import type { DataSlot, GeminiInsightCard } from '@/lib/ai/gemini';
@@ -185,10 +185,13 @@ function suggestChart(
       return 'histogram';
   }
 
-  // Rule C: Two-audience comparison default → grouped bar / hbar.
-  // Falls through to here ONLY when no semantic radar/area override matched.
-  // Variety across cards is enforced downstream in pickFallbackType.
+  // Rule C: Two-audience comparison default.
+  // Dumbbell (one row per attribute, A and B dots connected by a gap line)
+  // is the GWI-report-style choice for 4-10 attributes where the gap IS the
+  // strategic message. Below 4 attrs, dumbbell looks sparse → grouped bar.
+  // Above 10 attrs, dumbbell rows get too tall → grouped hbar.
   if (isTwoAudience) {
+    if (rowCount >= 4 && rowCount <= 10) return 'dumbbell';
     return rowCount <= 7 ? 'bar' : 'hbar';
   }
 
@@ -614,7 +617,7 @@ function buildRec(slot: DataSlot, topAttr: string, pctNum: string | null): strin
 // area/line → magnitude/trend feel, radar → profile, funnel → journey,
 // waterfall → decomposition, histogram → distribution.
 const VARIETY_ROTATION: GeminiInsightCard['type'][] = [
-  'hbar', 'doughnut', 'bar', 'area', 'radar', 'pie', 'line', 'funnel', 'waterfall', 'histogram',
+  'hbar', 'doughnut', 'dumbbell', 'bar', 'area', 'radar', 'pie', 'line', 'funnel', 'waterfall', 'histogram',
 ];
 
 /** Return a chart type that hasn't been over-used and doesn't repeat the last card. */
@@ -622,7 +625,7 @@ const VARIETY_ROTATION: GeminiInsightCard['type'][] = [
 // constrain pickFallbackType's variety rotation when the slot is 2-audience —
 // without this, the variety enforcer could pick (e.g.) histogram or funnel,
 // which only show one distribution and silently drop audience B.
-const TWO_AUDIENCE_SAFE_TYPES: GeminiInsightCard['type'][] = ['hbar', 'bar', 'radar', 'area', 'line'];
+const TWO_AUDIENCE_SAFE_TYPES: GeminiInsightCard['type'][] = ['dumbbell', 'hbar', 'bar', 'radar', 'area', 'line'];
 
 function pickFallbackType(
   preferred: GeminiInsightCard['type'],
@@ -636,6 +639,9 @@ function pickFallbackType(
     if ((t === 'funnel' || t === 'waterfall') && (rowCount < 3 || rowCount > 8)) return false;
     if ((t === 'radar')     && rowCount < 3) return false;
     if ((t === 'histogram') && rowCount < 4) return false;
+    // Dumbbell rows fit cleanly between 4 and 10 attributes — sparse below,
+    // overflowing above.
+    if ((t === 'dumbbell')  && (rowCount < 4 || rowCount > 10 || !isTwoAudience)) return false;
     // 2-audience: only keep types whose chart-data builder produces TWO datasets.
     if (isTwoAudience && !TWO_AUDIENCE_SAFE_TYPES.includes(t)) return false;
     return true;
@@ -1051,7 +1057,7 @@ export async function POST(req: NextRequest) {
               if (orCards.length > 0) {
                 console.log(`[analyze-data] OpenRouter returned ${orCards.length} cards`);
                 return NextResponse.json({
-                  insights:     rebalanceCards(enforceChartTypeRules(orCards)),
+                  insights:     rebalanceCards(enforceChartTypeRules(polishGeminiCards(orCards))),
                   slots,
                   overview,
                   path:         'gwi-slots',
@@ -1073,7 +1079,7 @@ export async function POST(req: NextRequest) {
           const fallbackCards = generateFallbackCards(slots, toolLabel, brief);
           if (fallbackCards.length > 0) {
             return NextResponse.json({
-              insights:     rebalanceCards(enforceChartTypeRules(fallbackCards)),
+              insights:     rebalanceCards(enforceChartTypeRules(polishGeminiCards(fallbackCards))),
               slots,
               overview,
               path:         'gwi-slots',
@@ -1090,7 +1096,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        return NextResponse.json({ insights: rebalanceCards(enforceChartTypeRules(insights)), slots, overview, path: 'gwi-slots', totalSlots: slots.length, batches: batches.length });
+        return NextResponse.json({ insights: rebalanceCards(enforceChartTypeRules(polishGeminiCards(insights))), slots, overview, path: 'gwi-slots', totalSlots: slots.length, batches: batches.length });
       } catch (err: any) {
         return NextResponse.json(
           { error: `Gemini failed on GWI slots: ${err.message}`, path: 'gwi-slots', slotCount: slots.length },

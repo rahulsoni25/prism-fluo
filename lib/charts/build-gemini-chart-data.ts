@@ -70,6 +70,25 @@ export function buildGeminiChartData(
     return { labels, values };
   }
 
+  // ── Dumbbell — A vs B comparison (custom SVG component) ─────────
+  // Each row = one attribute with two dots (audience A, audience B) and a
+  // connecting gap line. Used for 2-audience GWI questions where the gap
+  // magnitude is the strategic message. Only emits when BOTH series have
+  // data; otherwise falls through to bar/hbar.
+  if (type === 'dumbbell') {
+    if (!Array.isArray(values2) || values2.length !== values.length || !values2.some(v => v !== 0)) {
+      // Not enough comparison data — degrade to grouped hbar
+      return buildGeminiChartData('hbar', labels, values, bucket, values2, series);
+    }
+    return {
+      type: 'dumbbell',
+      labels,
+      valuesA: values,
+      valuesB: values2,
+      series: Array.isArray(series) && series.length >= 2 ? [series[0], series[1]] : undefined,
+    };
+  }
+
   // ── Pie / Doughnut ────────────────────────────────────────────────
   if (type === 'pie' || type === 'doughnut') {
     return {
