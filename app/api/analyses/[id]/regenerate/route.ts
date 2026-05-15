@@ -71,12 +71,29 @@ export async function POST(
         'Responses':            r.responses,
       }));
     } else {
-      const toolRes = await db.query(
+      let toolRes = await db.query(
         `SELECT row_data FROM tool_data
           WHERE upload_id = $1 AND sheet_name = $2
           ORDER BY id ASC LIMIT 2000`,
         [analysis.upload_id, analysis.sheet_name],
       );
+      // Multi-source ("PRISM Combined — N sources") case: the analyses row
+      // carries a synthetic sheet_name that doesn't match any tool_data row
+      // (each tool_data row is keyed by its real per-sheet name like
+      // "1. Personal Interests" or "ALL ROWS"). Fall back to aggregating
+      // tool_data across every upload tied to the same brief.
+      if (toolRes.rows.length === 0
+          && /PRISM Combined/i.test(String(analysis.sheet_name || ''))
+          && analysis.brief_id) {
+        toolRes = await db.query(
+          `SELECT td.row_data FROM tool_data td
+             JOIN uploads u ON u.id = td.upload_id
+            WHERE u.brief_id = $1
+            ORDER BY u.created_at ASC, td.id ASC
+            LIMIT 5000`,
+          [analysis.brief_id],
+        );
+      }
       if (toolRes.rows.length === 0) {
         return NextResponse.json(
           { error: 'No source rows found for this upload/sheet. The original data may have been purged.' },
