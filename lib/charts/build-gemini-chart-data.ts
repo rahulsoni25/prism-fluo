@@ -22,6 +22,26 @@ const BUCKET_CHART_BORDERS: Record<string, string> = {
   culture:       'rgba(120,53,15,1)',
 };
 
+/**
+ * Collapse multiple whitespace, and when A and B share a common prefix shorten
+ * both to the differentiating tail. Keeps comparison legends crisp:
+ *   ["Ghadi Detergent  Female 2", "Ghadi Detergent  Female"]
+ *     -> ["Female 2", "Female"]
+ */
+function shortenAudiencePair(a?: string, b?: string): [string | undefined, string | undefined] {
+  const ca = (a ?? '').replace(/\s+/g, ' ').trim();
+  const cb = (b ?? '').replace(/\s+/g, ' ').trim();
+  if (!ca || !cb || ca === cb) return [a, b];
+  let i = 0;
+  const maxI = Math.min(ca.length, cb.length);
+  while (i < maxI && ca[i] === cb[i]) i++;
+  while (i > 0 && ca[i - 1] !== ' ') i--;
+  const tailA = ca.slice(i).trim();
+  const tailB = cb.slice(i).trim();
+  if (tailA && tailB) return [tailA, tailB];
+  return [ca, cb];
+}
+
 export function buildGeminiChartData(
   type:    string,
   labels:  string[],
@@ -32,6 +52,13 @@ export function buildGeminiChartData(
 ) {
   const bg     = BUCKET_CHART_COLORS[bucket]  || 'rgba(37,99,235,0.85)';
   const border = BUCKET_CHART_BORDERS[bucket] || 'rgba(37,99,235,1)';
+
+  // When two series are present, normalise their labels so the legend reads
+  // cleanly (drops shared brand prefix between Audience A and Audience B).
+  if (Array.isArray(series) && series.length >= 2) {
+    const [a, b] = shortenAudiencePair(series[0], series[1]);
+    series = [a ?? series[0], b ?? series[1]];
+  }
   // GWI-style two-tone palette: deep navy alternating with mid blue so each
   // doughnut reads as "primary vs secondary" rather than a multi-coloured pie.
   // (Same change ships on `charts/gwi-look` — duplicated here so the
