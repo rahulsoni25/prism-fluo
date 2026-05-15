@@ -18,9 +18,9 @@ import { isGwiTimeSpentFormat } from '@/lib/gwi/detector';
 import { tidyGwiTimeSpent }     from '@/lib/gwi/parser';
 import { gwiDefaultChartSpecs } from '@/lib/gwi/charts';
 
-import { isKeywordPlan }           from '@/lib/keywords/detector';
-import { tidyKeywordPlan }         from '@/lib/keywords/parser';
-import { keywordDefaultChartSpecs } from '@/lib/keywords/charts';
+import { isKeywordPlan, isGoogleKeywordPlanCsv } from '@/lib/keywords/detector';
+import { tidyKeywordPlan, parseKeywordCsvText }   from '@/lib/keywords/parser';
+import { keywordDefaultChartSpecs }               from '@/lib/keywords/charts';
 
 import { isHelium10Format, detectH10Variant } from '@/lib/helium10/detector';
 import { parseHelium10 }                      from '@/lib/helium10/parser';
@@ -430,6 +430,43 @@ async function handleExcelUpload(
     // Decode UTF-16 LE or strip UTF-8 BOM, then detect delimiter.
     // ExcelJS needs a UTF-8 buffer + explicit delimiter or it silently garbles the data.
     const decoded   = decodeCsvBuffer(buffer);
+
+    // ── Google Keyword Planner CSV intercept ─────────────────────
+    // Google's "Download" exports a UTF-16 LE, TAB-delimited file whose first
+    // line is a title row ("Keyword Stats/Plan/Ideas/Forecasts ...") and whose
+    // third line is the real header. ExcelJS would happily ingest it but we
+    // lose the extended columns (YoY, ad share, seasonality) when it hits the
+    // generic table path. Detect and route to the dedicated parser instead.
+    if (isGoogleKeywordPlanCsv(decoded)) {
+      const sheetName = filename;
+      const rich = parseKeywordCsvText(uploadId, sheetName, decoded);
+      if (rich.length > 0) {
+        // Rich shape → tool_data (so the analyzer sees the extended fields).
+        const toolRows = rich.map(r => ({
+          uploadId,
+          sheetName,
+          toolType: 'keyword_plan' as const,
+          rowData:  r as unknown as Record<string, any>,
+        }));
+        await bulkInsertToolData(toolRows);
+        // Legacy basic shape → keywords table (back-compat for the old UI).
+        // bulkInsertKeywords only reads the basic columns, so the extended
+        // fields on rich rows are ignored harmlessly.
+        try { await bulkInsertKeywords(rich as any); }
+        catch (err) { logger.warn('upload:kw_legacy_insert_failed', { filename, error: (err as Error).message }); }
+
+        logger.info('upload:kw_planner_csv', { sheetName, rows: rich.length });
+        return [{
+          sheetName,
+          type:        'keyword_plan',
+          question:    `Google Keyword Planner — ${filename.replace(/\.[^.]+$/, '')}`,
+          description: `${rich.length} keywords with volume, competition, YoY change and seasonality`,
+          chartSpecs:  keywordDefaultChartSpecs(),
+        } as SheetMeta];
+      }
+      // Fall through if parser returned 0 rows — ExcelJS may still salvage it.
+    }
+
     const delimiter = detectDelimiter(decoded);
     const cleanBuf  = Buffer.from(decoded, 'utf-8');
     try {
