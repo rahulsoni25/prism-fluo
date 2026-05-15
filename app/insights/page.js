@@ -304,6 +304,83 @@ function ActionOverflowMenu({ regenerating, onRegenerate, onExportExcel, onExpor
   );
 }
 
+/**
+ * StatCardWithTooltip — single audience-gap stat card in the Executive
+ * Summary strip. On hover, surfaces the calculation: which audiences are
+ * being compared, their exact percentages on this attribute, and where the
+ * gap was sourced from. Tooltip styled like ConfidenceBadge for consistency.
+ */
+function StatCardWithTooltip({ gap }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div
+      className="stat-card stat-card--hover"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      style={{ position: 'relative', cursor: 'help' }}
+    >
+      <div className="stat-card-value">+{gap.gap.toFixed(1)} pts</div>
+      <div className="stat-card-leader">{gap.leader} leads</div>
+      <div className="stat-card-divider" />
+      <div className="stat-card-label">{gap.attribute}</div>
+      {show && (
+        <div
+          role="tooltip"
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 8px)',
+            right: 0,
+            width: 320,
+            background: '#0F172A',
+            color: '#E2E8F0',
+            fontSize: 11,
+            lineHeight: 1.6,
+            padding: '14px 16px',
+            borderRadius: 10,
+            boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+            zIndex: 200,
+            whiteSpace: 'normal',
+            textAlign: 'left',
+            fontWeight: 400,
+            letterSpacing: 0,
+          }}
+        >
+          <strong style={{ display: 'block', marginBottom: 8, fontSize: 11.5, color: '#7DD3FC', fontWeight: 700, letterSpacing: 0.04 }}>
+            How this gap was calculated
+          </strong>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 10, rowGap: 4, marginBottom: 8 }}>
+            <span style={{ color: '#94A3B8' }}>{gap.audAName}:</span>
+            <span style={{ fontWeight: 600, color: '#FFFFFF' }}>{gap.audAValue.toFixed(1)}%</span>
+            <span style={{ color: '#94A3B8' }}>{gap.audBName}:</span>
+            <span style={{ fontWeight: 600, color: '#FFFFFF' }}>{gap.audBValue.toFixed(1)}%</span>
+            <span style={{ color: '#94A3B8', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 4 }}>Gap:</span>
+            <span style={{ fontWeight: 700, color: '#5EEAD4', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: 4 }}>
+              {gap.gap.toFixed(1)} pts ({gap.leader} ahead)
+            </span>
+          </div>
+
+          <div style={{ color: '#CBD5E1', marginBottom: 8 }}>
+            The single largest absolute gap between {gap.audAName} and {gap.audBName} on
+            <em style={{ color: '#FFFFFF', fontStyle: 'normal' }}> {gap.attributeFull}</em>.
+          </div>
+
+          <div style={{ color: '#94A3B8', fontSize: 10.5 }}>
+            <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Method:</strong> every chart in the report is scanned;
+            within each chart we find the attribute with the biggest A–B gap; the top 3 gaps across all charts surface here.
+          </div>
+
+          {gap.cardTitle && (
+            <div style={{ color: '#94A3B8', fontSize: 10.5, marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+              <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Source card:</strong> {gap.cardTitle.length > 70 ? gap.cardTitle.slice(0, 68) + '…' : gap.cardTitle}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SlaStrip({ brief }) {
   const planned = brief.sla_due_at ? new Date(brief.sla_due_at) : null;
   const actual  = brief.actual_completed_at ? new Date(brief.actual_completed_at) : null;
@@ -1285,6 +1362,7 @@ function AnalysisDetail({ id }) {
   // Top 3 audience-A vs audience-B gaps for the Executive Summary stat strip.
   // Only fires on 2-audience reports — single-audience cards have one dataset
   // OR a 100-baseline (persona radar) which we explicitly skip.
+  // Each gap carries enough metadata for the hover tooltip to explain the calc.
   const topGaps = (() => {
     const all = Object.values(bucketedCharts).flat();
     return all
@@ -1297,21 +1375,26 @@ function AnalysisDetail({ id }) {
         // Skip persona radars (audience vs all-100 national baseline).
         if (v2.every(v => Number(v) === 100)) return null;
         const [labelA, labelB] = shortenAudiencePair(ds[0]?.label, ds[1]?.label);
-        let bestI = -1, bestGap = -Infinity, bestLeader = '';
+        let bestI = -1, bestGap = -Infinity;
         for (let i = 0; i < v1.length; i++) {
           const gap = Math.abs((Number(v1[i]) || 0) - (Number(v2[i]) || 0));
-          if (gap > bestGap) {
-            bestGap = gap;
-            bestI = i;
-            bestLeader = (Number(v1[i]) || 0) >= (Number(v2[i]) || 0) ? labelA : labelB;
-          }
+          if (gap > bestGap) { bestGap = gap; bestI = i; }
         }
         if (bestI < 0 || bestGap <= 0) return null;
+        const audAValue = Number(v1[bestI]) || 0;
+        const audBValue = Number(v2[bestI]) || 0;
+        const leader = audAValue >= audBValue ? labelA : labelB;
         const attr = String(labels[bestI] || '').replace(/\s+/g, ' ').trim();
         return {
           gap: bestGap,
-          leader: bestLeader,
+          leader,
           attribute: attr.length > 48 ? attr.slice(0, 46).trim() + '…' : attr,
+          // ── data for the hover tooltip ──
+          attributeFull: attr,
+          audAValue, audBValue,
+          audAName: labelA,
+          audBName: labelB,
+          cardTitle: String(c.title || '').replace(/\s+/g, ' ').trim(),
         };
       })
       .filter(Boolean)
@@ -1385,12 +1468,7 @@ function AnalysisDetail({ id }) {
             {topGaps.length > 0 && (
               <aside className="insights-overview-stats" aria-label="Top audience gaps">
                 {topGaps.map((g, i) => (
-                  <div key={i} className="stat-card">
-                    <div className="stat-card-value">+{g.gap.toFixed(1)} pts</div>
-                    <div className="stat-card-leader">{g.leader} leads</div>
-                    <div className="stat-card-divider" />
-                    <div className="stat-card-label">{g.attribute}</div>
-                  </div>
+                  <StatCardWithTooltip key={i} gap={g} />
                 ))}
               </aside>
             )}
@@ -1471,26 +1549,34 @@ function AnalysisDetail({ id }) {
                       )}
                       {(chart.obs || chart.rec) && <hr className="ic-hairline" />}
                       {chart.obs && (
-                        <div className="ic-prose">{chart.obs}</div>
+                        <div className="ic-section">
+                          <div className="ic-label obs">📊 Observation</div>
+                          <div className="ic-prose">{chart.obs}</div>
+                          {chart.stat && <div className="ic-stat">{chart.stat}</div>}
+                        </div>
                       )}
                       {chart.rec && (() => {
                         const parsed = parseRecommendation(chart.rec);
-                        if (parsed) {
-                          return (
-                            <div className="ic-rec-rows">
-                              {parsed.creative && (
-                                <div className="ic-rec-row"><span className="ic-rec-label">Creative</span><span className="ic-rec-text">{parsed.creative}</span></div>
-                              )}
-                              {parsed.brand && (
-                                <div className="ic-rec-row"><span className="ic-rec-label">Brand</span><span className="ic-rec-text">{parsed.brand}</span></div>
-                              )}
-                              {parsed.media && (
-                                <div className="ic-rec-row"><span className="ic-rec-label">Media</span><span className="ic-rec-text">{parsed.media}</span></div>
-                              )}
-                            </div>
-                          );
-                        }
-                        return <div className="ic-prose ic-prose--rec">{chart.rec}</div>;
+                        return (
+                          <div className="ic-section">
+                            <div className="ic-label rec">💡 Recommendation</div>
+                            {parsed ? (
+                              <div className="ic-rec-rows">
+                                {parsed.creative && (
+                                  <div className="ic-rec-row"><span className="ic-rec-label">Creative</span><span className="ic-rec-text">{parsed.creative}</span></div>
+                                )}
+                                {parsed.brand && (
+                                  <div className="ic-rec-row"><span className="ic-rec-label">Brand</span><span className="ic-rec-text">{parsed.brand}</span></div>
+                                )}
+                                {parsed.media && (
+                                  <div className="ic-rec-row"><span className="ic-rec-label">Media</span><span className="ic-rec-text">{parsed.media}</span></div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="ic-prose ic-prose--rec">{chart.rec}</div>
+                            )}
+                          </div>
+                        );
                       })()}
                     </AnimatedCard>
                   );
