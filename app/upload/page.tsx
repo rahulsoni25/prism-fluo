@@ -181,10 +181,63 @@ function UploadDataInner() {
     setFileEntries(prev => prev.map((e, i) => i === idx ? { ...e, ...patch } : e));
 
   // ── Upload + analyse one file → return { charts, uploadId } ─
+  // ── PPTX image stripper ─────────────────────────────────────────────
+  // PPTX is a ZIP. 80-90% of an agency deck is images embedded under
+  // ppt/media/. The structured parser only reads slide XML — images
+  // are dead weight on upload. Stripping them client-side typically
+  // takes 10 MB → ~1 MB, which uploads in ~1 s instead of 10 s+ AND
+  // fits in the multipart path so we never hit Vercel's 4.5 MB function-
+  // body cap on production OR the @vercel/blob/client coordination
+  // endpoint that ad-blockers love to block.
+  async function stripPptxBloat(file: File): Promise<File> {
+    if (!file.name.toLowerCase().endsWith('.pptx')) return file;
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(file);
+      // Delete everything that isn't slide structure. Keep slides,
+      // slideLayouts, slideMasters, notesSlides, theme, _rels, the
+      // presentation root, and [Content_Types].xml — that's all the
+      // parser touches.
+      const toRemove: string[] = [];
+      zip.forEach((path) => {
+        if (
+          path.startsWith('ppt/media/') ||
+          path.startsWith('ppt/embeddings/') ||
+          path.startsWith('ppt/audio/') ||
+          path.startsWith('ppt/video/') ||
+          path.startsWith('ppt/fonts/')
+        ) {
+          toRemove.push(path);
+        }
+      });
+      if (toRemove.length === 0) return file; // already lean
+      for (const p of toRemove) zip.remove(p);
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+      const stripped = new File([blob], file.name, {
+        type: file.type || 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      });
+      const beforeMB = (file.size     / 1024 / 1024).toFixed(1);
+      const afterMB  = (stripped.size / 1024 / 1024).toFixed(1);
+      addLog(`📦 Stripped ${toRemove.length} embedded media files from "${file.name}" — ${beforeMB} MB → ${afterMB} MB (parser only needs slide XML)`);
+      return stripped;
+    } catch (err: any) {
+      // If anything goes wrong, fall through with the original file —
+      // never block the upload on this optimization.
+      addLog(`⚠ Could not strip media from "${file.name}" (${err.message}) — uploading full file`);
+      return file;
+    }
+  }
+
   async function processFile(entry: FileEntry, entryIdx: number): Promise<{ charts: ChartSpec[]; uploadId: string; overview?: { headline: string; audienceSnapshot: string } }> {
-    const { file } = entry;
+    let { file } = entry;
     updateEntry(entryIdx, { status: 'uploading' });
     addLog(`📤 Uploading "${file.name}"…`);
+
+    // Strip embedded media from PPTX BEFORE measuring size — the upload
+    // path-selection below depends on the post-strip size.
+    if (file.name.toLowerCase().endsWith('.pptx')) {
+      file = await stripPptxBloat(file);
+    }
 
     // ── Upload strategy ────────────────────────────────────────────
     // Files ≤ 4 MB go via legacy multipart — fewer round trips, no
