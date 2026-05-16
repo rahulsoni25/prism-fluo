@@ -254,18 +254,26 @@ textarea {resize:vertical;min-height:80px}
 .action-overflow-menu button[disabled] {opacity:0.6;cursor:wait}
 
 /* Executive Summary banner — light slate-50, 3px navy→teal top stripe.
-   prose left, top-3 audience-gap stat cards on the right (when present). */
+   STACKED layout: prose full-width on top, stat cards as a horizontal
+   3-up row below. The earlier 2-column grid (prose | stats-right) was
+   leaving a large L-shaped gap on the left of wide screens because the
+   prose was capped at 880px while the stats column anchored 260px on
+   the right — looked sparse. Stacked reads as one strong "executive
+   summary at-a-glance" block. */
 .insights-overview {background:#F8FAFC;padding:36px 0 30px;position:relative}
 .insights-overview::before {content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#1E3A8A 0%,#2563EB 45%,#14B8A6 100%)}
-.insights-overview-inner {max-width:1280px;margin:0 auto;padding:0 36px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:32px;align-items:start}
-.insights-overview-main {min-width:0}
+.insights-overview-inner {max-width:1280px;margin:0 auto;padding:0 36px;display:block}
+.insights-overview-main {min-width:0;margin-bottom:22px}
 .insights-overview-eyebrow {font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#64748B;margin-bottom:12px}
-.insights-overview-headline {font-size:28px;font-weight:800;line-height:1.22;color:#0F172A;margin:0 0 14px 0;letter-spacing:-0.015em;max-width:920px}
-.insights-overview-snapshot {font-size:15px;line-height:1.72;color:#475569;margin:0;max-width:880px}
+.insights-overview-headline {font-size:30px;font-weight:800;line-height:1.22;color:#0F172A;margin:0 0 14px 0;letter-spacing:-0.015em;max-width:1100px}
+.insights-overview-snapshot {font-size:15px;line-height:1.72;color:#475569;margin:0;max-width:1100px}
 
-/* Stat cards on the right of the banner */
-.insights-overview-stats {display:flex;flex-direction:column;gap:10px;min-width:240px;max-width:260px}
-.stat-card {background:#FFFFFF;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,0.04);transition:box-shadow 0.18s ease,border-color 0.18s ease}
+/* Stat cards — horizontal 3-up row below the prose, equal-width.
+   At 1280px container with 36px padding = 1208px usable, minus
+   2×14px gaps = 1180/3 ≈ 393px per card. Plenty of room for the
+   Market Pyramid's category nugget without truncation. */
+.insights-overview-stats {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.stat-card {background:#FFFFFF;border:1px solid #E2E8F0;border-radius:10px;padding:14px 16px;box-shadow:0 1px 2px rgba(15,23,42,0.04);transition:box-shadow 0.18s ease,border-color 0.18s ease}
 .stat-card--hover:hover {border-color:#94A3B8;box-shadow:0 1px 2px rgba(15,23,42,0.04),0 4px 12px -4px rgba(15,23,42,0.16)}
 .stat-card-value {font-size:22px;font-weight:800;color:#1E3A8A;letter-spacing:-0.01em;line-height:1.1}
 .stat-card-leader {font-size:11px;font-weight:600;color:#0F766E;text-transform:uppercase;letter-spacing:0.06em;margin-top:4px}
@@ -274,9 +282,8 @@ textarea {resize:vertical;min-height:80px}
 
 @media (max-width:880px){
   .insights-overview {padding:28px 0 24px}
-  .insights-overview-inner {grid-template-columns:1fr;gap:20px;padding:0 22px}
-  .insights-overview-stats {flex-direction:row;flex-wrap:wrap;max-width:none}
-  .stat-card {flex:1;min-width:170px}
+  .insights-overview-inner {padding:0 22px}
+  .insights-overview-stats {grid-template-columns:1fr;gap:10px}
   .insights-overview-headline {font-size:22px}
   .insights-overview-snapshot {font-size:14.5px}
 }
