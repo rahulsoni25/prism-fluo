@@ -381,6 +381,74 @@ function StatCardWithTooltip({ gap }) {
   );
 }
 
+/**
+ * StrategicBetCard — single "bet" in the Executive Summary strip.
+ *
+ * Replaces the per-percentage-point audience-gap card with a single
+ * imperative action distilled from the analysis itself: the top
+ * verb-driven sentence from a high-conviction insight card, plus the
+ * supporting stat that justifies it. Reads like a strategist briefing
+ * a CMO, not like a deck-built stat counter.
+ */
+function StrategicBetCard({ bet }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div
+      className="stat-card stat-card--hover"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      style={{ position: 'relative', cursor: 'help', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+    >
+      <div
+        style={{
+          fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em',
+          textTransform: 'uppercase', color: '#0891B2', marginBottom: 6,
+        }}
+      >
+        {bet.bucketLabel}
+      </div>
+      <div
+        style={{
+          fontSize: 15, lineHeight: 1.35, fontWeight: 700, color: '#0F172A',
+          letterSpacing: '-.005em', marginBottom: 10,
+        }}
+      >
+        {bet.action}
+      </div>
+      <div className="stat-card-divider" />
+      <div style={{ fontSize: 12, lineHeight: 1.4, color: '#475569', marginTop: 8 }}>
+        {bet.stat || bet.title}
+      </div>
+      {show && bet.title && (
+        <div
+          role="tooltip"
+          style={{
+            position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+            width: 320, background: '#0F172A', color: '#E2E8F0',
+            fontSize: 11, lineHeight: 1.6, padding: '14px 16px',
+            borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+            zIndex: 200, whiteSpace: 'normal', textAlign: 'left',
+            fontWeight: 400, letterSpacing: 0,
+          }}
+        >
+          <strong style={{ display: 'block', marginBottom: 8, fontSize: 11.5, color: '#7DD3FC', fontWeight: 700, letterSpacing: 0.04 }}>
+            Why this is the bet
+          </strong>
+          <div style={{ color: '#CBD5E1', marginBottom: 8 }}>
+            Drawn from the highest-conviction recommendation in the{' '}
+            <em style={{ color: '#FFFFFF', fontStyle: 'normal' }}>{bet.bucketLabel.toLowerCase()}</em> bucket
+            ({bet.conviction}/100 confidence).
+          </div>
+          <div style={{ color: '#94A3B8', fontSize: 10.5, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+            <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Source card:</strong>{' '}
+            {bet.title.length > 70 ? bet.title.slice(0, 68) + '…' : bet.title}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SlaStrip({ brief }) {
   const planned = brief.sla_due_at ? new Date(brief.sla_due_at) : null;
   const actual  = brief.actual_completed_at ? new Date(brief.actual_completed_at) : null;
@@ -1438,6 +1506,58 @@ function AnalysisDetail({ id }) {
       .slice(0, 3);
   })();
 
+  // ── Strategic Bets: 3 distilled, imperative actions from the top
+  // recommendations across distinct buckets. Replaces the raw "+pts"
+  // audience-gap cards that read like deck filler. Each bet is a
+  // single verb-driven sentence + the supporting stat. ──
+  const topBets = (() => {
+    const BUCKET_BADGES = {
+      content: 'CONTENT', commerce: 'COMMERCE', communication: 'COMMUNICATION',
+      culture: 'CULTURE', channel: 'CHANNEL', media: 'MEDIA',
+      creative: 'CREATIVE', pricing: 'PRICING', search: 'SEARCH',
+    };
+
+    // Extract the first imperative-sentence from a recommendation. The
+    // McKinsey discipline embeds labeled directives (CREATIVE: / BRAND:
+    // / MEDIA:) — prefer the first labeled directive when present,
+    // otherwise fall back to the first sentence of the rec.
+    const extractAction = (rec) => {
+      if (!rec || typeof rec !== 'string') return null;
+      const text = rec.trim();
+      // Labeled-directive pattern (most common)
+      const labelMatch = text.match(/(?:CREATIVE|MEDIA|BRAND|STRATEGY|CHANNEL|EXPERIENCE)\s*[:—]\s*([^\n]+?[.!?])(?=\s|$)/);
+      if (labelMatch) return labelMatch[1].trim();
+      // Else first sentence (split on period+space)
+      const firstSentence = text.split(/(?<=[.!?])\s+/)[0];
+      if (firstSentence && firstSentence.length > 10) return firstSentence.trim();
+      return text.length > 140 ? text.slice(0, 138).trim() + '…' : text;
+    };
+
+    // Walk all charts, rank by conviction, ensure bucket variety.
+    const ranked = [...charts]
+      .filter(c => c.rec && (c.conviction ?? 0) >= 70)
+      .sort((a, b) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0));
+
+    const seenBuckets = new Set();
+    const bets = [];
+    for (const c of ranked) {
+      const bucket = String(c.bucket || 'content').toLowerCase();
+      if (seenBuckets.has(bucket)) continue;
+      const action = extractAction(c.rec);
+      if (!action) continue;
+      bets.push({
+        bucketLabel: BUCKET_BADGES[bucket] ?? bucket.toUpperCase(),
+        action:      action.length > 130 ? action.slice(0, 128).trim() + '…' : action,
+        stat:        c.stat ? (String(c.stat).length > 90 ? String(c.stat).slice(0, 88) + '…' : String(c.stat)) : null,
+        title:       String(c.title || '').trim(),
+        conviction:  Math.round(Number(c.conviction) || 0),
+      });
+      seenBuckets.add(bucket);
+      if (bets.length === 3) break;
+    }
+    return bets;
+  })();
+
   const chartTypes    = [...new Set(charts.map(c => c.type).filter(Boolean))];
   const totalInsights = charts.length;
 
@@ -1486,9 +1606,12 @@ function AnalysisDetail({ id }) {
       </div>
 
       {/* ── Executive Summary banner ──
-          prose on the left, top-3 audience-gap stat cards on the right.
-          For single-audience reports topGaps is empty and the strip is
-          hidden — the prose column expands to full width. */}
+          Left column: headline + snapshot prose.
+          Right column: 3 "Strategic Bets" — imperative actions distilled
+          from the highest-conviction recommendations across distinct
+          buckets. If topBets is empty (sparse analysis with no decent
+          recommendations) the bets-column is hidden and prose takes the
+          full width. */}
       {overview && (
         <section className="insights-overview">
           <div className="insights-overview-inner">
@@ -1501,10 +1624,10 @@ function AnalysisDetail({ id }) {
                 <p className="insights-overview-snapshot">{overview.audienceSnapshot}</p>
               )}
             </div>
-            {topGaps.length > 0 && (
-              <aside className="insights-overview-stats" aria-label="Top audience gaps">
-                {topGaps.map((g, i) => (
-                  <StatCardWithTooltip key={i} gap={g} />
+            {topBets.length > 0 && (
+              <aside className="insights-overview-stats" aria-label="Top strategic bets">
+                {topBets.map((b, i) => (
+                  <StrategicBetCard key={i} bet={b} />
                 ))}
               </aside>
             )}
