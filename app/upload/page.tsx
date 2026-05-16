@@ -228,7 +228,7 @@ function UploadDataInner() {
     }
   }
 
-  async function processFile(entry: FileEntry, entryIdx: number): Promise<{ charts: ChartSpec[]; uploadId: string; overview?: { headline: string; audienceSnapshot: string } }> {
+  async function processFile(entry: FileEntry, entryIdx: number): Promise<{ charts: ChartSpec[]; uploadId: string; overview?: { headline: string; audienceSnapshot: string }; existingAnalysisId?: string }> {
     let { file } = entry;
     updateEntry(entryIdx, { status: 'uploading' });
     addLog(`📤 Uploading "${file.name}"…`);
@@ -348,18 +348,15 @@ function UploadDataInner() {
       addLog(`♻️ "${file.name}" matches a recent upload — reusing existing parse`);
     }
 
-    // FAST PATH: dedup hit AND we have a pre-existing analysis for this exact
-    // content → skip /api/ai/analyze-data + /api/analyses entirely. Burns zero
-    // Gemini quota; user lands on the previous insights page instantly.
-    // This is the "pre-warm" optimization: once an analysis is generated for
-    // a file, every subsequent upload of the same bytes (for 7 days) is free.
-    if (deduplicated && existingAnalysisId && typeof window !== 'undefined') {
-      addLog(`⚡ Found existing analysis ${existingAnalysisId.slice(0, 8)}… — opening directly (zero Gemini cost)`);
+    // FAST PATH: dedup hit AND a pre-existing analysis is on file. We do NOT
+    // navigate from here — processFile runs inside a for-loop in processAll
+    // for multi-file uploads (PRISM Combined). A premature window.location
+    // change would abandon files 2+. Instead, return the existingAnalysisId
+    // up to processAll which decides whether short-circuiting is safe.
+    if (deduplicated && existingAnalysisId) {
+      addLog(`⚡ Cached analysis ${existingAnalysisId.slice(0, 8)}… available for "${file.name}" — zero Gemini cost on retest`);
       updateEntry(entryIdx, { status: 'done', chartsFound: 0 });
-      // Navigate immediately. The /insights page reads its own cards from the
-      // stored analysis so we don't need to pre-populate charts in state.
-      window.location.href = `/insights?id=${encodeURIComponent(existingAnalysisId)}`;
-      return { charts: [], uploadId };
+      return { charts: [], uploadId, existingAnalysisId };
     }
 
     // ── Raw text fallback: structured parsing returned 0 rows ──────────
@@ -643,11 +640,13 @@ function UploadDataInner() {
 
     try {
       const batchCharts: ChartSpec[] = [];
-      let batchFirstUploadId = '';
+      let batchFirstUploadId  = '';
+      let firstExistingAnalysisId: string | null = null;
 
       for (let i = 0; i < entries.length; i++) {
-        const { charts, uploadId, overview } = await processFile(entries[i], existingOffset + i);
+        const { charts, uploadId, overview, existingAnalysisId } = await processFile(entries[i], existingOffset + i);
         if (i === 0) batchFirstUploadId = uploadId;
+        if (i === 0 && existingAnalysisId) firstExistingAnalysisId = existingAnalysisId;
         batchCharts.push(...charts);
         // Capture the first non-empty overview from this run.
         // Functional setState avoids the stale-closure bug across files in a batch
@@ -655,6 +654,19 @@ function UploadDataInner() {
         if (overview?.headline) {
           setAnalysisOverview(prev => prev ?? overview);
         }
+      }
+
+      // SHORT-CIRCUIT: single-file upload that fully deduplicated to an
+      // existing analysis → navigate directly. Skipped for multi-file
+      // (PRISM Combined) batches because each file's existingAnalysisId
+      // may point to a different prior analysis and combining them mid-
+      // navigation is fragile. Multi-file pre-warm still benefits from
+      // upload-level dedup (no re-parse) — only the combined analyze-data
+      // call runs fresh.
+      if (entries.length === 1 && firstExistingAnalysisId && typeof window !== 'undefined') {
+        addLog(`⚡ Opening cached analysis directly — zero Gemini cost`);
+        window.location.href = `/insights?id=${encodeURIComponent(firstExistingAnalysisId)}`;
+        return;
       }
 
       if (batchCharts.length === 0 && entries.length > 0) {
