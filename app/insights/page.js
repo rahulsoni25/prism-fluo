@@ -615,10 +615,72 @@ function computeMarketPyramid(brief) {
  * funnel math broken out on hover. Different from Strategic Bets:
  * those say what to DO; this says HOW BIG the opportunity is.
  */
-function MarketPyramidCard({ pyramid, categoryIntel }) {
+/**
+ * Build a concise human-readable audience descriptor from the brief.
+ * e.g. "Female 25-44 · Tier-2/3 metros". Returned for prominent display
+ * on the Market Pyramid card so readers always know WHO the numbers
+ * are filtered to.
+ */
+function buildAudienceDescriptor(brief) {
+  if (!brief) return null;
+  const parts = [];
+  if (brief.gender) {
+    const g = String(brief.gender).trim();
+    if (g) parts.push(g);
+  }
+  if (brief.age_ranges) {
+    const a = String(brief.age_ranges).trim();
+    if (a && a.length < 30) parts.push(a);
+  }
+  if (brief.sec) {
+    const s = String(brief.sec).trim();
+    if (s && s.length < 20) parts.push(`SEC ${s}`);
+  }
+  if (brief.geography) {
+    const geo = String(brief.geography).trim();
+    if (geo && geo.length < 40) parts.push(geo);
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * Derive an audience-share of total category spend by applying the
+ * TAM/India ratio to the category market value. Conservative
+ * (assumes uniform per-capita spend). Returned formatted so the card
+ * can show "₹1,100 Cr addressable for this audience" alongside the
+ * all-India figure.
+ */
+function deriveAddressableSpend(pyramid, categoryIntel) {
+  if (!pyramid || !categoryIntel?.marketValueINR) return null;
+  // Parse the INR Cr number. Handles "₹41,500 Cr", "₹1.45L Cr", "₹73L Cr".
+  const raw = categoryIntel.marketValueINR;
+  let totalCr = NaN;
+  const lakhCrMatch = raw.match(/₹\s*([\d.,]+)\s*L\s*Cr/i);
+  const plainCrMatch = raw.match(/₹\s*([\d.,]+)\s*Cr/i);
+  if (lakhCrMatch) totalCr = parseFloat(lakhCrMatch[1].replace(/,/g, '')) * 100_000;     // L Cr = lakh crore
+  else if (plainCrMatch) totalCr = parseFloat(plainCrMatch[1].replace(/,/g, ''));
+  if (!Number.isFinite(totalCr) || totalCr <= 0) return null;
+
+  const indiaPop = pyramid.rows[0]?.count || 1_430_000_000;
+  const tam      = pyramid.tam;
+  if (!tam || tam <= 0) return null;
+  const ratio = tam / indiaPop;
+  const addressableCr = totalCr * ratio;
+  // Format: < 1000 Cr → "₹{n} Cr"; >= 1000 Cr → "₹{n,000} Cr"; >= 1L Cr → "₹{n.n}L Cr"
+  const fmt = (n) => n >= 100_000 ? `₹${(n / 100_000).toFixed(1)}L Cr`
+                   : n >= 1000    ? `₹${Math.round(n).toLocaleString('en-IN')} Cr`
+                   : `₹${Math.round(n)} Cr`;
+  return {
+    formatted: fmt(addressableCr),
+    sharePct:  ((ratio * 100).toFixed(2)) + '%',
+  };
+}
+
+function MarketPyramidCard({ pyramid, categoryIntel, audienceDescriptor }) {
   const [show, setShow] = useState(false);
   if (!pyramid || pyramid.rows.length < 2) return null;
   const final = pyramid.rows[pyramid.rows.length - 1];
+  const addressable = deriveAddressableSpend(pyramid, categoryIntel);
   return (
     <div
       className="stat-card stat-card--hover"
@@ -632,16 +694,38 @@ function MarketPyramidCard({ pyramid, categoryIntel }) {
       <div style={{ fontSize: 24, lineHeight: 1.05, fontWeight: 800, color: '#0F172A', letterSpacing: '-.015em', marginBottom: 2 }}>
         {pyramid.tamFmt}
       </div>
-      <div style={{ fontSize: 12, color: '#475569', fontWeight: 500, marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: '#475569', fontWeight: 500, marginBottom: 6 }}>
         addressable audience
       </div>
-      {/* Category nugget — only renders when getCategoryIntel matched a
-          known Indian category. Sits ABOVE the divider so it reads as
-          part of the headline numbers, not the funnel-step label. */}
+      {/* TARGETING: prominent audience descriptor so every number on this
+          card is anchored to a specific WHO. Strict rule: if a brief is
+          missing this, the card hides entirely (handled at parent). */}
+      {audienceDescriptor && (
+        <div style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: '.04em',
+          color: '#0891B2',
+          background: '#ECFEFF',
+          border: '1px solid #A5F3FC',
+          borderRadius: 6,
+          padding: '4px 7px',
+          marginBottom: 8,
+          lineHeight: 1.35,
+        }}>
+          <span style={{ color: '#0E7490', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 800 }}>
+            Targeting:
+          </span>{' '}
+          {audienceDescriptor}
+        </div>
+      )}
+      {/* Category nugget — clearly labels each figure as audience-
+          addressable vs all-India category, so readers know which
+          number belongs to "us" vs "the whole market". */}
       {categoryIntel && (
         <div style={{
           fontSize: 11,
-          lineHeight: 1.35,
+          lineHeight: 1.4,
           color: '#475569',
           background: '#F8FAFC',
           border: '1px solid #E2E8F0',
@@ -649,11 +733,15 @@ function MarketPyramidCard({ pyramid, categoryIntel }) {
           padding: '6px 8px',
           marginBottom: 8,
         }}>
-          <div style={{ fontWeight: 700, color: '#0F172A' }}>
-            {categoryIntel.marketValueINR} · {categoryIntel.cagr} CAGR
-          </div>
-          <div style={{ marginTop: 2, color: '#64748B' }}>
-            {categoryIntel.label} · {categoryIntel.searchVolMonthly}
+          {addressable && (
+            <div style={{ marginBottom: 4 }}>
+              <span style={{ fontWeight: 700, color: '#0F172A' }}>{addressable.formatted}</span>
+              <span style={{ color: '#64748B', fontWeight: 500 }}> addressable (audience)</span>
+            </div>
+          )}
+          <div style={{ color: '#64748B' }}>
+            <span style={{ fontWeight: 600, color: '#0F172A' }}>{categoryIntel.marketValueINR}</span>
+            {' '}all-India · {categoryIntel.cagr} CAGR · {categoryIntel.searchVolMonthly}
           </div>
         </div>
       )}
@@ -668,9 +756,21 @@ function MarketPyramidCard({ pyramid, categoryIntel }) {
           padding: '14px 16px', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
           zIndex: 200, whiteSpace: 'normal', textAlign: 'left', fontWeight: 400, letterSpacing: 0,
         }}>
-          <strong style={{ display: 'block', marginBottom: 8, fontSize: 11.5, color: '#C4B5FD', fontWeight: 700, letterSpacing: 0.04 }}>
+          <strong style={{ display: 'block', marginBottom: 4, fontSize: 11.5, color: '#C4B5FD', fontWeight: 700, letterSpacing: 0.04 }}>
             How this TAM was calculated
           </strong>
+          {audienceDescriptor && (
+            <div style={{
+              fontSize: 10.5, marginBottom: 8, padding: '4px 6px',
+              background: 'rgba(168,85,247,0.12)', borderRadius: 4,
+              color: '#E9D5FF',
+            }}>
+              <span style={{ color: '#C4B5FD', fontWeight: 700, letterSpacing: 0.04 }}>
+                TARGETING:
+              </span>{' '}
+              {audienceDescriptor}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', columnGap: 10, rowGap: 4, marginBottom: 8 }}>
             {pyramid.rows.map((r, i) => (
               <Fragment key={i}>
@@ -694,16 +794,22 @@ function MarketPyramidCard({ pyramid, categoryIntel }) {
               borderTop: '1px solid rgba(255,255,255,0.10)',
             }}>
               <strong style={{ display: 'block', marginBottom: 6, fontSize: 11.5, color: '#C4B5FD', fontWeight: 700, letterSpacing: 0.04 }}>
-                Category context
+                Category context — all-India unless marked (audience)
               </strong>
               <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 10, rowGap: 3, color: '#CBD5E1' }}>
                 <span style={{ color: '#94A3B8' }}>Category:</span>
                 <span style={{ fontWeight: 600, color: '#FFFFFF' }}>{categoryIntel.label}</span>
-                <span style={{ color: '#94A3B8' }}>Market value:</span>
+                <span style={{ color: '#94A3B8' }}>Market value <span style={{ color: '#64748B', fontWeight: 400 }}>(all-India):</span></span>
                 <span style={{ fontWeight: 600, color: '#FFFFFF' }}>{categoryIntel.marketValueUSD} ({categoryIntel.marketValueINR})</span>
+                {addressable && (
+                  <>
+                    <span style={{ color: '#94A3B8' }}>↳ <span style={{ color: '#5EEAD4' }}>addressable (audience):</span></span>
+                    <span style={{ fontWeight: 700, color: '#5EEAD4' }}>{addressable.formatted} <span style={{ color: '#94A3B8', fontWeight: 400 }}>(~{addressable.sharePct} of India pop)</span></span>
+                  </>
+                )}
                 <span style={{ color: '#94A3B8' }}>Growth (CAGR):</span>
                 <span style={{ fontWeight: 600, color: '#5EEAD4' }}>{categoryIntel.cagr}</span>
-                <span style={{ color: '#94A3B8' }}>Search volume:</span>
+                <span style={{ color: '#94A3B8' }}>Search volume <span style={{ color: '#64748B', fontWeight: 400 }}>(all-India):</span></span>
                 <span style={{ fontWeight: 600, color: '#FBBF24' }}>{categoryIntel.searchVolMonthly}</span>
               </div>
               {(categoryIntel.topPlayers || categoryIntel.channelMix || categoryIntel.peakSeasons) && (
@@ -730,8 +836,13 @@ function MarketPyramidCard({ pyramid, categoryIntel }) {
               )}
               <div style={{ color: '#94A3B8', fontSize: 10, marginTop: 6, lineHeight: 1.45 }}>
                 <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Sources:</strong> {categoryIntel.source}.
-                Search volume is an order-of-magnitude estimate from Google Trends + Keyword Planner samples — not a precise count.
-                Top-player shares + channel mix are 2024 figures, restated.
+                Search volume is an order-of-magnitude estimate from Google Trends + Keyword Planner samples.
+                Top-player shares + channel mix are 2024 figures, restated.{' '}
+                {addressable && (
+                  <span>
+                    <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Audience-addressable</strong> assumes uniform per-capita category spend across India (a baseline — not a precision estimate).
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -1931,6 +2042,11 @@ function AnalysisDetail({ id }) {
   // surfaces when the brief's category matches a known Indian category
   // we have a named research-firm number for. Never invented.
   const categoryIntel = getCategoryIntel(analysis.brief?.category);
+  // Audience descriptor (e.g. "Female · 25-44 · Tier-2/3 metros") for
+  // strict labeling on the Market Pyramid card. Every number on that
+  // card is anchored to this descriptor so readers know WHO is being
+  // counted.
+  const audienceDescriptor = buildAudienceDescriptor(analysis.brief);
 
   const chartTypes    = [...new Set(charts.map(c => c.type).filter(Boolean))];
   const totalInsights = charts.length;
@@ -2000,7 +2116,13 @@ function AnalysisDetail({ id }) {
             </div>
             {(topBets.length > 0 || marketPyramid) && (
               <aside className="insights-overview-stats" aria-label="Strategic bets + market size">
-                {marketPyramid && <MarketPyramidCard pyramid={marketPyramid} categoryIntel={categoryIntel} />}
+                {marketPyramid && (
+                  <MarketPyramidCard
+                    pyramid={marketPyramid}
+                    categoryIntel={categoryIntel}
+                    audienceDescriptor={audienceDescriptor}
+                  />
+                )}
                 {topBets.slice(0, marketPyramid ? 2 : 3).map((b, i) => (
                   <StrategicBetCard key={i} bet={b} />
                 ))}
