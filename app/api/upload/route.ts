@@ -87,9 +87,10 @@ export const POST = async (req: NextRequest) => {
       });
 
       return NextResponse.json({
-        uploadId: summary.uploadId,
-        sheets:   summary.sheets,
-        rawText:  summary.rawText ?? null,
+        uploadId:     summary.uploadId,
+        sheets:       summary.sheets,
+        rawText:      summary.rawText ?? null,
+        deduplicated: summary.deduplicated ?? false,
       });
     }
 
@@ -161,9 +162,10 @@ export const POST = async (req: NextRequest) => {
       });
 
       return NextResponse.json({
-        uploadId: summary.uploadId,
-        sheets:   summary.sheets,
-        rawText:  summary.rawText ?? null,
+        uploadId:     summary.uploadId,
+        sheets:       summary.sheets,
+        rawText:      summary.rawText ?? null,
+        deduplicated: summary.deduplicated ?? false,
       });
     }
 
@@ -217,9 +219,10 @@ export const POST = async (req: NextRequest) => {
     });
 
     return NextResponse.json({
-      uploadId: summary.uploadId,
-      sheets:   summary.sheets,
-      rawText:  summary.rawText ?? null,
+      uploadId:     summary.uploadId,
+      sheets:       summary.sheets,
+      rawText:      summary.rawText ?? null,
+      deduplicated: summary.deduplicated ?? false,
     });
 
   } catch (err: any) {

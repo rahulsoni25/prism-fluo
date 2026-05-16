@@ -290,7 +290,10 @@ function UploadDataInner() {
     }
     const summary = await upRes.json();
 
-    const { uploadId, sheets, rawText } = summary;
+    const { uploadId, sheets, rawText, deduplicated } = summary;
+    if (deduplicated) {
+      addLog(`♻️ "${file.name}" matches a recent upload — reusing existing parse (no extra DB writes, no Gemini cost if analysis is also cached)`);
+    }
 
     // ── Raw text fallback: structured parsing returned 0 rows ──────────
     // ExcelJS couldn't parse this CSV/Excel. Route the raw file content
@@ -427,6 +430,7 @@ function UploadDataInner() {
           sheetName: preferredSheet.sheetName,
           fileNames: [file.name],
           briefId:   briefId || null,
+          uploadId,                // enables server-side analysis cache
           debug:     useV2Pipeline,
         }),
       });
@@ -440,11 +444,12 @@ function UploadDataInner() {
         const body = await aiRes.json();
         const { insights, fallback, overview, geminiErrors } = body as {
           insights?: any[];
-          fallback?: 'openrouter' | 'auto' | boolean;
+          fallback?: 'openrouter' | 'auto' | 'cached' | boolean;
           overview?: { headline: string; audienceSnapshot: string };
           geminiErrors?: string[];
         };
-        if (fallback === 'openrouter') addLog('⚡ Gemini unavailable — switched to OpenRouter (free LLM models, conviction 82)');
+        if (fallback === 'cached')          addLog('♻️ Reusing cached analysis from a prior identical run — no Gemini quota burned');
+        else if (fallback === 'openrouter') addLog('⚡ Gemini unavailable — switched to OpenRouter (free LLM models, conviction 82)');
         else if (fallback === 'auto' || fallback === true) addLog('⚡ AI unavailable — using auto-analysis from raw index data (conviction 70)');
         // Surface the actual Gemini error reasons so the user can debug API-key / model / quota issues.
         if (Array.isArray(geminiErrors) && geminiErrors.length > 0) {
