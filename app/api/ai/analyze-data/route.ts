@@ -1080,40 +1080,19 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(rows) || rows.length === 0)
       return NextResponse.json({ error: 'rows array required' }, { status: 400 });
 
-    // ── CACHE CHECK ──────────────────────────────────────────────
-    // If this uploadId+sheetName was analyzed in the last 7 days, reuse
-    // those insights instead of burning another Gemini call. Hits both
-    // when the upload was deduplicated (same file content) AND when the
-    // user re-triggers analysis manually on a sheet.
-    const ANALYSIS_CACHE_DAYS = 7;
-    if (uploadId && sheetName) {
-      try {
-        const cached = await getPool().query(
-          `SELECT results_json FROM analyses
-            WHERE upload_id = $1 AND sheet_name = $2
-              AND created_at > NOW() - INTERVAL '${ANALYSIS_CACHE_DAYS} days'
-            ORDER BY created_at DESC LIMIT 1`,
-          [uploadId, sheetName],
-        );
-        if (cached.rows.length > 0) {
-          const r = cached.rows[0].results_json;
-          const cachedInsights = Array.isArray(r?.insights) ? r.insights : null;
-          if (cachedInsights && cachedInsights.length > 0) {
-            console.log(`[analyze-data] CACHE HIT uploadId=${uploadId.slice(0, 8)}… sheet="${sheetName}" insights=${cachedInsights.length}`);
-            return NextResponse.json({
-              insights: cachedInsights,
-              slots:    Array.isArray(r?.slots) ? r.slots : [],
-              overview: r?.overview ?? undefined,
-              path:     'cached',
-              fallback: 'cached',
-            });
-          }
-        }
-      } catch (cacheErr: any) {
-        // Cache miss / DB hiccup — never block live analysis on this.
-        console.warn('[analyze-data] cache lookup failed:', cacheErr.message);
-      }
-    }
+    // ── Cache strategy note ──────────────────────────────────────
+    // Caching now lives at the UPLOAD layer (lib/uploads/handler.ts):
+    // when content-hash dedup hits AND a prior analysis exists for the
+    // matching (upload_id, brief_id), the upload response surfaces
+    // `existingAnalysisId` and the frontend short-circuits to
+    // /insights?id=… without ever calling this route. That's a clean
+    // strategy because cached results never need to be reverse-converted
+    // from `charts[]` back to `insights[]` (the frontend stores cards
+    // as `results.charts`, not `results.insights`, so a route-level
+    // cache here would have been silently dead code).
+    //
+    // Reaching this point means: fresh upload, OR same file under a new
+    // brief — either way we want a live analysis run.
 
     // PPTX decks ship as nested-object slides; flatten before any slot
     // detection or prompt construction touches them.

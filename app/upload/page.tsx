@@ -511,12 +511,13 @@ function UploadDataInner() {
         const body = await aiRes.json();
         const { insights, fallback, overview, geminiErrors } = body as {
           insights?: any[];
-          fallback?: 'openrouter' | 'auto' | 'cached' | boolean;
+          fallback?: 'openrouter' | 'auto' | boolean;
           overview?: { headline: string; audienceSnapshot: string };
           geminiErrors?: string[];
         };
-        if (fallback === 'cached')          addLog('♻️ Reusing cached analysis from a prior identical run — no Gemini quota burned');
-        else if (fallback === 'openrouter') addLog('⚡ Gemini unavailable — switched to OpenRouter (free LLM models, conviction 82)');
+        // (Cache hits short-circuit at the upload layer — frontend never
+        //  reaches this branch when (deduplicated && existingAnalysisId).)
+        if (fallback === 'openrouter') addLog('⚡ Gemini unavailable — switched to OpenRouter (free LLM models, conviction 82)');
         else if (fallback === 'auto' || fallback === true) addLog('⚡ AI unavailable — using auto-analysis from raw index data (conviction 70)');
         // Surface the actual Gemini error reasons so the user can debug API-key / model / quota issues.
         if (Array.isArray(geminiErrors) && geminiErrors.length > 0) {
