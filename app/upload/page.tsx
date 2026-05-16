@@ -290,9 +290,23 @@ function UploadDataInner() {
     }
     const summary = await upRes.json();
 
-    const { uploadId, sheets, rawText, deduplicated } = summary;
+    const { uploadId, sheets, rawText, deduplicated, existingAnalysisId } = summary;
     if (deduplicated) {
-      addLog(`♻️ "${file.name}" matches a recent upload — reusing existing parse (no extra DB writes, no Gemini cost if analysis is also cached)`);
+      addLog(`♻️ "${file.name}" matches a recent upload — reusing existing parse`);
+    }
+
+    // FAST PATH: dedup hit AND we have a pre-existing analysis for this exact
+    // content → skip /api/ai/analyze-data + /api/analyses entirely. Burns zero
+    // Gemini quota; user lands on the previous insights page instantly.
+    // This is the "pre-warm" optimization: once an analysis is generated for
+    // a file, every subsequent upload of the same bytes (for 7 days) is free.
+    if (deduplicated && existingAnalysisId && typeof window !== 'undefined') {
+      addLog(`⚡ Found existing analysis ${existingAnalysisId.slice(0, 8)}… — opening directly (zero Gemini cost)`);
+      updateEntry(entryIdx, { status: 'done', chartsFound: 0 });
+      // Navigate immediately. The /insights page reads its own cards from the
+      // stored analysis so we don't need to pre-populate charts in state.
+      window.location.href = `/insights?id=${encodeURIComponent(existingAnalysisId)}`;
+      return { charts: [], uploadId };
     }
 
     // ── Raw text fallback: structured parsing returned 0 rows ──────────

@@ -92,20 +92,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Guard: refuse to persist an analysis with zero insight cards. Saving
-    // an empty result creates a "ghost" analysis row that renders only the
-    // headline + snapshot — looks broken to the user, wastes a DB row, and
-    // pollutes the cache lookup that other code relies on. Better to surface
-    // the failure than silently store nothing.
-    const incomingInsights = Array.isArray((results as any)?.insights)
-      ? (results as any).insights
+    // Guard: refuse to persist an analysis with zero CHART cards (the
+    // frontend stores cards under results.charts, not .insights — checked
+    // the wrong field before). An empty-charts row renders just the
+    // headline + snapshot on /insights, looks broken, and pollutes cache.
+    const incomingCharts = Array.isArray((results as any)?.charts)
+      ? (results as any).charts
       : null;
-    if (incomingInsights !== null && incomingInsights.length === 0) {
-      logger.warn('analyses:refused_empty_insights', { uploadId, sheetName });
+    if (incomingCharts !== null && incomingCharts.length === 0) {
+      logger.warn('analyses:refused_empty_charts', { uploadId, sheetName });
       return NextResponse.json(
         {
           error: 'EMPTY_INSIGHTS',
-          message: 'Analysis returned 0 insight cards — refusing to save. Re-run analysis or use a smaller dataset.',
+          message: 'Analysis returned 0 insight cards — refusing to save. Re-run analysis or simplify the input.',
         },
         { status: 422 },
       );
