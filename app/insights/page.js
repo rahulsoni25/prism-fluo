@@ -622,37 +622,6 @@ function computeMarketPyramid(brief) {
  * those say what to DO; this says HOW BIG the opportunity is.
  */
 /**
- * Score an insight card for "lead-worthiness" within its bucket.
- * Higher score = better lead. Combines:
- *   - Gemini conviction (base score 80-95 range)
- *   - +10 if the card text mentions the brief's brand (high relevance)
- *   - Up to +6 for keyword overlap with brief objective
- *   - +4 if the card has a non-empty `stat` (concrete data anchor)
- * Used by the progressive-disclosure render: top-scoring card in each
- * bucket renders as full LEAD card, the rest collapse into chips.
- */
-function computeLeadScore(chart, brief) {
-  let score = Number(chart?.conviction) || 80;
-  const text = [
-    String(chart?.title ?? ''),
-    String(chart?.obs   ?? ''),
-    String(chart?.rec   ?? ''),
-  ].join(' ').toLowerCase();
-  if (brief?.brand) {
-    const brand = String(brief.brand).toLowerCase().trim();
-    if (brand && text.includes(brand)) score += 10;
-  }
-  if (brief?.objective) {
-    const objWords = String(brief.objective).toLowerCase()
-      .split(/\W+/).filter(w => w.length > 4 && !/^(this|that|these|those|with|from|into|their)$/.test(w));
-    const hits = objWords.filter(w => text.includes(w)).length;
-    score += Math.min(hits * 2, 6);
-  }
-  if (chart?.stat && String(chart.stat).trim().length > 5) score += 4;
-  return score;
-}
-
-/**
  * Build a concise human-readable audience descriptor from the brief.
  * e.g. "Female 25-44 · Tier-2/3 metros". Returned for prominent display
  * on the Market Pyramid card so readers always know WHO the numbers
@@ -1353,7 +1322,7 @@ const BUCKET_TABS = [
 // Using two separate delay values keeps fadeInUp stagger independent of float phase.
 const FLOAT_PHASE = [0.4, 0.9, 1.4, 1.9, 0.7, 1.2, 1.7, 1.0];
 
-function AnimatedCard({ index, bucketCls, children, style: extraStyle }) {
+function AnimatedCard({ index, bucketCls, children }) {
   const ref    = useRef(null);
   const [shown, setShown] = useState(false);
 
@@ -1382,12 +1351,11 @@ function AnimatedCard({ index, bucketCls, children, style: extraStyle }) {
     <div
       ref={ref}
       className={`insight-card ${bucketCls}`}
-      style={{
-        ...(shown
+      style={
+        shown
           ? { animationDelay: `${fadeDelay}s, ${floatDelay}s` }
-          : { animation: 'none', opacity: 0, transform: 'translateY(12px)', minHeight: 260 }),
-        ...(extraStyle || {}),
-      }}
+          : { animation: 'none', opacity: 0, transform: 'translateY(12px)', minHeight: 260 }
+      }
     >
       {/* Only mount children (incl. Chart.js) once card is visible.
           This ensures the 900 ms Chart.js draw animation plays in-view,
@@ -1846,38 +1814,6 @@ function AnalysisDetail({ id }) {
   const [printing,     setPrinting]     = useState(false);
   const [showDeckModal, setShowDeckModal] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-  // Progressive disclosure for bucket cards: each bucket renders 1 LEAD
-  // card full-size + remaining as compact chips. Users click a chip to
-  // expand that single card, OR click "Show all N" to expand them all.
-  const [expandedCards, setExpandedCards] = useState(() => new Set()); // values: `${bucketKey}-${origIdx}`
-  const [showAllBuckets, setShowAllBuckets] = useState(() => new Set()); // values: bucketKey
-  const toggleCardExpansion = (bucketKey, origIdx) => {
-    setExpandedCards(prev => {
-      const next = new Set(prev);
-      const key  = `${bucketKey}-${origIdx}`;
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  };
-  const showAllInBucket = (bucketKey) => {
-    setShowAllBuckets(prev => {
-      const next = new Set(prev);
-      next.add(bucketKey);
-      return next;
-    });
-  };
-  const collapseBucket = (bucketKey) => {
-    setShowAllBuckets(prev => {
-      const next = new Set(prev);
-      next.delete(bucketKey);
-      return next;
-    });
-    setExpandedCards(prev => {
-      const next = new Set();
-      for (const k of prev) if (!k.startsWith(`${bucketKey}-`)) next.add(k);
-      return next;
-    });
-  };
 
   useEffect(() => {
     fetch(`/api/analyses/${id}`)
@@ -2256,47 +2192,13 @@ function AnalysisDetail({ id }) {
                   Switch to another tab or upload a richer dataset to populate this section.
                 </div>
               </div>
-            ) : (() => {
-              // Progressive disclosure: rank cards by leadScore, render the
-              // single best one as a full LEAD card + collapse the rest into
-              // chips. Print mode always shows everything.
-              const ranked = sectionCharts
-                .map((c, origIdx) => ({ c, origIdx, score: computeLeadScore(c, analysis?.brief) }))
-                .sort((a, b) => b.score - a.score);
-              const showAll = printing || showAllBuckets.has(bucketKey);
-              const lead    = ranked[0];
-              const rest    = ranked.slice(1);
-              const visibleRest = showAll
-                ? rest
-                : rest.filter(({ origIdx }) => expandedCards.has(`${bucketKey}-${origIdx}`));
-              const collapsedRest = showAll
-                ? []
-                : rest.filter(({ origIdx }) => !expandedCards.has(`${bucketKey}-${origIdx}`));
-
-              const renderFullCard = (chart, i, isLead) => {
-                const confidence = chart.conviction ?? (78 + (i * 3) % 15);
-                const cardSource = chart.toolLabel || sourceBadge;
-                return (
-                  <AnimatedCard
-                    key={`${currentBucket}-${i}`}
-                    index={i}
-                    bucketCls={sectionMeta.cls}
-                    style={isLead ? {
-                      border: '1.5px solid #6366F1',
-                      boxShadow: '0 4px 16px rgba(99,102,241,0.12), 0 1px 2px rgba(15,23,42,0.04)',
-                    } : undefined}
-                  >
-                    {isLead && (
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        fontSize: 9.5, fontWeight: 800, letterSpacing: '.08em',
-                        color: '#4F46E5', background: '#EEF2FF',
-                        border: '1px solid #C7D2FE', borderRadius: 20,
-                        padding: '2px 8px', marginBottom: 8, textTransform: 'uppercase',
-                      }}>
-                        ⭐ Lead insight
-                      </div>
-                    )}
+            ) : (
+              <div className="insights-grid">
+                {sectionCharts.map((chart, i) => {
+                  const confidence = chart.conviction ?? (78 + (i * 3) % 15);
+                  const cardSource = chart.toolLabel || sourceBadge;
+                  return (
+                    <AnimatedCard key={`${currentBucket}-${i}`} index={i} bucketCls={sectionMeta.cls}>
                       <div className="ic-header">
                         <span className="ic-source">{cardSource}</span>
                         <ConfidenceBadge confidence={confidence} />
@@ -2339,106 +2241,10 @@ function AnalysisDetail({ id }) {
                         );
                       })()}
                     </AnimatedCard>
-                );
-              };
-
-              return (
-                <>
-                  <div className="insights-grid">
-                    {/* LEAD card */}
-                    {lead && renderFullCard(lead.c, lead.origIdx, true)}
-                    {/* User-clicked chips that expanded into full cards */}
-                    {visibleRest.map(({ c, origIdx }) => renderFullCard(c, origIdx, false))}
-                  </div>
-
-                  {/* Compact chips for collapsed cards.
-                      Click a chip → that one card expands to full size inline.
-                      "Show all N" → expand every chip at once.
-                      Hidden in print (showAll forced true above).               */}
-                  {collapsedRest.length > 0 && (
-                    <div className="no-print" style={{
-                      marginTop: 20,
-                      padding: '16px 18px',
-                      background: '#F8FAFC',
-                      border: '1px dashed #CBD5E1',
-                      borderRadius: 12,
-                    }}>
-                      <div style={{
-                        fontSize: 11, fontWeight: 700, letterSpacing: '.08em',
-                        textTransform: 'uppercase', color: '#64748B', marginBottom: 10,
-                      }}>
-                        {collapsedRest.length} more insight{collapsedRest.length !== 1 ? 's' : ''} in this category · click to expand
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {collapsedRest.map(({ c, origIdx }) => (
-                          <button
-                            key={`chip-${bucketKey}-${origIdx}`}
-                            onClick={() => toggleCardExpansion(bucketKey, origIdx)}
-                            style={{
-                              cursor: 'pointer',
-                              fontSize: 12.5,
-                              fontWeight: 500,
-                              lineHeight: 1.35,
-                              color: '#0F172A',
-                              background: '#FFFFFF',
-                              border: '1px solid #E2E8F0',
-                              borderRadius: 8,
-                              padding: '6px 12px',
-                              maxWidth: 360,
-                              textAlign: 'left',
-                              whiteSpace: 'normal',
-                              transition: 'border-color .15s ease, box-shadow .15s ease, background .15s ease',
-                            }}
-                            onMouseEnter={e => {
-                              e.currentTarget.style.borderColor = '#94A3B8';
-                              e.currentTarget.style.background  = '#F1F5F9';
-                              e.currentTarget.style.boxShadow   = '0 2px 8px -2px rgba(15,23,42,0.12)';
-                            }}
-                            onMouseLeave={e => {
-                              e.currentTarget.style.borderColor = '#E2E8F0';
-                              e.currentTarget.style.background  = '#FFFFFF';
-                              e.currentTarget.style.boxShadow   = 'none';
-                            }}
-                            title="Click to expand"
-                          >
-                            <span style={{ color: '#94A3B8', marginRight: 6, fontSize: 11 }}>＋</span>
-                            {c.title}
-                          </button>
-                        ))}
-                      </div>
-                      <button
-                        onClick={() => showAllInBucket(bucketKey)}
-                        style={{
-                          marginTop: 12, cursor: 'pointer',
-                          fontSize: 12, fontWeight: 700, letterSpacing: '.04em',
-                          color: '#4F46E5', background: 'transparent',
-                          border: 'none', padding: '4px 0', textTransform: 'uppercase',
-                        }}
-                      >
-                        Show all {rest.length} insights →
-                      </button>
-                    </div>
-                  )}
-                  {/* When showAll is on, allow collapsing back to the lead view. */}
-                  {showAll && !printing && rest.length > 0 && (
-                    <div className="no-print" style={{ marginTop: 16, textAlign: 'center' }}>
-                      <button
-                        onClick={() => collapseBucket(bucketKey)}
-                        style={{
-                          cursor: 'pointer',
-                          fontSize: 12, fontWeight: 700, letterSpacing: '.04em',
-                          color: '#64748B', background: 'transparent',
-                          border: '1px solid #CBD5E1', borderRadius: 20,
-                          padding: '5px 16px', textTransform: 'uppercase',
-                        }}
-                      >
-                        ← Collapse to lead view
-                      </button>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}
