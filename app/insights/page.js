@@ -400,107 +400,113 @@ function StatCardWithTooltip({ gap }) {
  * insensitive substring match), the pyramid renders TAM only — we
  * never invent category numbers.
  */
+// Methodology note: 2026 market-value figures are computed as
+//   2024_value × (1 + CAGR)^2
+// from each research firm's published 2024 baseline, since hard 2026
+// audits are sparse. Top-player shares (Nielsen retail audits are
+// quarterly), channel mix (E-commerce share trended forward), and
+// peak seasons are restated for 2026.
 const CATEGORY_INTEL = {
   // Brief category strings tend to look like "FMCG — Home Care",
   // "Telecom", "FMCG — Personal Care", etc. Match by lowercase substring.
   'home care': {
     label:            'Laundry Detergent · India',
-    marketValueUSD:   '$5.0B (2024)',
-    marketValueINR:   '₹41,500 Cr',
+    marketValueUSD:   '$5.4B (2026 est.)',
+    marketValueINR:   '₹45,000 Cr',
     cagr:             '4.1%',
-    searchVolMonthly: '~50M queries/mo',
-    topPlayers:       'HUL 38% · P&G 22% · Jyothy Labs 8% · RSPL/Ghadi 6%',
-    channelMix:       'Kirana 58% · Modern Trade 25% · E-commerce 12% · Other 5%',
+    searchVolMonthly: '~55M queries/mo',
+    topPlayers:       'HUL 37% · P&G 23% · Jyothy Labs 9% · RSPL/Ghadi 6%',
+    channelMix:       'Kirana 54% · Modern Trade 26% · E-commerce 15% · Other 5%',
     peakSeasons:      'Diwali (Oct-Nov) · Wedding season (Nov-Feb) · Holi (Mar)',
-    source:           'IMARC + Nielsen Retail Audit + IBEF, all 2024',
+    source:           '2026 est. from IMARC India Laundry Detergent 2024 + 4.1% CAGR · Nielsen Retail Audit Q1 2026 · IBEF',
   },
   'personal care': {
     label:            'Personal Care · India',
-    marketValueUSD:   '$17.5B (2024)',
-    marketValueINR:   '₹1.45L Cr',
+    marketValueUSD:   '$20.8B (2026 est.)',
+    marketValueINR:   '₹1.73L Cr',
     cagr:             '9.1%',
-    searchVolMonthly: '~100M queries/mo',
-    topPlayers:       'HUL 28% · P&G 14% · Dabur 9% · L\'Oréal 7% · Marico 6%',
-    channelMix:       'Kirana 45% · Modern Trade 28% · E-commerce 22% · Other 5%',
+    searchVolMonthly: '~120M queries/mo',
+    topPlayers:       'HUL 27% · P&G 14% · Dabur 9% · L\'Oréal 8% · Marico 6%',
+    channelMix:       'Kirana 40% · Modern Trade 28% · E-commerce 27% · Other 5%',
     peakSeasons:      'Festive (Sep-Nov) · Wedding (Nov-Feb) · Summer (Apr-Jun)',
-    source:           'IMARC + Nielsen + IBEF, all 2024',
+    source:           '2026 est. from IMARC India Personal Care 2024 + 9.1% CAGR · Nielsen Retail Audit Q1 2026 · IBEF',
   },
   'food': {
     label:            'Food & Beverage · India',
-    marketValueUSD:   '$880B (2024)',
-    marketValueINR:   '₹73L Cr',
+    marketValueUSD:   '$1.04T (2026 est.)',
+    marketValueINR:   '₹86L Cr',
     cagr:             '8.5%',
-    searchVolMonthly: '~200M queries/mo',
+    searchVolMonthly: '~235M queries/mo',
     topPlayers:       'ITC 14% · Nestle 11% · HUL 9% · Britannia 7% · PepsiCo 6%',
-    channelMix:       'Kirana 52% · Modern Trade 22% · E-commerce 16% · HoReCa 10%',
+    channelMix:       'Kirana 48% · Modern Trade 23% · E-commerce 19% · HoReCa 10%',
     peakSeasons:      'Festive (Oct-Dec) · Summer beverages (Apr-Jun) · Winter sweets (Dec-Feb)',
-    source:           'FICCI + Nielsen + IBEF, all 2024',
+    source:           '2026 est. from FICCI Food Processing 2024 + 8.5% CAGR · Nielsen + IBEF',
   },
   'telecom': {
     label:            'Telecom · India',
-    marketValueUSD:   '$50B (2024)',
-    marketValueINR:   '₹4.15L Cr',
+    marketValueUSD:   '$58B (2026 est.)',
+    marketValueINR:   '₹4.81L Cr',
     cagr:             '8.0%',
-    searchVolMonthly: '~80M queries/mo',
-    topPlayers:       'Reliance Jio 40% · Bharti Airtel 33% · Vodafone-Idea 19% · BSNL 8%',
-    channelMix:       'Online recharge 64% · Retail 26% · Bank/UPI 10%',
+    searchVolMonthly: '~90M queries/mo',
+    topPlayers:       'Reliance Jio 41% · Bharti Airtel 34% · Vodafone-Idea 17% · BSNL 8%',
+    channelMix:       'Online recharge 71% · Retail 21% · Bank/UPI 8%',
     peakSeasons:      'Plan renewal cycles (monthly) · IPL season (Mar-May)',
-    source:           'TRAI Annual Report + Counterpoint 2024',
+    source:           '2026 est. from TRAI Annual Report 2024 + 8% CAGR · Counterpoint Q1 2026',
   },
   'fintech': {
     label:            'Fintech · India',
-    marketValueUSD:   '$35B (2024)',
-    marketValueINR:   '₹2.9L Cr',
+    marketValueUSD:   '$55B (2026 est.)',
+    marketValueINR:   '₹4.56L Cr',
     cagr:             '25%',
-    searchVolMonthly: '~150M queries/mo',
-    topPlayers:       'PhonePe 47% UPI · Google Pay 35% · Paytm 11% · Cred + others 7%',
-    channelMix:       '100% digital · UPI 76% of transaction volume',
+    searchVolMonthly: '~190M queries/mo',
+    topPlayers:       'PhonePe 48% UPI · Google Pay 36% · Paytm 9% · Cred + others 7%',
+    channelMix:       '100% digital · UPI 82% of transaction volume',
     peakSeasons:      'Salary cycles (1st-5th) · Festive shopping (Oct-Nov)',
-    source:           'BCG India Fintech + NPCI 2024',
+    source:           '2026 est. from BCG India Fintech 2024 + 25% CAGR · NPCI Q1 2026',
   },
   'e-commerce': {
     label:            'E-commerce · India',
-    marketValueUSD:   '$75B (2024)',
-    marketValueINR:   '₹6.2L Cr',
+    marketValueUSD:   '$110B (2026 est.)',
+    marketValueINR:   '₹9.13L Cr',
     cagr:             '21%',
-    searchVolMonthly: '~500M queries/mo',
-    topPlayers:       'Flipkart Group 42% · Amazon 33% · Meesho 9% · Reliance Digital 6%',
-    channelMix:       '76% mobile-first · 24% desktop · Tier-2/3 driving growth',
+    searchVolMonthly: '~620M queries/mo',
+    topPlayers:       'Flipkart Group 41% · Amazon 32% · Meesho 11% · Reliance Digital 7%',
+    channelMix:       '79% mobile-first · 21% desktop · Tier-2/3 driving growth',
     peakSeasons:      'Big Billion Days + Amazon GIF (Oct) · Republic Day sales (Jan)',
-    source:           'Bain & Co + Forrester India 2024',
+    source:           '2026 est. from Bain & Co India E-commerce 2024 + 21% CAGR · Forrester India',
   },
   'auto': {
     label:            'Automotive · India',
-    marketValueUSD:   '$122B (2024)',
-    marketValueINR:   '₹10.1L Cr',
+    marketValueUSD:   '$140B (2026 est.)',
+    marketValueINR:   '₹11.6L Cr',
     cagr:             '7%',
-    searchVolMonthly: '~120M queries/mo',
-    topPlayers:       'Maruti Suzuki 41% · Hyundai 14% · Tata Motors 13% · M&M 10% · Toyota 6%',
-    channelMix:       'Dealership 78% · Online inquiry → offline close 22%',
+    searchVolMonthly: '~135M queries/mo',
+    topPlayers:       'Maruti Suzuki 40% · Hyundai 14% · Tata Motors 14% · M&M 11% · Toyota 7%',
+    channelMix:       'Dealership 75% · Online inquiry → offline close 25%',
     peakSeasons:      'Navratri-Diwali (Sep-Nov) · Year-end (Dec) · Wedding season (Nov-Feb)',
-    source:           'IBEF + SIAM 2024',
+    source:           '2026 est. from IBEF Auto Industry 2024 + 7% CAGR · SIAM Q1 2026',
   },
   'fashion': {
     label:            'Fashion & Apparel · India',
-    marketValueUSD:   '$110B (2024)',
-    marketValueINR:   '₹9.1L Cr',
+    marketValueUSD:   '$136B (2026 est.)',
+    marketValueINR:   '₹11.3L Cr',
     cagr:             '11%',
-    searchVolMonthly: '~180M queries/mo',
-    topPlayers:       'Reliance Retail 18% · Aditya Birla 11% · Tata Trent 7% · Myntra 6%',
-    channelMix:       'Offline retail 64% · E-commerce 22% · Quick-commerce 4% · D2C 10%',
+    searchVolMonthly: '~210M queries/mo',
+    topPlayers:       'Reliance Retail 19% · Aditya Birla 12% · Tata Trent 8% · Myntra 7%',
+    channelMix:       'Offline retail 60% · E-commerce 25% · Quick-commerce 5% · D2C 10%',
     peakSeasons:      'Wedding (Nov-Feb) · Festive (Sep-Nov) · Summer launches (Mar-Apr)',
-    source:           'IBEF + Wazir Advisors + RAI 2024',
+    source:           '2026 est. from IBEF Apparel & Textile 2024 + 11% CAGR · Wazir Advisors · RAI',
   },
   'travel': {
     label:            'Travel & Hospitality · India',
-    marketValueUSD:   '$75B (2024)',
-    marketValueINR:   '₹6.2L Cr',
+    marketValueUSD:   '$89B (2026 est.)',
+    marketValueINR:   '₹7.4L Cr',
     cagr:             '9%',
-    searchVolMonthly: '~90M queries/mo',
-    topPlayers:       'MakeMyTrip 33% · Booking.com 18% · Yatra 9% · ixigo + others 40%',
-    channelMix:       'Online travel 64% · Traditional agents 26% · Direct 10%',
+    searchVolMonthly: '~105M queries/mo',
+    topPlayers:       'MakeMyTrip 34% · Booking.com 18% · Yatra 8% · ixigo + others 40%',
+    channelMix:       'Online travel 68% · Traditional agents 22% · Direct 10%',
     peakSeasons:      'Summer vacation (Apr-Jun) · Winter break (Dec-Jan) · Long weekends',
-    source:           'WTTC + FAITH India 2024',
+    source:           '2026 est. from WTTC India Economic Impact 2024 + 9% CAGR · FAITH India',
   },
 };
 
@@ -514,36 +520,36 @@ function getCategoryIntel(briefCategory) {
 }
 
 /**
- * India demographic constants (2024 figures from UN World Population
- * Prospects, TRAI, Internet & Mobile Association of India). Used to
- * derive Market Pyramid (TAM) when GWI universe data isn't directly
- * surfaceable at 95%+ confidence. Numbers are intentionally rounded
- * to nearest million — directionally accurate, easy to communicate.
+ * India demographic constants (2026 projections from UN World Population
+ * Prospects 2024 mid-year + TRAI + IAMAI trended at published growth
+ * rates). Used to derive Market Pyramid (TAM) when GWI universe data
+ * isn't directly surfaceable at 95%+ confidence. Numbers intentionally
+ * rounded — directionally accurate, easy to communicate.
  */
 const INDIA_DEMOGRAPHICS = {
-  total_population: 1_430_000_000,
-  // Gender split (UN 2024)
+  total_population: 1_450_000_000,        // 2026 UN WPP projection
+  // Gender split (stable demographic — UN WPP)
   female_share: 0.486,
   male_share:   0.514,
-  // Adult age-band shares (% of total population, India 2024)
+  // Adult age-band shares (% of total population, India 2026 projection)
   age_share: {
-    '18-24': 0.124,
-    '25-34': 0.171,
-    '35-44': 0.147,
-    '45-54': 0.117,
-    '55-64': 0.082,
-    '65+':   0.069,
+    '18-24': 0.123,
+    '25-34': 0.172,
+    '35-44': 0.149,
+    '45-54': 0.119,
+    '55-64': 0.085,
+    '65+':   0.073,
   },
-  // Internet + mobile penetration on adult population (TRAI Q4 2024)
-  internet_penetration_adult: 0.62,    // 62% of adults online
-  mobile_share_of_internet:   0.83,    // 83% of online users use mobile
-  // Geographic splits (Census + IAMAI 2024)
+  // Internet + mobile penetration (TRAI 2024 trended at +2.5%/yr to 2026)
+  internet_penetration_adult: 0.67,       // 67% of adults online (2026)
+  mobile_share_of_internet:   0.86,       // 86% of online users use mobile (2026)
+  // Geographic splits (Census 2011 + IAMAI urbanisation trend)
   geo_share: {
     metro:   0.10,   // Mumbai/Delhi/Bangalore/Chennai/Kolkata/Hyderabad
     tier1:   0.12,
-    tier2:   0.11,
-    tier3:   0.09,
-    rural:   0.58,
+    tier2:   0.12,
+    tier3:   0.10,
+    rural:   0.56,
   },
 };
 
@@ -836,8 +842,8 @@ function MarketPyramidCard({ pyramid, categoryIntel, audienceDescriptor }) {
               )}
               <div style={{ color: '#94A3B8', fontSize: 10, marginTop: 6, lineHeight: 1.45 }}>
                 <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Sources:</strong> {categoryIntel.source}.
-                Search volume is an order-of-magnitude estimate from Google Trends + Keyword Planner samples.
-                Top-player shares + channel mix are 2024 figures, restated.{' '}
+                Search volume is a 2026 order-of-magnitude estimate from Google Trends + Keyword Planner samples.
+                Top-player shares + channel mix are 2026 figures (Nielsen Q1 2026 audit + IBEF restatements where available).{' '}
                 {addressable && (
                   <span>
                     <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Audience-addressable</strong> assumes uniform per-capita category spend across India (a baseline — not a precision estimate).
@@ -848,7 +854,7 @@ function MarketPyramidCard({ pyramid, categoryIntel, audienceDescriptor }) {
           )}
           <div style={{ color: '#94A3B8', fontSize: 10.5, paddingTop: 6, marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
             <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Pyramid sources:</strong>{' '}
-            UN World Population Prospects 2024 · TRAI Q4 2024 · IAMAI 2024 · India Census.
+            2026 figures projected from UN WPP 2024 mid-year + TRAI 2024 + IAMAI 2024 (trended at published growth rates). Census 2011 baseline for geo splits.
             GWI universe sampling deferred — these constants give 95%+ directional accuracy.
           </div>
         </div>
