@@ -1,7 +1,13 @@
 /**
  * POST /api/upload
  *
- * Accepts a multipart/form-data upload with a single `file` field.
+ * Accepts EITHER:
+ *   (a) Legacy multipart/form-data with a single `file` field — used for
+ *       files ≤ 4 MB that fit through Vercel's serverless body-size limit.
+ *   (b) JSON `{ blobUrl, filename, briefId?, slaHours? }` — used for files
+ *       that were uploaded directly to Vercel Blob via /api/upload/blob-token.
+ *       The server downloads the blob, processes it, then deletes it.
+ *
  * Returns the UploadSummary synchronously once processing is done.
  *
  * maxDuration = 60 tells Railway/Next.js to allow up to 60 s for this route
@@ -10,12 +16,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { del } from '@vercel/blob';
 import { handleUpload } from '@/lib/uploads/handler';
 import { logger } from '@/lib/logger';
 import { config } from '@/lib/config';
 import { getSession } from '@/lib/auth/server';
 
 export const maxDuration = 60; // seconds
+
+const ALLOWED_EXT = ['xlsx', 'xls', 'csv', 'pdf', 'pptx', 'ppt'];
 
 export const POST = async (req: NextRequest) => {
   const t0 = Date.now();
@@ -24,57 +33,189 @@ export const POST = async (req: NextRequest) => {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
-    const formData = await req.formData();
-    const file = formData.get('file');
-    const briefIdRaw = formData.get('briefId');
+    const contentType = req.headers.get('content-type') ?? '';
+
+    // ── Path C: raw binary body (file as stream, metadata in headers) ─
+    // Used by the localhost-dev path to bypass Next.js's `req.formData()`,
+    // which currently fails on multipart bodies > ~4 MB with "Failed to
+    // parse body as FormData." (a Turbopack/undici issue we hit at 10.4 MB).
+    // The Blob path needs vercel.com/api/blob — frequently blocked by ad-
+    // blockers — so the dev workflow needs a multipart-free big-file route.
+    if (req.headers.get('x-upload-mode') === 'raw') {
+      const filenameHdr = req.headers.get('x-filename');
+      if (!filenameHdr) {
+        return NextResponse.json(
+          { error: 'NO_FILENAME', message: 'X-Filename header is required for raw uploads.' },
+          { status: 400 },
+        );
+      }
+      const filename = decodeURIComponent(filenameHdr);
+      const ext      = filename.split('.').pop()?.toLowerCase() ?? '';
+      if (!ALLOWED_EXT.includes(ext)) {
+        return NextResponse.json(
+          { error: 'UNSUPPORTED_TYPE', message: `Only .${ALLOWED_EXT.join(', .')} are supported.` },
+          { status: 415 },
+        );
+      }
+
+      const briefIdHdr  = req.headers.get('x-brief-id');
+      const slaHoursHdr = req.headers.get('x-sla-hours');
+      const briefId     = briefIdHdr && briefIdHdr.trim() ? briefIdHdr.trim() : null;
+      const slaHours    = slaHoursHdr ? parseInt(slaHoursHdr, 10) : null;
+
+      const buffer = Buffer.from(await req.arrayBuffer());
+      const sizeMB = buffer.length / (1024 * 1024);
+
+      if (buffer.length === 0) {
+        return NextResponse.json(
+          { error: 'EMPTY_FILE', message: 'The uploaded file is empty (0 bytes).' },
+          { status: 400 },
+        );
+      }
+      if (sizeMB > config.MAX_FILE_SIZE_MB) {
+        return NextResponse.json(
+          { error: 'FILE_TOO_LARGE', message: `File size ${sizeMB.toFixed(1)} MB exceeds the ${config.MAX_FILE_SIZE_MB} MB limit.` },
+          { status: 413 },
+        );
+      }
+
+      const summary = await handleUpload(buffer, filename, briefId, session.userId, slaHours);
+
+      logger.info('api:upload', {
+        filename, sizeMB: sizeMB.toFixed(2), briefId, slaHours,
+        userId: session.userId, via: 'raw', ms: Date.now() - t0,
+      });
+
+      return NextResponse.json({
+        uploadId: summary.uploadId,
+        sheets:   summary.sheets,
+        rawText:  summary.rawText ?? null,
+      });
+    }
+
+    // ── Path B: JSON body with blobUrl ─────────────────────────────
+    // Triggered when the client used /api/upload/blob-token to PUT the
+    // file directly to Vercel Blob, then sent us just the resulting URL.
+    if (contentType.toLowerCase().includes('application/json')) {
+      const { blobUrl, filename, briefId: briefIdRaw, slaHours: slaHoursRaw } = await req.json();
+
+      if (typeof blobUrl !== 'string' || !blobUrl.startsWith('https://')) {
+        return NextResponse.json(
+          { error: 'BAD_BLOB_URL', message: 'blobUrl must be an https URL returned by Vercel Blob.' },
+          { status: 400 },
+        );
+      }
+      if (typeof filename !== 'string' || !filename) {
+        return NextResponse.json(
+          { error: 'NO_FILENAME', message: 'filename is required.' },
+          { status: 400 },
+        );
+      }
+
+      const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+      if (!ALLOWED_EXT.includes(ext)) {
+        return NextResponse.json(
+          { error: 'UNSUPPORTED_TYPE', message: `Only .${ALLOWED_EXT.join(', .')} are supported.` },
+          { status: 415 },
+        );
+      }
+
+      const briefId  = typeof briefIdRaw === 'string' && briefIdRaw.trim() ? briefIdRaw.trim() : null;
+      const slaHours = slaHoursRaw ? parseInt(String(slaHoursRaw), 10) : null;
+
+      // Download the blob.
+      const blobRes = await fetch(blobUrl);
+      if (!blobRes.ok) {
+        return NextResponse.json(
+          { error: 'BLOB_FETCH_FAILED', message: `Could not fetch uploaded blob (${blobRes.status}).` },
+          { status: 502 },
+        );
+      }
+      const buffer = Buffer.from(await blobRes.arrayBuffer());
+      const sizeMB = buffer.length / (1024 * 1024);
+
+      if (buffer.length === 0) {
+        return NextResponse.json(
+          { error: 'EMPTY_FILE', message: 'The uploaded file is empty (0 bytes).' },
+          { status: 400 },
+        );
+      }
+      if (sizeMB > config.MAX_FILE_SIZE_MB) {
+        return NextResponse.json(
+          { error: 'FILE_TOO_LARGE', message: `File size ${sizeMB.toFixed(1)} MB exceeds the ${config.MAX_FILE_SIZE_MB} MB limit.` },
+          { status: 413 },
+        );
+      }
+
+      const summary = await handleUpload(buffer, filename, briefId, session.userId, slaHours);
+
+      // Best-effort delete — keeps the Blob store from growing unbounded.
+      // We don't fail the request if cleanup errors (file is already processed
+      // and persisted in our DB; the orphan blob can be GC'd later).
+      try { await del(blobUrl); }
+      catch (err: any) { logger.warn('blob:delete_failed', { url: blobUrl, error: err.message }); }
+
+      logger.info('api:upload', {
+        filename, sizeMB: sizeMB.toFixed(2), briefId, slaHours,
+        userId: session.userId, via: 'blob', ms: Date.now() - t0,
+      });
+
+      return NextResponse.json({
+        uploadId: summary.uploadId,
+        sheets:   summary.sheets,
+        rawText:  summary.rawText ?? null,
+      });
+    }
+
+    // ── Path A: legacy multipart/form-data (small files, ≤ 4 MB) ──
+    const formData    = await req.formData();
+    const file        = formData.get('file');
+    const briefIdRaw  = formData.get('briefId');
     const slaHoursRaw = formData.get('slaHours');
 
-    const briefId = typeof briefIdRaw === 'string' && briefIdRaw.trim() ? briefIdRaw.trim() : null;
+    const briefId  = typeof briefIdRaw === 'string' && briefIdRaw.trim() ? briefIdRaw.trim() : null;
     const slaHours = slaHoursRaw ? parseInt(slaHoursRaw as string, 10) : null;
 
     if (!file || !(file instanceof Blob)) {
       return NextResponse.json(
-        { error: 'NO_FILE', message: 'No file provided. Send a multipart/form-data request with a "file" field.' },
-        { status: 400 }
+        { error: 'NO_FILE', message: 'No file provided. Send a multipart/form-data request with a "file" field, or a JSON body with a blobUrl.' },
+        { status: 400 },
       );
     }
 
     const fileObj = file as File;
-    const sizeMB = fileObj.size / (1024 * 1024);
+    const sizeMB  = fileObj.size / (1024 * 1024);
 
     if (fileObj.size === 0) {
       return NextResponse.json(
         { error: 'EMPTY_FILE', message: 'The uploaded file is empty (0 bytes). Please upload a file with data.' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (sizeMB > config.MAX_FILE_SIZE_MB) {
       return NextResponse.json(
-        {
-          error: 'FILE_TOO_LARGE',
-          message: `File size ${sizeMB.toFixed(1)} MB exceeds the ${config.MAX_FILE_SIZE_MB} MB limit.`,
-        },
-        { status: 413 }
+        { error: 'FILE_TOO_LARGE', message: `File size ${sizeMB.toFixed(1)} MB exceeds the ${config.MAX_FILE_SIZE_MB} MB limit.` },
+        { status: 413 },
       );
     }
 
     const ext = fileObj.name.split('.').pop()?.toLowerCase();
-    if (!['xlsx', 'xls', 'csv', 'pdf', 'pptx', 'ppt'].includes(ext ?? '')) {
+    if (!ALLOWED_EXT.includes(ext ?? '')) {
       return NextResponse.json(
-        { error: 'UNSUPPORTED_TYPE', message: 'Only .xlsx, .xls, .csv, .pdf, .pptx, and .ppt files are supported.' },
-        { status: 415 }
+        { error: 'UNSUPPORTED_TYPE', message: `Only .${ALLOWED_EXT.join(', .')} files are supported.` },
+        { status: 415 },
       );
     }
 
-    const buffer = Buffer.from(await fileObj.arrayBuffer());
+    const buffer  = Buffer.from(await fileObj.arrayBuffer());
     const summary = await handleUpload(buffer, fileObj.name, briefId, session.userId, slaHours);
 
-    logger.info('api:upload', { filename: fileObj.name, sizeMB: sizeMB.toFixed(2), briefId, slaHours, userId: session.userId, ms: Date.now() - t0 });
+    logger.info('api:upload', {
+      filename: fileObj.name, sizeMB: sizeMB.toFixed(2), briefId, slaHours,
+      userId: session.userId, via: 'multipart', ms: Date.now() - t0,
+    });
 
-    // Return the summary even when sheets is empty — rawText lets the upload page
-    // route the file directly to Gemini text analysis as a final fallback.
-    // A hard 422 here would block all analysis for unrecognised file formats.
     return NextResponse.json({
       uploadId: summary.uploadId,
       sheets:   summary.sheets,
@@ -85,7 +226,7 @@ export const POST = async (req: NextRequest) => {
     logger.error('api:upload_failed', { error: err.message, ms: Date.now() - t0 });
     return NextResponse.json(
       { error: 'INTERNAL_ERROR', message: err.message ?? 'An unexpected error occurred during upload.' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 };

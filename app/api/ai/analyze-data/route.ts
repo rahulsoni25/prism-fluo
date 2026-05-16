@@ -939,6 +939,124 @@ async function fetchBrief(briefId: string): Promise<any | null> {
   }
 }
 
+// ── PPTX-deck row flattener ────────────────────────────────────
+// Slides land in tool_data as nested objects: { slideNumber, title,
+// bullets:[…], tables:[{headers,rows:[[]]}], notes }. Gemini's
+// generic-tabular prompt expects FLAT rows (string-keyed, scalar
+// values), so feeding it the nested shape silently produces garbage
+// and a 502. Detect the deck shape and project each slide into one
+// "overview" row (title + bullets + notes) plus one row per table
+// data-row with the table's headers as field names. The downstream
+// analyzer then treats the deck like any other tabular source.
+function isPptxDeckShape(rows: any[]): boolean {
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  const r0 = rows[0];
+  return r0 && typeof r0 === 'object'
+    && 'slideNumber' in r0
+    && 'bullets'     in r0
+    && 'tables'      in r0;
+}
+
+/**
+ * Last-resort Tier-3 fallback for pptx_deck data. Runs when both Gemini and
+ * OpenRouter fail (rate limits, JSON parse errors, network outages). Builds
+ * up to 6 deterministic insight cards directly from slide titles + bullets,
+ * so the user gets SOMETHING readable instead of a 502.
+ *
+ * Input: the same flattened rows the LLMs see — { Slide, Title, Section,
+ * Content }. We pick the slides with the most signal (longest Content), one
+ * card per slide, distributed across the PRISM buckets.
+ */
+function generatePptxFallbackCards(
+  rows: any[],
+  toolLabel: string,
+): GeminiInsightCard[] {
+  // Group by slide → keep only the Overview row (skip table-data rows).
+  const overviews = rows.filter(r =>
+    r && r.Section === 'Overview' && typeof r.Title === 'string' && typeof r.Content === 'string',
+  );
+  if (overviews.length === 0) return [];
+
+  // Rank by content density (longer Content = more bullets = more signal).
+  const ranked = [...overviews]
+    .sort((a, b) => (b.Content?.length ?? 0) - (a.Content?.length ?? 0))
+    .slice(0, 6);
+
+  // Rotate through buckets so the dashboard doesn't pile cards in one place.
+  const bucketRotation: GeminiInsightCard['bucket'][] = [
+    'content', 'culture', 'commerce', 'communication', 'creative', 'media',
+  ];
+
+  return ranked.map((r, idx): GeminiInsightCard => {
+    // First sentence of Content makes a sharp observation.
+    const content    = String(r.Content ?? '');
+    const firstStop  = content.search(/(?<=[.!?])\s/);
+    const observation = firstStop > 30 ? content.slice(0, firstStop + 1) : content.slice(0, 220);
+    const rest       = firstStop > 30 ? content.slice(firstStop + 1, firstStop + 221) : '';
+
+    return {
+      title:        String(r.Title || `Slide ${r.Slide}`).slice(0, 100),
+      bucket:       bucketRotation[idx % bucketRotation.length],
+      type:         'hbar',
+      conviction:   65, // marked low because this is deterministic, not LLM-generated
+      obs:          observation || 'See source deck for full context.',
+      stat:         '',
+      rec:          rest || 'Build a creative angle around this slide.',
+      toolLabel,
+      chartLabels:  [],
+      chartValues:  [],
+      chartValues2: [],
+    } as GeminiInsightCard;
+  });
+}
+
+function flattenPptxRows(rows: any[]): any[] {
+  const out: Record<string, any>[] = [];
+  for (const r of rows) {
+    const slide   = r?.slideNumber ?? null;
+    const title   = String(r?.title ?? '').trim();
+    const bullets = Array.isArray(r?.bullets) ? r.bullets : [];
+    const tables  = Array.isArray(r?.tables)  ? r.tables  : [];
+    const notes   = String(r?.notes ?? '').trim();
+
+    // One "overview" row per slide — captures the narrative spine.
+    const content = [
+      bullets.length ? bullets.join(' · ') : '',
+      notes ? `[notes] ${notes}` : '',
+    ].filter(Boolean).join(' · ');
+    if (title || content) {
+      out.push({
+        Slide:   slide,
+        Title:   title || `Slide ${slide}`,
+        Section: 'Overview',
+        Content: content,
+      });
+    }
+
+    // One row per table data-row, with that table's headers as fields.
+    // Preserves keyword lists, persona profiles, and platform matrices
+    // as real columns Gemini can group on.
+    for (const t of tables) {
+      const headers: string[]   = Array.isArray(t?.headers) ? t.headers.map((h: any) => String(h ?? '').trim()) : [];
+      const dataRows: string[][] = Array.isArray(t?.rows)    ? t.rows                                            : [];
+      for (const dr of dataRows) {
+        const obj: Record<string, any> = {
+          Slide:   slide,
+          Title:   title || `Slide ${slide}`,
+          Section: 'Table',
+        };
+        headers.forEach((h, i) => {
+          if (h && dr[i] != null && String(dr[i]).trim() !== '') obj[h] = dr[i];
+        });
+        // Skip rows that ended up with only the three meta fields (no
+        // table content) — they add noise without signal.
+        if (Object.keys(obj).length > 3) out.push(obj);
+      }
+    }
+  }
+  return out;
+}
+
 // ── Timeout wrapper ────────────────────────────────────────────
 // Races a promise against a hard deadline. When Gemini hangs past
 // the deadline the batch is treated as failed so we fall through to
@@ -955,10 +1073,20 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 // ── Route ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const { rows, sheetName, fileNames, briefId } = await req.json();
+    const body = await req.json();
+    const { sheetName, fileNames, briefId } = body;
+    let rows = body.rows;
 
     if (!Array.isArray(rows) || rows.length === 0)
       return NextResponse.json({ error: 'rows array required' }, { status: 400 });
+
+    // PPTX decks ship as nested-object slides; flatten before any slot
+    // detection or prompt construction touches them.
+    if (isPptxDeckShape(rows)) {
+      const before = rows.length;
+      rows = flattenPptxRows(rows);
+      console.log(`[analyze-data] flattened pptx deck: ${before} slides → ${rows.length} tabular rows`);
+    }
 
     // BUG FIX: Do NOT exit here if GEMINI_API_KEY is missing.
     // Gemini functions throw internally when the key is absent, which is caught
@@ -1159,10 +1287,17 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Generic tabular path (Helium10, Keywords, Amazon, etc.) ──
+    // Timeout raised 40s → 60s → 120s. The inner callGeminiWithRetry cycles
+    // through 4 model candidates on rate-limit (Flash → Flash 2.0 → Pro →
+    // Flash-Lite), each attempt taking 10–30s. After several uploads in a
+    // session the user can exhaust the per-day Flash quota, and the retry
+    // walks the full chain. 60s wasn't enough to traverse it; 120s leaves
+    // room for the worst case while still preserving ~180s under the route's
+    // 300s maxDuration for OpenRouter (Tier 2) and auto-analysis (Tier 3).
     try {
       const insights = await withTimeout(
         analyzeGenericTabularForPRISM(rows, context, toolLabel, briefContext),
-        40_000, `Gemini ${toolLabel}`,
+        120_000, `Gemini ${toolLabel}`,
       );
       if (insights.length > 0)
         return NextResponse.json({ insights: rebalanceCards(insights), slots: [], path: 'generic-tabular' });
@@ -1195,6 +1330,26 @@ export async function POST(req: NextRequest) {
           insights:  rebalanceCards(autoCards),
           slots:     genericSlots,
           path:      'generic-tabular',
+          fallback:  'auto',
+        });
+      }
+    }
+
+    // ── Tier 4: pptx_deck deterministic fallback ──
+    // For decks specifically: synthesize cards from slide titles + bullets so
+    // users never see "All analysis tiers failed" just because Gemini was
+    // rate-limited and OpenRouter returned an empty parse. The cards are
+    // marked with conviction 65 to signal they're deterministic, not LLM.
+    const isFlatPptx = rows[0] && typeof rows[0] === 'object'
+      && 'Slide' in rows[0] && 'Title' in rows[0] && 'Section' in rows[0];
+    if (isFlatPptx) {
+      const deckCards = generatePptxFallbackCards(rows, toolLabel);
+      if (deckCards.length > 0) {
+        console.warn('[analyze-data] Using pptx_deck deterministic fallback (tier 4)');
+        return NextResponse.json({
+          insights:  rebalanceCards(deckCards),
+          slots:     [],
+          path:      'pptx-deterministic',
           fallback:  'auto',
         });
       }

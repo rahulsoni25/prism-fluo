@@ -17,6 +17,14 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '25mb',
     },
+    // Next.js 16 has a 10 MB cap on request bodies that pass through the
+    // proxy/middleware (Next clones the body in memory so both proxy.ts
+    // and the route handler can read it). Anything bigger gets silently
+    // truncated to the first 10 MB — which corrupts the PPTX zip and
+    // makes the parser return 0 slides. Lifted to 50 MB so big strategy
+    // decks (Sargam ~10 MB, larger ones in pipeline) reach the route
+    // intact. Aligned with the upload page's HARD_CAP_MB = 50.
+    proxyClientMaxBodySize: '50mb',
   },
 };
 

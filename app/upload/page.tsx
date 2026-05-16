@@ -186,21 +186,102 @@ function UploadDataInner() {
     updateEntry(entryIdx, { status: 'uploading' });
     addLog(`📤 Uploading "${file.name}"…`);
 
-    const formData = new FormData();
-    formData.append('file', file);
-    if (briefId) formData.append('briefId', briefId);
-    if (selectedSlaHours) formData.append('slaHours', String(selectedSlaHours));
-    const upRes = await fetch('/api/upload', { method: 'POST', body: formData });
+    // ── Upload strategy ────────────────────────────────────────────
+    // Files ≤ 4 MB go via legacy multipart — fewer round trips, no
+    // dependency on a Vercel Blob store. Files > 4 MB exceed Vercel's
+    // serverless body-size cap (~4.5 MB) on production, so we PUT them
+    // directly to Vercel Blob via a signed URL, then POST just the
+    // resulting URL to /api/upload as JSON.
+    //
+    // EXCEPTION: on localhost dev, always use multipart regardless of
+    // size. Two reasons:
+    //   1. The Next.js dev server has no 4 MB cap — multipart works for
+    //      any reasonable file size.
+    //   2. The @vercel/blob/client SDK coordinates through vercel.com/api/blob,
+    //      which is commonly blocked by ad-blockers / privacy extensions
+    //      (uBlock Origin, Brave Shields, Pi-hole). Those blocks make the
+    //      Blob upload silently fail with status 0 / 5s timeouts. Sticking
+    //      to multipart on localhost sidesteps the whole chain.
+    // ⚠️ NOTE for prod: end users on Vercel who have aggressive blockers
+    // will still hit this issue for files > 4 MB. If that becomes a
+    // support burden, swap @vercel/blob for a direct S3/R2 client or proxy
+    // the upload server-side.
+    const MULTIPART_MAX_MB = 4;
+    const sizeMB     = file.size / 1024 / 1024;
+    const isLocalDev = typeof window !== 'undefined'
+      && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const useMultipart = isLocalDev || sizeMB <= MULTIPART_MAX_MB;
+    let upRes: Response;
+    if (useMultipart) {
+      // On localhost or files ≤ 4 MB. For files > 4 MB on localhost, send as
+      // raw binary instead of FormData — Next.js dev's `req.formData()` chokes
+      // on multipart bodies above ~4 MB ("Failed to parse body as FormData.").
+      // The raw-binary path (Path C in /api/upload) reads `req.arrayBuffer()`
+      // which doesn't need multipart envelope parsing.
+      if (isLocalDev && sizeMB > MULTIPART_MAX_MB) {
+        upRes = await fetch('/api/upload', {
+          method:  'POST',
+          body:    file,
+          headers: {
+            'Content-Type':    'application/octet-stream',
+            'X-Upload-Mode':   'raw',
+            'X-Filename':      encodeURIComponent(file.name),
+            ...(briefId         ? { 'X-Brief-Id':  briefId             } : {}),
+            ...(selectedSlaHours ? { 'X-Sla-Hours': String(selectedSlaHours) } : {}),
+          },
+        });
+      } else {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (briefId) formData.append('briefId', briefId);
+        if (selectedSlaHours) formData.append('slaHours', String(selectedSlaHours));
+        upRes = await fetch('/api/upload', { method: 'POST', body: formData });
+      }
+    } else {
+      // Direct-to-blob path (large files).
+      addLog(`📦 Streaming "${file.name}" (${sizeMB.toFixed(1)} MB) directly to Blob storage…`);
+      // Lazy-import to keep the bundle smaller for users who never hit this path.
+      const { upload } = await import('@vercel/blob/client');
+      let blob;
+      try {
+        blob = await upload(file.name, file, {
+          access:           'public',
+          handleUploadUrl:  '/api/upload/blob-token',
+        });
+      } catch (err: any) {
+        // Surface BLOB_NOT_CONFIGURED with a setup hint, otherwise re-throw.
+        const msg = err?.message ?? String(err);
+        if (msg.includes('BLOB_NOT_CONFIGURED') || msg.includes('BLOB_READ_WRITE_TOKEN')) {
+          throw new Error(
+            `Large-file upload is not configured. To enable uploads > 4 MB, create a Vercel Blob store ` +
+            `(Storage → Blob → Create in the Vercel Dashboard), then run \`vercel env pull .env.local\` ` +
+            `and restart the dev server.`,
+          );
+        }
+        throw new Error(`Direct blob upload failed: ${msg}`);
+      }
+      upRes = await fetch('/api/upload', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blobUrl:  blob.url,
+          filename: file.name,
+          briefId:  briefId ?? null,
+          slaHours: selectedSlaHours ?? null,
+        }),
+      });
+    }
 
     // Vercel's platform (nginx) returns "Request Entity Too Large" as plain text
     // for files > 4.5 MB — parse JSON only after checking status to avoid crash.
+    // After the direct-to-blob switch this branch only fires when MULTIPART_MAX_MB
+    // is bumped too high or the server-side cap (config.MAX_FILE_SIZE_MB) is exceeded.
     if (!upRes.ok) {
       const errText = await upRes.text().catch(() => '');
       if (upRes.status === 413 || errText.toLowerCase().includes('entity too large') || errText.toLowerCase().includes('request en')) {
-        const sizeMB = (file.size / 1024 / 1024).toFixed(1);
         throw new Error(
-          `"${file.name}" is ${sizeMB} MB — Vercel limits file uploads to 4.5 MB per file.\n` +
-          `Try exporting the data as Excel (.xlsx) or CSV instead, which are much smaller.`
+          `"${file.name}" is ${sizeMB.toFixed(1)} MB — exceeds the server's configured upload cap.\n` +
+          `Increase MAX_FILE_SIZE_MB in the server env, or split/export to a smaller format.`,
         );
       }
       let errBody: any = {};
@@ -509,18 +590,19 @@ function UploadDataInner() {
         return;
       }
 
-      // Accumulate across batches
-      setAccumulatedCharts(prev => {
-        const next = [...prev, ...batchCharts];
-        // Update bucket preview with all accumulated charts (all 9 PRISM buckets)
-        const allBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
-        const preview: Record<string, number> = Object.fromEntries(allBuckets.map(b => [b, 0]));
-        next.forEach(c => { const b = (c as any).bucket || 'content'; if (b in preview) preview[b]++; });
-        setBucketPreview(preview);
-        const nonEmpty = allBuckets.filter(b => preview[b] > 0).map(b => `${b}: ${preview[b]}`).join(' · ');
-        addLog(`📊 PRISM Distribution — ${nonEmpty || 'no insights yet'}`);
-        return next;
-      });
+      // Accumulate across batches. Side effects (setBucketPreview, addLog)
+      // must live OUTSIDE the updater — Strict Mode invokes updaters twice
+      // in dev, which would duplicate the log line and re-queue the bucket
+      // setState. Compute the merged charts here, then derive preview/log
+      // from the result.
+      const accumulatedNext = [...accumulatedCharts, ...batchCharts];
+      const allBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
+      const preview: Record<string, number> = Object.fromEntries(allBuckets.map(b => [b, 0]));
+      accumulatedNext.forEach(c => { const b = (c as any).bucket || 'content'; if (b in preview) preview[b]++; });
+      setAccumulatedCharts(accumulatedNext);
+      setBucketPreview(preview);
+      const nonEmpty = allBuckets.filter(b => preview[b] > 0).map(b => `${b}: ${preview[b]}`).join(' · ');
+      addLog(`📊 PRISM Distribution — ${nonEmpty || 'no insights yet'}`);
 
       setAllFileNames(prev => [...prev, ...entries.map(e => e.file.name)]);
       if (!firstUploadId && batchFirstUploadId) setFirstUploadId(batchFirstUploadId);
@@ -543,9 +625,10 @@ function UploadDataInner() {
 
     const valid: FileEntry[] = [];
     const errors: string[]   = [];
-    // Vercel serverless hard limit is 4.5 MB per request.
-    // Allow up to 4 MB client-side to leave room for multipart overhead.
-    const VERCEL_MAX_MB = 4;
+    // Sanity cap aligned with /api/upload/blob-token's maximumSizeInBytes
+    // and the server-side config.MAX_FILE_SIZE_MB. Files ≤ 4 MB go via
+    // legacy multipart; >4 MB go through Vercel Blob (see processFile).
+    const HARD_CAP_MB = 50;
 
     for (const f of picked) {
       const ext    = f.name.split('.').pop()?.toLowerCase() ?? '';
@@ -554,10 +637,10 @@ function UploadDataInner() {
         errors.push(`"${f.name}" — unsupported format (use xlsx, csv, pdf, pptx, or ppt)`);
         continue;
       }
-      if (sizeMB > VERCEL_MAX_MB) {
+      if (sizeMB > HARD_CAP_MB) {
         errors.push(
-          `"${f.name}" is ${sizeMB.toFixed(1)} MB — exceeds the ${VERCEL_MAX_MB} MB upload limit.\n` +
-          `Export as Excel (.xlsx) or CSV for smaller file sizes.`
+          `"${f.name}" is ${sizeMB.toFixed(1)} MB — exceeds the ${HARD_CAP_MB} MB upload cap.\n` +
+          `Split the file or contact support if you need to raise this limit.`,
         );
         continue;
       }
@@ -567,13 +650,14 @@ function UploadDataInner() {
     if (errors.length) setErrorMsg(errors.join('\n'));
     if (!valid.length) return;
 
-    // Append new files to existing entries; track offset for correct chart IDs
-    setFileEntries(prev => {
-      const offset = prev.length;
-      // Kick off processing for the new batch after state update
-      setTimeout(() => processAll(valid, offset), 0);
-      return [...prev, ...valid];
-    });
+    // Append new files; capture offset BEFORE the setState so the side effect
+    // lives OUTSIDE the updater. Updaters run twice under React Strict Mode in
+    // dev — putting processAll() inside the updater used to fire each upload
+    // twice (visible as duplicated "📤 Uploading…" log lines).
+    const offset = fileEntries.length;
+    setFileEntries(prev => [...prev, ...valid]);
+    // Defer one tick so state has flushed before processing kicks off.
+    setTimeout(() => processAll(valid, offset), 0);
 
     // Reset input so the same files can be re-picked
     e.target.value = '';
@@ -742,7 +826,7 @@ function UploadDataInner() {
               Drop files here or click to browse
             </p>
             <p style={{ fontSize:13, color:'#64748B', marginBottom:6 }}>
-              Excel · CSV · PDF &nbsp;·&nbsp; Multiple files supported &nbsp;·&nbsp; Max 4 MB per file
+              Excel · CSV · PDF · PPTX &nbsp;·&nbsp; Multiple files supported &nbsp;·&nbsp; Up to 50 MB per file
             </p>
             <p style={{ fontSize:12, color:'#94A3B8' }}>
               GWI · Google Keywords · Helium10 · Google Trends · Konnect Insights
