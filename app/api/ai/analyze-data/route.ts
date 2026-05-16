@@ -939,6 +939,71 @@ async function fetchBrief(briefId: string): Promise<any | null> {
   }
 }
 
+// ── PPTX-deck row flattener ────────────────────────────────────
+// Slides land in tool_data as nested objects: { slideNumber, title,
+// bullets:[…], tables:[{headers,rows:[[]]}], notes }. Gemini's
+// generic-tabular prompt expects FLAT rows (string-keyed, scalar
+// values), so feeding it the nested shape silently produces garbage
+// and a 502. Detect the deck shape and project each slide into one
+// "overview" row (title + bullets + notes) plus one row per table
+// data-row with the table's headers as field names. The downstream
+// analyzer then treats the deck like any other tabular source.
+function isPptxDeckShape(rows: any[]): boolean {
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  const r0 = rows[0];
+  return r0 && typeof r0 === 'object'
+    && 'slideNumber' in r0
+    && 'bullets'     in r0
+    && 'tables'      in r0;
+}
+
+function flattenPptxRows(rows: any[]): any[] {
+  const out: Record<string, any>[] = [];
+  for (const r of rows) {
+    const slide   = r?.slideNumber ?? null;
+    const title   = String(r?.title ?? '').trim();
+    const bullets = Array.isArray(r?.bullets) ? r.bullets : [];
+    const tables  = Array.isArray(r?.tables)  ? r.tables  : [];
+    const notes   = String(r?.notes ?? '').trim();
+
+    // One "overview" row per slide — captures the narrative spine.
+    const content = [
+      bullets.length ? bullets.join(' · ') : '',
+      notes ? `[notes] ${notes}` : '',
+    ].filter(Boolean).join(' · ');
+    if (title || content) {
+      out.push({
+        Slide:   slide,
+        Title:   title || `Slide ${slide}`,
+        Section: 'Overview',
+        Content: content,
+      });
+    }
+
+    // One row per table data-row, with that table's headers as fields.
+    // Preserves keyword lists, persona profiles, and platform matrices
+    // as real columns Gemini can group on.
+    for (const t of tables) {
+      const headers: string[]   = Array.isArray(t?.headers) ? t.headers.map((h: any) => String(h ?? '').trim()) : [];
+      const dataRows: string[][] = Array.isArray(t?.rows)    ? t.rows                                            : [];
+      for (const dr of dataRows) {
+        const obj: Record<string, any> = {
+          Slide:   slide,
+          Title:   title || `Slide ${slide}`,
+          Section: 'Table',
+        };
+        headers.forEach((h, i) => {
+          if (h && dr[i] != null && String(dr[i]).trim() !== '') obj[h] = dr[i];
+        });
+        // Skip rows that ended up with only the three meta fields (no
+        // table content) — they add noise without signal.
+        if (Object.keys(obj).length > 3) out.push(obj);
+      }
+    }
+  }
+  return out;
+}
+
 // ── Timeout wrapper ────────────────────────────────────────────
 // Races a promise against a hard deadline. When Gemini hangs past
 // the deadline the batch is treated as failed so we fall through to
@@ -955,10 +1020,20 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 // ── Route ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const { rows, sheetName, fileNames, briefId } = await req.json();
+    const body = await req.json();
+    const { sheetName, fileNames, briefId } = body;
+    let rows = body.rows;
 
     if (!Array.isArray(rows) || rows.length === 0)
       return NextResponse.json({ error: 'rows array required' }, { status: 400 });
+
+    // PPTX decks ship as nested-object slides; flatten before any slot
+    // detection or prompt construction touches them.
+    if (isPptxDeckShape(rows)) {
+      const before = rows.length;
+      rows = flattenPptxRows(rows);
+      console.log(`[analyze-data] flattened pptx deck: ${before} slides → ${rows.length} tabular rows`);
+    }
 
     // BUG FIX: Do NOT exit here if GEMINI_API_KEY is missing.
     // Gemini functions throw internally when the key is absent, which is caught
