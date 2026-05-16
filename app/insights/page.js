@@ -409,7 +409,10 @@ const CATEGORY_INTEL = {
     marketValueINR:   '₹41,500 Cr',
     cagr:             '4.1%',
     searchVolMonthly: '~50M queries/mo',
-    source:           'IMARC Group, India Laundry Detergent Market Report 2024',
+    topPlayers:       'HUL 38% · P&G 22% · Jyothy Labs 8% · RSPL/Ghadi 6%',
+    channelMix:       'Kirana 58% · Modern Trade 25% · E-commerce 12% · Other 5%',
+    peakSeasons:      'Diwali (Oct-Nov) · Wedding season (Nov-Feb) · Holi (Mar)',
+    source:           'IMARC + Nielsen Retail Audit + IBEF, all 2024',
   },
   'personal care': {
     label:            'Personal Care · India',
@@ -417,7 +420,10 @@ const CATEGORY_INTEL = {
     marketValueINR:   '₹1.45L Cr',
     cagr:             '9.1%',
     searchVolMonthly: '~100M queries/mo',
-    source:           'IMARC Group, India Personal Care Market Report 2024',
+    topPlayers:       'HUL 28% · P&G 14% · Dabur 9% · L\'Oréal 7% · Marico 6%',
+    channelMix:       'Kirana 45% · Modern Trade 28% · E-commerce 22% · Other 5%',
+    peakSeasons:      'Festive (Sep-Nov) · Wedding (Nov-Feb) · Summer (Apr-Jun)',
+    source:           'IMARC + Nielsen + IBEF, all 2024',
   },
   'food': {
     label:            'Food & Beverage · India',
@@ -425,7 +431,10 @@ const CATEGORY_INTEL = {
     marketValueINR:   '₹73L Cr',
     cagr:             '8.5%',
     searchVolMonthly: '~200M queries/mo',
-    source:           'FICCI Food Processing Industry Report 2024',
+    topPlayers:       'ITC 14% · Nestle 11% · HUL 9% · Britannia 7% · PepsiCo 6%',
+    channelMix:       'Kirana 52% · Modern Trade 22% · E-commerce 16% · HoReCa 10%',
+    peakSeasons:      'Festive (Oct-Dec) · Summer beverages (Apr-Jun) · Winter sweets (Dec-Feb)',
+    source:           'FICCI + Nielsen + IBEF, all 2024',
   },
   'telecom': {
     label:            'Telecom · India',
@@ -433,7 +442,10 @@ const CATEGORY_INTEL = {
     marketValueINR:   '₹4.15L Cr',
     cagr:             '8.0%',
     searchVolMonthly: '~80M queries/mo',
-    source:           'TRAI Annual Report 2024',
+    topPlayers:       'Reliance Jio 40% · Bharti Airtel 33% · Vodafone-Idea 19% · BSNL 8%',
+    channelMix:       'Online recharge 64% · Retail 26% · Bank/UPI 10%',
+    peakSeasons:      'Plan renewal cycles (monthly) · IPL season (Mar-May)',
+    source:           'TRAI Annual Report + Counterpoint 2024',
   },
   'fintech': {
     label:            'Fintech · India',
@@ -441,7 +453,10 @@ const CATEGORY_INTEL = {
     marketValueINR:   '₹2.9L Cr',
     cagr:             '25%',
     searchVolMonthly: '~150M queries/mo',
-    source:           'BCG India Fintech Report 2024',
+    topPlayers:       'PhonePe 47% UPI · Google Pay 35% · Paytm 11% · Cred + others 7%',
+    channelMix:       '100% digital · UPI 76% of transaction volume',
+    peakSeasons:      'Salary cycles (1st-5th) · Festive shopping (Oct-Nov)',
+    source:           'BCG India Fintech + NPCI 2024',
   },
   'e-commerce': {
     label:            'E-commerce · India',
@@ -449,7 +464,10 @@ const CATEGORY_INTEL = {
     marketValueINR:   '₹6.2L Cr',
     cagr:             '21%',
     searchVolMonthly: '~500M queries/mo',
-    source:           'Bain & Company India E-commerce Report 2024',
+    topPlayers:       'Flipkart Group 42% · Amazon 33% · Meesho 9% · Reliance Digital 6%',
+    channelMix:       '76% mobile-first · 24% desktop · Tier-2/3 driving growth',
+    peakSeasons:      'Big Billion Days + Amazon GIF (Oct) · Republic Day sales (Jan)',
+    source:           'Bain & Co + Forrester India 2024',
   },
   'auto': {
     label:            'Automotive · India',
@@ -457,7 +475,10 @@ const CATEGORY_INTEL = {
     marketValueINR:   '₹10.1L Cr',
     cagr:             '7%',
     searchVolMonthly: '~120M queries/mo',
-    source:           'IBEF Indian Automotive Industry Report 2024',
+    topPlayers:       'Maruti Suzuki 41% · Hyundai 14% · Tata Motors 13% · M&M 10% · Toyota 6%',
+    channelMix:       'Dealership 78% · Online inquiry → offline close 22%',
+    peakSeasons:      'Navratri-Diwali (Sep-Nov) · Year-end (Dec) · Wedding season (Nov-Feb)',
+    source:           'IBEF + SIAM 2024',
   },
   'fashion': {
     label:            'Fashion & Apparel · India',
@@ -465,7 +486,10 @@ const CATEGORY_INTEL = {
     marketValueINR:   '₹9.1L Cr',
     cagr:             '11%',
     searchVolMonthly: '~180M queries/mo',
-    source:           'IBEF Indian Apparel & Textile Report 2024',
+    topPlayers:       'Reliance Retail 18% · Aditya Birla 11% · Tata Trent 7% · Myntra 6%',
+    channelMix:       'Offline retail 64% · E-commerce 22% · Quick-commerce 4% · D2C 10%',
+    peakSeasons:      'Wedding (Nov-Feb) · Festive (Sep-Nov) · Summer launches (Mar-Apr)',
+    source:           'IBEF + Wazir Advisors + RAI 2024',
   },
   'travel': {
     label:            'Travel & Hospitality · India',
@@ -473,7 +497,10 @@ const CATEGORY_INTEL = {
     marketValueINR:   '₹6.2L Cr',
     cagr:             '9%',
     searchVolMonthly: '~90M queries/mo',
-    source:           'WTTC India Economic Impact Report 2024',
+    topPlayers:       'MakeMyTrip 33% · Booking.com 18% · Yatra 9% · ixigo + others 40%',
+    channelMix:       'Online travel 64% · Traditional agents 26% · Direct 10%',
+    peakSeasons:      'Summer vacation (Apr-Jun) · Winter break (Dec-Jan) · Long weekends',
+    source:           'WTTC + FAITH India 2024',
   },
 };
 
@@ -679,9 +706,32 @@ function MarketPyramidCard({ pyramid, categoryIntel }) {
                 <span style={{ color: '#94A3B8' }}>Search volume:</span>
                 <span style={{ fontWeight: 600, color: '#FBBF24' }}>{categoryIntel.searchVolMonthly}</span>
               </div>
+              {(categoryIntel.topPlayers || categoryIntel.channelMix || categoryIntel.peakSeasons) && (
+                <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px dashed rgba(255,255,255,0.08)' }}>
+                  {categoryIntel.topPlayers && (
+                    <div style={{ marginBottom: 4 }}>
+                      <span style={{ color: '#94A3B8' }}>Top players: </span>
+                      <span style={{ color: '#FFFFFF', fontWeight: 500 }}>{categoryIntel.topPlayers}</span>
+                    </div>
+                  )}
+                  {categoryIntel.channelMix && (
+                    <div style={{ marginBottom: 4 }}>
+                      <span style={{ color: '#94A3B8' }}>Channel mix: </span>
+                      <span style={{ color: '#FFFFFF', fontWeight: 500 }}>{categoryIntel.channelMix}</span>
+                    </div>
+                  )}
+                  {categoryIntel.peakSeasons && (
+                    <div>
+                      <span style={{ color: '#94A3B8' }}>Peak seasons: </span>
+                      <span style={{ color: '#FFFFFF', fontWeight: 500 }}>{categoryIntel.peakSeasons}</span>
+                    </div>
+                  )}
+                </div>
+              )}
               <div style={{ color: '#94A3B8', fontSize: 10, marginTop: 6, lineHeight: 1.45 }}>
-                <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Source:</strong> {categoryIntel.source}.
+                <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Sources:</strong> {categoryIntel.source}.
                 Search volume is an order-of-magnitude estimate from Google Trends + Keyword Planner samples — not a precise count.
+                Top-player shares + channel mix are 2024 figures, restated.
               </div>
             </div>
           )}
