@@ -9,6 +9,11 @@ export interface UploadSummary {
    *  same content (by SHA-256 hash) within the dedup window. When true, the
    *  uploadId points to the EXISTING upload and no new rows were created. */
   deduplicated?: boolean;
+  /** When dedup hits AND a prior analysis exists for the deduplicated upload,
+   *  the most recent analysis ID is surfaced here so the frontend can navigate
+   *  straight to /insights?id=... instead of re-calling /api/ai/analyze-data
+   *  (which would burn another Gemini quota for no new value). */
+  existingAnalysisId?: string;
 }
 
 export interface SheetMeta {

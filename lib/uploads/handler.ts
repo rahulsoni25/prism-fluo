@@ -770,14 +770,41 @@ export async function handleUpload(
         description: `Identical file uploaded within last ${DEDUP_WINDOW_DAYS} days — reusing upload ${existing.id.slice(0, 8)}…`,
         chartSpecs:  [],
       }));
+
+      // Also surface the most recent analysis for this upload so the frontend
+      // can short-circuit straight to /insights?id=... without re-running
+      // /api/ai/analyze-data (which would burn another Gemini call).
+      // We match on upload_id only — same file = same content = same insights
+      // regardless of which brief is currently selected. If briefId differs
+      // and the user wants brief-specific analysis, they can re-run from the
+      // /insights page.
+      let existingAnalysisId: string | null = null;
+      try {
+        const anaRes = await db.query(
+          `SELECT id FROM analyses
+            WHERE upload_id = $1
+              AND results_json->'charts' IS NOT NULL
+              AND jsonb_array_length(results_json->'charts') > 0
+            ORDER BY created_at DESC LIMIT 1`,
+          [existing.id],
+        );
+        if (anaRes.rows.length > 0) existingAnalysisId = anaRes.rows[0].id;
+      } catch { /* best-effort */ }
+
       logger.info('upload:deduplicated', {
-        existingUploadId: existing.id,
-        originalFilename: existing.filename,
+        existingUploadId:   existing.id,
+        existingAnalysisId,
+        originalFilename:   existing.filename,
         filename,
-        fileHash:         fileHash.slice(0, 12),
-        ms:               Date.now() - t0,
+        fileHash:           fileHash.slice(0, 12),
+        ms:                 Date.now() - t0,
       });
-      return { uploadId: existing.id, sheets, deduplicated: true };
+      return {
+        uploadId: existing.id,
+        sheets,
+        deduplicated: true,
+        existingAnalysisId: existingAnalysisId ?? undefined,
+      };
     }
   }
 

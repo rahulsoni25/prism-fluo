@@ -90,7 +90,8 @@ export const POST = async (req: NextRequest) => {
         uploadId:     summary.uploadId,
         sheets:       summary.sheets,
         rawText:      summary.rawText ?? null,
-        deduplicated: summary.deduplicated ?? false,
+        deduplicated:       summary.deduplicated       ?? false,
+        existingAnalysisId: summary.existingAnalysisId ?? null,
       });
     }
 
@@ -165,7 +166,8 @@ export const POST = async (req: NextRequest) => {
         uploadId:     summary.uploadId,
         sheets:       summary.sheets,
         rawText:      summary.rawText ?? null,
-        deduplicated: summary.deduplicated ?? false,
+        deduplicated:       summary.deduplicated       ?? false,
+        existingAnalysisId: summary.existingAnalysisId ?? null,
       });
     }
 
