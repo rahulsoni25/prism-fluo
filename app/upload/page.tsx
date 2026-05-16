@@ -188,19 +188,55 @@ function UploadDataInner() {
 
     // ── Upload strategy ────────────────────────────────────────────
     // Files ≤ 4 MB go via legacy multipart — fewer round trips, no
-    // dependency on a Vercel Blob store. Files > 4 MB exceed the
-    // platform's serverless body-size cap (~4.5 MB), so we PUT them
+    // dependency on a Vercel Blob store. Files > 4 MB exceed Vercel's
+    // serverless body-size cap (~4.5 MB) on production, so we PUT them
     // directly to Vercel Blob via a signed URL, then POST just the
     // resulting URL to /api/upload as JSON.
+    //
+    // EXCEPTION: on localhost dev, always use multipart regardless of
+    // size. Two reasons:
+    //   1. The Next.js dev server has no 4 MB cap — multipart works for
+    //      any reasonable file size.
+    //   2. The @vercel/blob/client SDK coordinates through vercel.com/api/blob,
+    //      which is commonly blocked by ad-blockers / privacy extensions
+    //      (uBlock Origin, Brave Shields, Pi-hole). Those blocks make the
+    //      Blob upload silently fail with status 0 / 5s timeouts. Sticking
+    //      to multipart on localhost sidesteps the whole chain.
+    // ⚠️ NOTE for prod: end users on Vercel who have aggressive blockers
+    // will still hit this issue for files > 4 MB. If that becomes a
+    // support burden, swap @vercel/blob for a direct S3/R2 client or proxy
+    // the upload server-side.
     const MULTIPART_MAX_MB = 4;
-    const sizeMB = file.size / 1024 / 1024;
+    const sizeMB     = file.size / 1024 / 1024;
+    const isLocalDev = typeof window !== 'undefined'
+      && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const useMultipart = isLocalDev || sizeMB <= MULTIPART_MAX_MB;
     let upRes: Response;
-    if (sizeMB <= MULTIPART_MAX_MB) {
-      const formData = new FormData();
-      formData.append('file', file);
-      if (briefId) formData.append('briefId', briefId);
-      if (selectedSlaHours) formData.append('slaHours', String(selectedSlaHours));
-      upRes = await fetch('/api/upload', { method: 'POST', body: formData });
+    if (useMultipart) {
+      // On localhost or files ≤ 4 MB. For files > 4 MB on localhost, send as
+      // raw binary instead of FormData — Next.js dev's `req.formData()` chokes
+      // on multipart bodies above ~4 MB ("Failed to parse body as FormData.").
+      // The raw-binary path (Path C in /api/upload) reads `req.arrayBuffer()`
+      // which doesn't need multipart envelope parsing.
+      if (isLocalDev && sizeMB > MULTIPART_MAX_MB) {
+        upRes = await fetch('/api/upload', {
+          method:  'POST',
+          body:    file,
+          headers: {
+            'Content-Type':    'application/octet-stream',
+            'X-Upload-Mode':   'raw',
+            'X-Filename':      encodeURIComponent(file.name),
+            ...(briefId         ? { 'X-Brief-Id':  briefId             } : {}),
+            ...(selectedSlaHours ? { 'X-Sla-Hours': String(selectedSlaHours) } : {}),
+          },
+        });
+      } else {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (briefId) formData.append('briefId', briefId);
+        if (selectedSlaHours) formData.append('slaHours', String(selectedSlaHours));
+        upRes = await fetch('/api/upload', { method: 'POST', body: formData });
+      }
     } else {
       // Direct-to-blob path (large files).
       addLog(`📦 Streaming "${file.name}" (${sizeMB.toFixed(1)} MB) directly to Blob storage…`);

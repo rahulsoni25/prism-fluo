@@ -33,6 +33,40 @@ function stratifiedSample<T>(rows: T[], n: number): T[] {
 }
 
 /**
+ * Find the FIRST balanced top-level `[...]` in a string. Used to extract
+ * a JSON array from Gemini/OpenRouter responses that may have trailing
+ * prose, code-fence remnants, or a stray `]` that fools a greedy regex.
+ *
+ * Walks char-by-char tracking bracket depth, skipping string contents
+ * (so brackets inside JSON strings don't shift the depth). Returns null
+ * if no balanced array is found.
+ */
+function extractFirstJsonArray(text: string): string | null {
+  let depth     = 0;
+  let start     = -1;
+  let inString  = false;
+  let escape    = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (inString) {
+      if (ch === '\\')      escape   = true;
+      else if (ch === '"')  inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '[') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === ']') {
+      depth--;
+      if (depth === 0 && start >= 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
  * Call generateContent with bounded retry + automatic model switching.
  *
  * KEY IMPROVEMENT over the old version:
@@ -657,14 +691,14 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('Gemini returned empty text — model may be blocked or rate-limited');
     }
-    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-    const match   = cleaned.match(/\[[\s\S]*\]/);
-    if (!match) {
+    const cleaned   = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const arrayJson = extractFirstJsonArray(cleaned);
+    if (!arrayJson) {
       invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('No JSON array in Gemini response — model returned non-JSON output');
     }
 
-    const parsed: any[] = JSON.parse(match[0]);
+    const parsed: any[] = JSON.parse(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
@@ -1131,13 +1165,19 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       throw new Error('Gemini returned empty text — model may be blocked or rate-limited');
     }
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-    const match   = cleaned.match(/\[[\s\S]*\]/);
-    if (!match) {
+    // Greedy /\[[\s\S]*\]/ used to capture from the FIRST '[' to the LAST ']'
+    // anywhere in the response — which broke when Gemini appended trailing
+    // prose containing a stray ']' character, dragging the match past the
+    // valid JSON array and tripping JSON.parse with "Unexpected non-
+    // whitespace character after JSON at position N". Bracket-balanced
+    // extraction below grabs exactly the first complete top-level array.
+    const arrayJson = extractFirstJsonArray(cleaned);
+    if (!arrayJson) {
       invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('No JSON array in Gemini generic response');
     }
 
-    const parsed: any[] = JSON.parse(match[0]);
+    const parsed: any[] = JSON.parse(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
@@ -1355,14 +1395,14 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('Gemini returned empty text — model may be blocked or rate-limited');
     }
-    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-    const match   = cleaned.match(/\[[\s\S]*\]/);
-    if (!match) {
+    const cleaned   = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const arrayJson = extractFirstJsonArray(cleaned);
+    if (!arrayJson) {
       invalidateModelCache(_resolvedModelName ?? undefined);
       throw new Error('No JSON array in social listening Gemini response');
     }
 
-    const parsed: any[] = JSON.parse(match[0]);
+    const parsed: any[] = JSON.parse(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
@@ -1802,11 +1842,11 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
   try {
     const result  = await callGeminiWithRetry(genAI, prompt);
     const rawText = result.response.text().trim();
-    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-    const match   = cleaned.match(/\[[\s\S]*\]/);
-    if (!match) throw new Error('No JSON array in Gemini PDF response');
+    const cleaned   = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const arrayJson = extractFirstJsonArray(cleaned);
+    if (!arrayJson) throw new Error('No JSON array in Gemini PDF response');
 
-    const parsed: any[] = JSON.parse(match[0]);
+    const parsed: any[] = JSON.parse(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content', 'commerce', 'communication', 'culture', 'channel', 'media', 'creative', 'pricing', 'search'];

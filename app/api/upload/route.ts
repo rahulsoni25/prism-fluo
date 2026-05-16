@@ -35,6 +35,64 @@ export const POST = async (req: NextRequest) => {
 
     const contentType = req.headers.get('content-type') ?? '';
 
+    // ── Path C: raw binary body (file as stream, metadata in headers) ─
+    // Used by the localhost-dev path to bypass Next.js's `req.formData()`,
+    // which currently fails on multipart bodies > ~4 MB with "Failed to
+    // parse body as FormData." (a Turbopack/undici issue we hit at 10.4 MB).
+    // The Blob path needs vercel.com/api/blob — frequently blocked by ad-
+    // blockers — so the dev workflow needs a multipart-free big-file route.
+    if (req.headers.get('x-upload-mode') === 'raw') {
+      const filenameHdr = req.headers.get('x-filename');
+      if (!filenameHdr) {
+        return NextResponse.json(
+          { error: 'NO_FILENAME', message: 'X-Filename header is required for raw uploads.' },
+          { status: 400 },
+        );
+      }
+      const filename = decodeURIComponent(filenameHdr);
+      const ext      = filename.split('.').pop()?.toLowerCase() ?? '';
+      if (!ALLOWED_EXT.includes(ext)) {
+        return NextResponse.json(
+          { error: 'UNSUPPORTED_TYPE', message: `Only .${ALLOWED_EXT.join(', .')} are supported.` },
+          { status: 415 },
+        );
+      }
+
+      const briefIdHdr  = req.headers.get('x-brief-id');
+      const slaHoursHdr = req.headers.get('x-sla-hours');
+      const briefId     = briefIdHdr && briefIdHdr.trim() ? briefIdHdr.trim() : null;
+      const slaHours    = slaHoursHdr ? parseInt(slaHoursHdr, 10) : null;
+
+      const buffer = Buffer.from(await req.arrayBuffer());
+      const sizeMB = buffer.length / (1024 * 1024);
+
+      if (buffer.length === 0) {
+        return NextResponse.json(
+          { error: 'EMPTY_FILE', message: 'The uploaded file is empty (0 bytes).' },
+          { status: 400 },
+        );
+      }
+      if (sizeMB > config.MAX_FILE_SIZE_MB) {
+        return NextResponse.json(
+          { error: 'FILE_TOO_LARGE', message: `File size ${sizeMB.toFixed(1)} MB exceeds the ${config.MAX_FILE_SIZE_MB} MB limit.` },
+          { status: 413 },
+        );
+      }
+
+      const summary = await handleUpload(buffer, filename, briefId, session.userId, slaHours);
+
+      logger.info('api:upload', {
+        filename, sizeMB: sizeMB.toFixed(2), briefId, slaHours,
+        userId: session.userId, via: 'raw', ms: Date.now() - t0,
+      });
+
+      return NextResponse.json({
+        uploadId: summary.uploadId,
+        sheets:   summary.sheets,
+        rawText:  summary.rawText ?? null,
+      });
+    }
+
     // ── Path B: JSON body with blobUrl ─────────────────────────────
     // Triggered when the client used /api/upload/blob-token to PUT the
     // file directly to Vercel Blob, then sent us just the resulting URL.
