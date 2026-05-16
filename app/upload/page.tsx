@@ -554,18 +554,19 @@ function UploadDataInner() {
         return;
       }
 
-      // Accumulate across batches
-      setAccumulatedCharts(prev => {
-        const next = [...prev, ...batchCharts];
-        // Update bucket preview with all accumulated charts (all 9 PRISM buckets)
-        const allBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
-        const preview: Record<string, number> = Object.fromEntries(allBuckets.map(b => [b, 0]));
-        next.forEach(c => { const b = (c as any).bucket || 'content'; if (b in preview) preview[b]++; });
-        setBucketPreview(preview);
-        const nonEmpty = allBuckets.filter(b => preview[b] > 0).map(b => `${b}: ${preview[b]}`).join(' · ');
-        addLog(`📊 PRISM Distribution — ${nonEmpty || 'no insights yet'}`);
-        return next;
-      });
+      // Accumulate across batches. Side effects (setBucketPreview, addLog)
+      // must live OUTSIDE the updater — Strict Mode invokes updaters twice
+      // in dev, which would duplicate the log line and re-queue the bucket
+      // setState. Compute the merged charts here, then derive preview/log
+      // from the result.
+      const accumulatedNext = [...accumulatedCharts, ...batchCharts];
+      const allBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
+      const preview: Record<string, number> = Object.fromEntries(allBuckets.map(b => [b, 0]));
+      accumulatedNext.forEach(c => { const b = (c as any).bucket || 'content'; if (b in preview) preview[b]++; });
+      setAccumulatedCharts(accumulatedNext);
+      setBucketPreview(preview);
+      const nonEmpty = allBuckets.filter(b => preview[b] > 0).map(b => `${b}: ${preview[b]}`).join(' · ');
+      addLog(`📊 PRISM Distribution — ${nonEmpty || 'no insights yet'}`);
 
       setAllFileNames(prev => [...prev, ...entries.map(e => e.file.name)]);
       if (!firstUploadId && batchFirstUploadId) setFirstUploadId(batchFirstUploadId);
