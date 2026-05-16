@@ -1381,7 +1381,33 @@ function AnalysisDetail({ id }) {
         if (!Array.isArray(v1) || !Array.isArray(v2) || v1.length !== v2.length || !Array.isArray(labels)) return null;
         // Skip persona radars (audience vs all-100 national baseline).
         if (v2.every(v => Number(v) === 100)) return null;
+
+        // SANITY GUARD: this stat card displays "+N.N pts" — a percentage-
+        // point gap between two audiences. It only makes sense when both
+        // series are PERCENTAGES (0-100). For raw counts (keyword search
+        // volume, follower count, etc.) the gap can hit millions and
+        // display as nonsense like "+6,999,998 pts — Celebrity". Skip any
+        // chart where either series value exceeds 100 or is negative.
+        const allValues = [...v1, ...v2].map(Number).filter(Number.isFinite);
+        if (allValues.length === 0) return null;
+        const maxVal = Math.max(...allValues);
+        const minVal = Math.min(...allValues);
+        if (maxVal > 100 || minVal < 0) return null;
+
         const [labelA, labelB] = shortenAudiencePair(ds[0]?.label, ds[1]?.label);
+        // Also skip if the dataset labels don't look like audience names
+        // (raw "Avg. monthly searches" / "Volume" strings come through as
+        // unhelpful "VOLUME LEADS" stat labels). Audience names usually
+        // contain demographic words. If both labels lack any demographic
+        // marker AND look like measurement names, skip.
+        const measurementWord = /(searches|volume|count|rank|cpc|bid|cost|score|index)/i;
+        const audienceWord    = /(male|female|men|women|adult|youth|teen|gen|millenni|boomer|parent|mother|father|tier|urban|rural)/i;
+        const labelsLookLikeMeasurements =
+          (measurementWord.test(ds[0]?.label || '') || measurementWord.test(ds[1]?.label || ''))
+          && !audienceWord.test(ds[0]?.label || '')
+          && !audienceWord.test(ds[1]?.label || '');
+        if (labelsLookLikeMeasurements) return null;
+
         let bestI = -1, bestGap = -Infinity;
         for (let i = 0; i < v1.length; i++) {
           const gap = Math.abs((Number(v1[i]) || 0) - (Number(v2[i]) || 0));
@@ -1392,6 +1418,9 @@ function AnalysisDetail({ id }) {
         const audBValue = Number(v2[bestI]) || 0;
         const leader = audAValue >= audBValue ? labelA : labelB;
         const attr = String(labels[bestI] || '').replace(/\s+/g, ' ').trim();
+        // Skip attributes that are just ranks/positions ("5th", "1st") —
+        // they're meaningless out of context.
+        if (/^\d+(st|nd|rd|th)$/i.test(attr)) return null;
         return {
           gap: bestGap,
           leader,
