@@ -10,6 +10,7 @@
 
 import ExcelJS from 'exceljs';
 import { Readable } from 'stream';
+import { createHash } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { db, getPool } from '@/lib/db/client';
 import { logger } from '@/lib/logger';
@@ -87,6 +88,22 @@ async function ensureSchema(): Promise<void> {
   ]);
 
   logger.info('upload:schema_migrated');
+}
+
+// ── Dedup schema (separate idempotent migration) ───────────────
+// Runs once per cold start, INDEPENDENT of ensureSchema()'s early-return
+// path. The original migration short-circuits when tool_data already
+// exists, so any new column added later (like file_hash) wouldn't
+// otherwise run on existing deployments.
+let _dedupSchemaDone = false;
+async function ensureDedupSchema(): Promise<void> {
+  if (_dedupSchemaDone) return;
+  _dedupSchemaDone = true;
+  await Promise.allSettled([
+    db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS file_hash TEXT`),
+    db.query(`CREATE INDEX IF NOT EXISTS idx_uploads_user_hash
+              ON uploads(user_id, file_hash, created_at DESC)`),
+  ]);
 }
 
 // ── Bulk insert helpers ───────────────────────────────────────
@@ -716,6 +733,53 @@ export async function handleUpload(
 
   // Ensure schema is up to date before any DB operations
   await ensureSchema();
+  await ensureDedupSchema();
+
+  // ── 0. Content-hash dedup ──────────────────────────────────────
+  // Compute SHA-256 of the file bytes. If this user already uploaded
+  // the same content within the dedup window, skip ALL work (no parse,
+  // no DB inserts, no Gemini quota burn on the analysis call later)
+  // and return the existing uploadId instead. Anonymous uploads
+  // (userId == null) are NOT deduplicated — too easy to leak between
+  // unrelated sessions.
+  const fileHash = createHash('sha256').update(buffer).digest('hex');
+  const DEDUP_WINDOW_DAYS = 7;
+  if (userId) {
+    const dedup = await db.query(
+      `SELECT id, filename FROM uploads
+        WHERE user_id   = $1
+          AND file_hash = $2
+          AND created_at > NOW() - INTERVAL '${DEDUP_WINDOW_DAYS} days'
+        ORDER BY created_at DESC LIMIT 1`,
+      [userId, fileHash],
+    );
+    if (dedup.rows.length > 0) {
+      const existing = dedup.rows[0] as { id: string; filename: string };
+      // Fetch sheet names + types from the existing tool_data so the
+      // frontend's sheet picker has something to render.
+      const sheetsRes = await db.query(
+        `SELECT DISTINCT sheet_name, tool_type
+           FROM tool_data WHERE upload_id = $1
+           ORDER BY sheet_name`,
+        [existing.id],
+      );
+      const sheets: SheetMeta[] = sheetsRes.rows.map((r: any) => ({
+        sheetName:   r.sheet_name,
+        type:        'generic_table' as const,
+        question:    `Reused — ${filename.replace(/\.[^.]+$/, '')}`,
+        description: `Identical file uploaded within last ${DEDUP_WINDOW_DAYS} days — reusing upload ${existing.id.slice(0, 8)}…`,
+        chartSpecs:  [],
+      }));
+      logger.info('upload:deduplicated', {
+        existingUploadId: existing.id,
+        originalFilename: existing.filename,
+        filename,
+        fileHash:         fileHash.slice(0, 12),
+        ms:               Date.now() - t0,
+      });
+      return { uploadId: existing.id, sheets, deduplicated: true };
+    }
+  }
 
   const sheetsMeta: SheetMeta[] = [];
 
@@ -732,10 +796,10 @@ export async function handleUpload(
   // because the migration hasn't run yet), fall back to the minimal INSERT
   // that works on every schema version, then UPDATE optional columns.
   const fullIns = await db.query(
-    `INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at, file_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (id) DO NOTHING`,
-    [uploadId, filename, briefId ?? null, userId ?? null, slaHours ?? null, slaDueAt ?? null]
+    [uploadId, filename, briefId ?? null, userId ?? null, slaHours ?? null, slaDueAt ?? null, fileHash]
   );
 
   if (!fullIns.rowCount) {

@@ -1074,11 +1074,46 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { sheetName, fileNames, briefId } = body;
+    const { sheetName, fileNames, briefId, uploadId } = body;
     let rows = body.rows;
 
     if (!Array.isArray(rows) || rows.length === 0)
       return NextResponse.json({ error: 'rows array required' }, { status: 400 });
+
+    // ── CACHE CHECK ──────────────────────────────────────────────
+    // If this uploadId+sheetName was analyzed in the last 7 days, reuse
+    // those insights instead of burning another Gemini call. Hits both
+    // when the upload was deduplicated (same file content) AND when the
+    // user re-triggers analysis manually on a sheet.
+    const ANALYSIS_CACHE_DAYS = 7;
+    if (uploadId && sheetName) {
+      try {
+        const cached = await getPool().query(
+          `SELECT results_json FROM analyses
+            WHERE upload_id = $1 AND sheet_name = $2
+              AND created_at > NOW() - INTERVAL '${ANALYSIS_CACHE_DAYS} days'
+            ORDER BY created_at DESC LIMIT 1`,
+          [uploadId, sheetName],
+        );
+        if (cached.rows.length > 0) {
+          const r = cached.rows[0].results_json;
+          const cachedInsights = Array.isArray(r?.insights) ? r.insights : null;
+          if (cachedInsights && cachedInsights.length > 0) {
+            console.log(`[analyze-data] CACHE HIT uploadId=${uploadId.slice(0, 8)}… sheet="${sheetName}" insights=${cachedInsights.length}`);
+            return NextResponse.json({
+              insights: cachedInsights,
+              slots:    Array.isArray(r?.slots) ? r.slots : [],
+              overview: r?.overview ?? undefined,
+              path:     'cached',
+              fallback: 'cached',
+            });
+          }
+        }
+      } catch (cacheErr: any) {
+        // Cache miss / DB hiccup — never block live analysis on this.
+        console.warn('[analyze-data] cache lookup failed:', cacheErr.message);
+      }
+    }
 
     // PPTX decks ship as nested-object slides; flatten before any slot
     // detection or prompt construction touches them.
