@@ -742,6 +742,13 @@ export async function handleUpload(
   // and return the existing uploadId instead. Anonymous uploads
   // (userId == null) are NOT deduplicated — too easy to leak between
   // unrelated sessions.
+  //
+  // CRITICAL: scope dedup by (user_id, file_hash, brief_id). If the brief
+  // differs, the analysis must be fresh — the headline/snapshot/recs are
+  // brand-specific. A cross-brief cache hit would show "Sargam Detergent"
+  // copy inside a "Ghadi Detergent" demo. `IS NOT DISTINCT FROM` is the
+  // null-safe equality we need so two null briefIds match each other but
+  // a null doesn't match a real brief.
   const fileHash = createHash('sha256').update(buffer).digest('hex');
   const DEDUP_WINDOW_DAYS = 7;
   if (userId) {
@@ -749,9 +756,10 @@ export async function handleUpload(
       `SELECT id, filename FROM uploads
         WHERE user_id   = $1
           AND file_hash = $2
+          AND brief_id  IS NOT DISTINCT FROM $3
           AND created_at > NOW() - INTERVAL '${DEDUP_WINDOW_DAYS} days'
         ORDER BY created_at DESC LIMIT 1`,
-      [userId, fileHash],
+      [userId, fileHash, briefId ?? null],
     );
     if (dedup.rows.length > 0) {
       const existing = dedup.rows[0] as { id: string; filename: string };
@@ -774,19 +782,19 @@ export async function handleUpload(
       // Also surface the most recent analysis for this upload so the frontend
       // can short-circuit straight to /insights?id=... without re-running
       // /api/ai/analyze-data (which would burn another Gemini call).
-      // We match on upload_id only — same file = same content = same insights
-      // regardless of which brief is currently selected. If briefId differs
-      // and the user wants brief-specific analysis, they can re-run from the
-      // /insights page.
+      // Scope by brief_id too — the upload-dedup query above already matched
+      // on briefId so this is consistent. Prevents wrong-brand insights
+      // from showing up when the user re-runs with a different brief.
       let existingAnalysisId: string | null = null;
       try {
         const anaRes = await db.query(
           `SELECT id FROM analyses
             WHERE upload_id = $1
+              AND brief_id  IS NOT DISTINCT FROM $2
               AND results_json->'charts' IS NOT NULL
               AND jsonb_array_length(results_json->'charts') > 0
             ORDER BY created_at DESC LIMIT 1`,
-          [existing.id],
+          [existing.id, briefId ?? null],
         );
         if (anaRes.rows.length > 0) existingAnalysisId = anaRes.rows[0].id;
       } catch { /* best-effort */ }
