@@ -1146,8 +1146,12 @@ export async function POST(req: NextRequest) {
       const toolLabel  = fileNames?.[0]?.toLowerCase().includes('household') ? 'GWI HOUSEHOLD' : 'GWI';
 
       try {
-        const BATCH_SIZE = 6;
-        // Limit to 18 slots max → always exactly 3 parallel calls, never 4+
+        // Larger batches = fewer Gemini round-trips = less daily quota burn.
+        // Was 6 (3 batches for 18 slots). Now 9 (2 batches for 18 slots).
+        // Each batch still well below Gemini's 8K output-token ceiling for
+        // ~9 cards of structured JSON.
+        const BATCH_SIZE = 9;
+        // Limit to 18 slots max → 2 sequential batches, not 3
         const batches    = chunkSlots(slots.slice(0, 18), BATCH_SIZE);
 
         // Kick off the Main Headline + Audience Snapshot generator in parallel
@@ -1178,7 +1182,10 @@ export async function POST(req: NextRequest) {
           try {
             const value = await withTimeout(
               analyzeDataForPRISM(batches[i], gwiContext, toolLabel, briefContext),
-              42_000,  // raised 38s → 42s to accommodate model-switch retry within a batch
+              90_000,  // 42s → 90s. The 42s cap was timing out the model-retry
+                       // chain (Flash → Flash 2.0 → Pro → Flash-Lite, each ~10-30s
+                       // on rate-limited days). With 2 batches × 90s + ~30s
+                       // overview, total worst case ~210s < route maxDuration 300s.
               `Gemini batch ${i + 1}/${batches.length}`,
             );
             batchResults.push({ status: 'fulfilled', value });

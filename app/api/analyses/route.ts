@@ -92,6 +92,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Guard: refuse to persist an analysis with zero insight cards. Saving
+    // an empty result creates a "ghost" analysis row that renders only the
+    // headline + snapshot — looks broken to the user, wastes a DB row, and
+    // pollutes the cache lookup that other code relies on. Better to surface
+    // the failure than silently store nothing.
+    const incomingInsights = Array.isArray((results as any)?.insights)
+      ? (results as any).insights
+      : null;
+    if (incomingInsights !== null && incomingInsights.length === 0) {
+      logger.warn('analyses:refused_empty_insights', { uploadId, sheetName });
+      return NextResponse.json(
+        {
+          error: 'EMPTY_INSIGHTS',
+          message: 'Analysis returned 0 insight cards — refusing to save. Re-run analysis or use a smaller dataset.',
+        },
+        { status: 422 },
+      );
+    }
+
     // Generate a UUID on the server — never rely on RETURNING from Supabase
     const { randomUUID } = await import('crypto');
     let id = randomUUID();
