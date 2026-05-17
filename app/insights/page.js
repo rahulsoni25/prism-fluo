@@ -1037,133 +1037,164 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
     if (missed.length > 0) limitations.push(`Helium 10: layer${missed.length>1?'s':''} ${missed.join(', ')} returned 0 cards`);
   }
 
-  // Inline styles — reuse the exact .stat-card visual rhythm of the top row.
-  const eyebrowStyle = (color) => ({
-    fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em',
-    textTransform: 'uppercase', color, marginBottom: 6,
-  });
-  const headlineStyle = {
-    fontSize: 13.5, lineHeight: 1.4, fontWeight: 700, color: '#0F172A',
-    letterSpacing: '-.005em', marginBottom: 10,
-  };
-  const bulletStyle = {
-    fontSize: 11.5, lineHeight: 1.45, color: '#1E293B',
-    padding: '6px 0', borderTop: '1px dashed #E2E8F0',
-  };
-  const pillStyle = {
-    display: 'inline-block', marginLeft: 6, padding: '0 6px',
-    background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 999,
-    fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace",
-    color: '#64748B', verticalAlign: 1,
-  };
-  const tieinStyle = {
-    marginTop: 'auto', paddingTop: 10, borderTop: '1px solid #E2E8F0',
-    fontSize: 10.5, lineHeight: 1.45, color: '#475569',
-  };
-  const emptyStyle = {
-    padding: '14px 6px', textAlign: 'center', fontSize: 11.5,
-    color: '#94A3B8', fontStyle: 'italic', lineHeight: 1.5,
-  };
+  /* ── Distil each card down to: ONE bold headline + ONE supporting stat.
+        Everything else (other findings, brief tie-in, sources) lives in a
+        hover tooltip — same pattern as StrategicBetCard above. ─────── */
 
-  const Card = ({ eyebrow, eyebrowColor, headline, bullets, footer, overflow, empty }) => (
-    <div className="stat-card stat-card--hover" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={eyebrowStyle(eyebrowColor)}>{eyebrow}</div>
-      <div style={headlineStyle}>{headline}</div>
-      {empty ? (
-        <div style={emptyStyle}>{empty}</div>
-      ) : (
-        <>
-          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 8px 0' }}>
-            {bullets.map((b, i) => (
-              <li key={i} style={{ ...bulletStyle, ...(i === 0 ? { borderTop: 'none', paddingTop: 0 } : {}) }}>
-                {b.text}<span style={pillStyle}>{b.pill}</span>
-              </li>
-            ))}
-          </ul>
-          {overflow}
-        </>
-      )}
-      <div style={tieinStyle}><strong style={{ color: '#0F172A', fontWeight: 700 }}>Brief tie-in:</strong> {footer}</div>
-    </div>
+  // CARD 1 prep — Brief North Star: action = objective, supporting = brand+category
+  const northStarAction = brief.objective
+    ? brief.objective.length > 130 ? brief.objective.slice(0, 128) + '…' : brief.objective
+    : (brief.brand ? `${brief.brand} brief` : 'No brief uploaded');
+  const northStarStat = [brief.brand, brief.category, audienceDescriptor].filter(Boolean).join(' · ');
+  const northStarHoverDetails = (
+    <>
+      {brief.geography || brief.market ? <div>📍 <strong>{brief.geography || brief.market}</strong>{categoryIntel?.marketValueINR ? ` · ${categoryIntel.marketValueINR} category` : ''}</div> : null}
+      {brief.competitors ? <div>🆚 {brief.competitors}</div> : null}
+      {flav ? <div>🎯 Brief flavour: <strong>{flav}</strong></div> : null}
+    </>
   );
 
-  const renderFileCard = ({ eyebrow, color, cards, overflowCards, layerMap, briefFooter, emptyMsg }) => {
-    if (cards.length === 0) {
-      return (
-        <Card
-          eyebrow={eyebrow}
-          eyebrowColor={color}
-          headline={<span style={{ color: '#94A3B8' }}>DATA NOT IN SOURCES</span>}
-          empty={emptyMsg}
-          footer={briefFooter}
-        />
-      );
-    }
+  // CARD 2 prep — Keywords: pick the single highest-conviction card
+  const kTop = topKeyword[0];
+  const kAction = kTop?.title ? (kTop.title.length > 130 ? kTop.title.slice(0,128)+'…' : kTop.title) : null;
+  const kStat   = kTop?.stat  ? (String(kTop.stat).length > 100 ? String(kTop.stat).slice(0,98)+'…' : kTop.stat) : null;
+
+  // CARD 3 prep — Helium 10: same pattern
+  const hTop = topHelium[0];
+  const hAction = hTop?.title ? (hTop.title.length > 130 ? hTop.title.slice(0,128)+'…' : hTop.title) : null;
+  const hStat   = hTop?.stat  ? (String(hTop.stat).length > 100 ? String(hTop.stat).slice(0,98)+'…' : hTop.stat) : null;
+
+  /* ── Bet-style card component (identical signature to StrategicBetCard
+        but with configurable eyebrow colour + richer hover body) ──── */
+  function NuggetBetCard({ eyebrow, eyebrowColor, action, stat, hoverHeading, hoverLines, hoverFooter }) {
+    const [show, setShow] = useState(false);
     return (
-      <Card
-        eyebrow={eyebrow}
-        eyebrowColor={color}
-        headline={<strong>{String(cards[0].title || '').slice(0, 110)}</strong>}
-        bullets={cards.slice(0, 5).map(c => {
-          const code = layerMap[c.layer];
-          const pill = `L${c.layer ?? '?'} · conv ${c.conviction ?? '?'}`;
-          return {
-            text: <>{String(c.stat || c.title || '').slice(0, 130)}{code && <span style={{ color: '#94A3B8', marginLeft: 4 }}> ({code})</span>}</>,
-            pill,
-          };
-        })}
-        overflow={overflowCards.length > 0 && (
-          <div
-            style={{ margin: '0 0 8px 0', padding: '6px 10px', background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 6, fontSize: 10.5, color: '#64748B', cursor: 'help' }}
-            title={overflowCards.map(c => `• ${String(c.stat || c.title || '').slice(0,110)} · L${c.layer ?? '?'} · conv ${c.conviction ?? '?'}`).join('\n')}
-          >
-            ⓘ {overflowCards.length} more finding{overflowCards.length > 1 ? 's' : ''} — hover to expand
+      <div
+        className="stat-card stat-card--hover"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        style={{ position: 'relative', cursor: 'help', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+      >
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: eyebrowColor, marginBottom: 6 }}>
+          {eyebrow}
+        </div>
+        <div style={{ fontSize: 15, lineHeight: 1.35, fontWeight: 700, color: '#0F172A', letterSpacing: '-.005em', marginBottom: 10 }}>
+          {action}
+        </div>
+        {stat && <div className="stat-card-divider" />}
+        {stat && (
+          <div style={{ fontSize: 12, lineHeight: 1.4, color: '#475569', marginTop: 8 }}>
+            {stat}
           </div>
         )}
-        footer={briefFooter}
-      />
+        {show && (
+          <div
+            role="tooltip"
+            style={{
+              position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+              width: 360, background: '#0F172A', color: '#E2E8F0',
+              fontSize: 11, lineHeight: 1.6, padding: '14px 16px',
+              borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+              zIndex: 200, whiteSpace: 'normal', textAlign: 'left',
+              fontWeight: 400, letterSpacing: 0,
+            }}
+          >
+            <strong style={{ display: 'block', marginBottom: 8, fontSize: 11.5, color: '#7DD3FC', fontWeight: 700 }}>
+              {hoverHeading}
+            </strong>
+            <div style={{ color: '#CBD5E1' }}>
+              {hoverLines}
+            </div>
+            {hoverFooter && (
+              <div style={{ color: '#94A3B8', fontSize: 10.5, paddingTop: 8, marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+                {hoverFooter}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     );
-  };
+  }
+
+  // Helper: render a 4-line "more findings" hover body for K and H cards.
+  const moreFindingsBody = (cards, layerMap, codeLetter) => (
+    <>
+      {cards.slice(1, 5).map((c, i) => {
+        const code = layerMap[c.layer];
+        return (
+          <div key={i} style={{ marginBottom: 4 }}>
+            • {String(c.stat || c.title || '').slice(0, 130)}
+            {code && <span style={{ color: '#7DD3FC', fontFamily: "'SF Mono',Menlo,Consolas,monospace", fontSize: 10, marginLeft: 4 }}>({code})</span>}
+          </div>
+        );
+      })}
+    </>
+  );
 
   return (
     <>
-      {/* Row 2 — uses the SAME .insights-overview-stats grid as the existing
-          top row (MarketPyramid + 2 bets) so the visual rhythm is unbroken. */}
+      {/* Row 2 — uses the SAME .insights-overview-stats grid as Row 1 so the
+          visual rhythm is unbroken. Each card mirrors StrategicBetCard:
+          eyebrow + one bold action + divider + one stat + hover for depth. */}
       <div className="insights-overview-stats" style={{ marginTop: 14 }}>
+
         {/* CARD 1 — Brief North Star */}
-        <Card
+        <NuggetBetCard
           eyebrow="★ Brief North Star"
           eyebrowColor="#7C3AED"
-          headline={briefHeadline}
-          bullets={briefBullets.length > 0 ? briefBullets : [{ text: 'No structured brief fields — using filename only.', pill: 'brief missing' }]}
-          footer="Every Nugget in this rail is filtered for relevance to this brief."
+          action={northStarAction}
+          stat={northStarStat || null}
+          hoverHeading={flav ? `${flav} brief — anchor for this analysis` : 'Brief anchor for this analysis'}
+          hoverLines={northStarHoverDetails}
+          hoverFooter="Every Nugget in this rail is filtered for relevance to this brief."
         />
 
-        {/* CARD 2 — Keywords Nuggets (8-Layer methodology) */}
-        {renderFileCard({
-          eyebrow:    '🔎 Keywords Nuggets · 8-Layer',
-          color:      '#0891B2',
-          cards:      topKeyword,
-          overflowCards: overflowKeyword,
-          layerMap:   layerToK,
-          briefFooter: `Filtered from ${keywordCards.length || 0} keyword-aligned card${keywordCards.length === 1 ? '' : 's'}, ranked by conviction.`,
-          emptyMsg:   'No keyword-aligned cards in this analysis. Upload a Google Keyword Planner CSV (or any file whose cards reference search volume, CPC, intent, etc.) to populate this Nugget.',
-        })}
+        {/* CARD 2 — Keywords Nuggets */}
+        {kAction ? (
+          <NuggetBetCard
+            eyebrow={`🔎 Keywords · 8-Layer · L${kTop.layer ?? '?'}`}
+            eyebrowColor="#0891B2"
+            action={kAction}
+            stat={kStat}
+            hoverHeading={`${overflowKeyword.length + topKeyword.length - 1} more keyword findings`}
+            hoverLines={moreFindingsBody([...topKeyword, ...overflowKeyword], layerToK, 'K')}
+            hoverFooter={`From ${keywordCards.length} keyword-aligned card${keywordCards.length === 1 ? '' : 's'}, sorted by conviction.`}
+          />
+        ) : (
+          <NuggetBetCard
+            eyebrow="🔎 Keywords · 8-Layer"
+            eyebrowColor="#0891B2"
+            action={<span style={{ color: '#94A3B8', fontStyle: 'italic' }}>No keyword data in this analysis</span>}
+            stat={null}
+            hoverHeading="DATA NOT IN SOURCES"
+            hoverLines="Upload a Google Keyword Planner CSV (or any file whose cards reference search volume, CPC, intent, etc.) to populate this Nugget."
+          />
+        )}
 
-        {/* CARD 3 — Helium 10 / E-commerce Nuggets (9-Layer methodology) */}
-        {renderFileCard({
-          eyebrow:    '🛒 Helium 10 Nuggets · 9-Layer',
-          color:      '#B91C1C',
-          cards:      topHelium,
-          overflowCards: overflowHelium,
-          layerMap:   layerToH,
-          briefFooter: `Filtered from ${heliumCards.length || 0} ecom-aligned card${heliumCards.length === 1 ? '' : 's'}, ranked by conviction.`,
-          emptyMsg:   'No Helium 10 / Amazon-aligned cards in this analysis. Upload a Helium 10 Black Box export (or Amazon ASIN file) to populate this Nugget.',
-        })}
+        {/* CARD 3 — Helium 10 Nuggets */}
+        {hAction ? (
+          <NuggetBetCard
+            eyebrow={`🛒 Helium 10 · 9-Layer · L${hTop.layer ?? '?'}`}
+            eyebrowColor="#B91C1C"
+            action={hAction}
+            stat={hStat}
+            hoverHeading={`${overflowHelium.length + topHelium.length - 1} more Helium 10 findings`}
+            hoverLines={moreFindingsBody([...topHelium, ...overflowHelium], layerToH, 'H')}
+            hoverFooter={`From ${heliumCards.length} ecom-aligned card${heliumCards.length === 1 ? '' : 's'}, sorted by conviction.`}
+          />
+        ) : (
+          <NuggetBetCard
+            eyebrow="🛒 Helium 10 · 9-Layer"
+            eyebrowColor="#B91C1C"
+            action={<span style={{ color: '#94A3B8', fontStyle: 'italic' }}>No Helium 10 / Amazon data in this analysis</span>}
+            stat={null}
+            hoverHeading="DATA NOT IN SOURCES"
+            hoverLines="Upload a Helium 10 Black Box export (or Amazon ASIN file) to populate this Nugget."
+          />
+        )}
       </div>
 
-      {/* Limitations footer — replaces the standalone Risks card. Sits below
-          the 6-card grid as a single thin strip. */}
+      {/* Limitations footer — thin chip strip below the 6-card grid. */}
       {limitations.length > 0 && (
         <div
           style={{
