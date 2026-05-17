@@ -1330,23 +1330,70 @@ Each card must carry a \`bucket\` field (one of: content/commerce/communication/
 - Layer 7 Brand SOV / competitor-steal → bucket: 'communication'
 - Layer 8 match-type / campaign blueprint → bucket: 'media'
 
+━━ THREE LENSES — MANDATORY ━━
+Every card must serve ONE of three audiences. Each card carries a \`lens\` field.
+
+1. CREATIVE LENS (7 cards) — for creative directors, copywriters, content strategists.
+   What makes a card "creative"? It reveals what to SAY in ads, copy, content:
+   • Intent + searcher language (Layer 2)
+   • Theme clusters → creative angles (Layer 3)
+   • Question keywords → content briefs (Layer 7 questions)
+   • Comparator pairs → narrative angles (Layer 7 X-vs-Y)
+   • N-grams → exact copy phrases (Layer 7)
+   • Pain-point keywords (e.g. "stain", "smell", "fade") → ad hooks
+   Always answer: "what should the creative SAY based on what people are searching?"
+
+2. MEDIA LENS (7 cards) — for media planners, PPC/SEO leads, performance teams.
+   What makes a card "media"? It reveals where to SPEND and HOW to bid:
+   • Volume Pareto, mega-keywords (Layer 1)
+   • Competition × Cost quadrants (Layer 4)
+   • Quick Wins, Rising Stars, Brand Defense (Layer 6)
+   • Match-type strategy, Negative keywords (Layer 8)
+   • Campaign blueprint, Funnel mapping TOFU/MOFU/BOFU (Layer 8)
+   • Winnability score top picks (Layer 8)
+   Always answer: "where should media dollars go and how should we structure campaigns?"
+
+3. CATEGORY LENS (6 cards) — for brand managers, category strategists, CMOs.
+   What makes a card "category"? It reveals competitive landscape + market shape:
+   • Brand SOV — own brand vs competitors (Layer 7)
+   • Competitor-steal opportunities (Layer 7)
+   • YoY trend winners/losers across the category (Layer 5)
+   • Seasonality patterns (Layer 5)
+   • Price-sensitivity signals (Layer 7)
+   • Pareto / volume concentration → who owns the category (Layer 1)
+   Always answer: "what's happening in this category and where does the brand sit?"
+
+If the data can't support 7+7+6, redistribute to a total of exactly 20 cards.
+
+━━ CONVICTION SCORE — STRICT ━━
+Score every card 0-100 on \`conviction\`. This is how confident you are the insight is REAL and ACTIONABLE.
+- 90-100: huge dataset support, unambiguous pattern, clear action.
+- 75-89:  solid pattern, action is clear with caveats.
+- 60-74:  pattern is real but action requires more investigation.
+- below 60: skip the card entirely; don't include it.
+Be honest. The frontend sorts by conviction — low scores get hidden from the default view.
+
 ━━ CARD FORMAT ━━
 TITLE (max 12 words): magazine cover line + one plain-English number from the data.
 OBSERVATION (3 sentences): hook → exact numbers from the data → strategic so-what.
 STAT: one crisp plain-English number that would make a room go quiet.
-RECOMMENDATION: ONE sentence to a PPC/SEO lead — specific action, named keyword cluster, specific platform.
+RECOMMENDATION: ONE sentence to the right audience for this lens.
+  - Creative lens → write to a copywriter (named cluster, copy angle, content format).
+  - Media lens → write to a PPC/SEO lead (named keywords, match-type, budget tilt).
+  - Category lens → write to a brand manager (positioning move, competitive response).
 
 ━━ UNIQUENESS ━━
-Write 18-24 cards total, distributed across the 8 layers per the table above. No two cards share the same opening sentence, stat, or keyword cluster.
+Exactly 20 cards. No two cards share the same opening sentence, stat, or keyword cluster.
+Across all 20, cover at least 6 of the 8 layers.
 
 ━━ CHART DATA ━━
 Pick labels + values from the sample rows (up to 8 items per chart). Use actual values from the data.
 
 ━━ CHART VARIETY — MANDATORY ━━
-Use at least 5 DIFFERENT chart types across all cards. Never hbar or bar for more than 4 cards. Never assign the same chart type to consecutive cards.
+Use at least 6 DIFFERENT chart types across all 20 cards. Never hbar or bar for more than 4 cards. Never assign the same chart type to consecutive cards.
 
 Return ONLY valid JSON — no markdown, no fences, no explanation:
-[{"title":"string","layer":1,"bucket":"search","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
+[{"title":"string","layer":1,"lens":"creative|media|category","bucket":"search","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
 
   try {
     // Use model defaults for output tokens — explicit maxOutputTokens=16384
@@ -1379,17 +1426,24 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       'scatter','combo','histogram','radar','waterfall','funnel',
     ];
 
-    return parsed.slice(0, 24).map(c => ({
+    const validLenses = ['creative', 'media', 'category'];
+
+    // 1. Normalise + validate every card returned by Gemini.
+    const normalised = parsed.map(c => ({
       title:        String(c.title || 'Insight'),
       bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'search') as GeminiInsightCard['bucket'],
       type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as ChartType,
-      conviction:   Number(c.conviction) || 85,
+      conviction:   Math.max(0, Math.min(100, Number(c.conviction) || 70)),
       obs:          String(c.obs  || ''),
       stat:         String(c.stat || ''),
       rec:          String(c.rec  || ''),
       toolLabel,
       // Layer 1-8 carried through for future "Group by layer" UI.
       layer:        Number(c.layer) >= 1 && Number(c.layer) <= 8 ? Number(c.layer) : undefined,
+      // Creative / Media / Category lens — drives 3-lens curation in the UI.
+      lens:         validLenses.includes(String(c.lens || '').toLowerCase())
+                      ? String(c.lens).toLowerCase()
+                      : undefined,
       chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
       chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
       chartValues2: Array.isArray(c.chartValues2) && (c.chartValues2 as any[]).length > 0
@@ -1397,6 +1451,49 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       chartTitle:   c.chartTitle  ? String(c.chartTitle)  : undefined,
       chartSeries:  Array.isArray(c.chartSeries)  ? c.chartSeries.map(String)  : undefined,
     } as any));
+
+    // 2. Cap at 20 cards. If the model returned more, keep the top 20 by
+    //    conviction (lens-balanced — see step 3).
+    // 3. Sort by conviction desc inside each lens, then interleave so the
+    //    default top-12 view in the UI has all three lenses represented.
+    const byLens: Record<string, any[]> = { creative: [], media: [], category: [], _other: [] };
+    for (const card of normalised) {
+      const k = card.lens && byLens[card.lens] ? card.lens : '_other';
+      byLens[k].push(card);
+    }
+    for (const k of Object.keys(byLens)) {
+      byLens[k].sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
+    }
+
+    // Target: 7 creative + 7 media + 6 category. If a lens is short, fill from
+    // _other (cards Gemini didn't tag); if still short, top up from neighbours
+    // ordered by conviction.
+    const TARGET = { creative: 7, media: 7, category: 6 };
+    const final: any[] = [];
+    (['creative', 'media', 'category'] as const).forEach(lens => {
+      const want = TARGET[lens];
+      const have = byLens[lens].splice(0, want);
+      while (have.length < want && byLens._other.length) have.push(byLens._other.shift());
+      have.forEach(c => { if (!c.lens) c.lens = lens; });
+      final.push(...have);
+    });
+    // Fill any remaining slots (up to 20) with the highest-conviction leftovers
+    while (final.length < 20) {
+      const pool = [
+        ...byLens.creative, ...byLens.media, ...byLens.category, ...byLens._other,
+      ].sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
+      if (pool.length === 0) break;
+      final.push(pool[0]);
+      // Remove the taken card from whichever bucket it came from
+      for (const k of ['creative', 'media', 'category', '_other'] as const) {
+        const idx = byLens[k].indexOf(pool[0]);
+        if (idx >= 0) { byLens[k].splice(idx, 1); break; }
+      }
+    }
+    // Final global sort by conviction desc — frontend keeps this order.
+    return final
+      .slice(0, 20)
+      .sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
 
   } catch (err) {
     console.error('[Gemini] analyzeKeywordPlannerForPRISM failed:', (err as Error).message);

@@ -67,19 +67,27 @@ function parseRow(line: string): string[] {
     );
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`\n✅ Returned ${cards.length} cards in ${elapsed}s`);
-    const byLayer: Record<string, number> = {};
+    const byLayer:  Record<string, number> = {};
     const byBucket: Record<string, number> = {};
+    const byLens:   Record<string, number> = {};
+    const convictions: number[] = [];
     cards.forEach((c: any) => {
       const L = String(c.layer ?? '?');
-      byLayer[L] = (byLayer[L] ?? 0) + 1;
+      byLayer[L]  = (byLayer[L] ?? 0) + 1;
       byBucket[c.bucket] = (byBucket[c.bucket] ?? 0) + 1;
+      byLens[c.lens ?? '?'] = (byLens[c.lens ?? '?'] ?? 0) + 1;
+      if (typeof c.conviction === 'number') convictions.push(c.conviction);
     });
     console.log('Layers:', byLayer);
     console.log('Buckets:', byBucket);
-    console.log('\nFirst 3 cards:');
-    cards.slice(0, 3).forEach((c: any, i) => {
-      console.log(`  ${i + 1}. [L${c.layer ?? '?'} · ${c.bucket}] ${c.title}`);
-      console.log(`     stat: ${c.stat}`);
+    console.log('Lenses:', byLens);
+    if (convictions.length) {
+      convictions.sort((a, b) => b - a);
+      console.log(`Conviction → min ${convictions[convictions.length - 1]}, max ${convictions[0]}, median ${convictions[Math.floor(convictions.length / 2)]}`);
+    }
+    console.log('\nAll cards (sorted by conviction desc):');
+    cards.forEach((c: any, i: number) => {
+      console.log(`  ${String(i + 1).padStart(2)}. [conv ${String(c.conviction).padStart(3)} · L${c.layer ?? '?'} · ${(c.lens ?? '?').padEnd(8)} · ${c.bucket}] ${c.title}`);
     });
   } catch (err: any) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
