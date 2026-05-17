@@ -931,6 +931,400 @@ function StrategicBetCard({ bet }) {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+ * NuggetsRail — Insight Nuggets v2.
+ *
+ * Returns a Fragment with:
+ *   • a 2nd `.insights-overview-stats` grid row (3 cards: Brief North Star
+ *     + Keywords Nuggets + Helium 10 Nuggets) that visually continues the
+ *     existing top row (MarketPyramid + 2 Strategic Bets)
+ *   • a thin "Limitations" footer strip beneath the grid (replaces the
+ *     standalone Risks card to save vertical space)
+ *
+ * Cards in the second row:
+ *   1. ★ Brief North Star      — brand/audience/market/objective from analysis.brief
+ *   2. 🔎 Keywords Nuggets     — charts where toolLabel matches KEYWORD or content
+ *                                contains keyword/search/CPC/volume signals
+ *   3. 🛒 Helium 10 Nuggets    — charts where toolLabel matches AMAZON/HELIUM/BSR
+ *                                or content contains ASIN/listing/review/Buy-Box
+ *
+ * If a card has no matching data (e.g. no keyword file uploaded), it shows
+ * a DATA NOT IN SOURCES placeholder per v2 spec — never invents content.
+ *
+ * See .claude/skills/keyword-strategist/SKILL.md and
+ *     .claude/skills/commerce-strategist/SKILL.md for the v2 contract.
+ * ───────────────────────────────────────────────────────────────────── */
+function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, categoryIntel }) {
+  const brief  = analysis?.brief ?? {};
+  const toolUp = String(sourceBadge || analysis?.results_json?.meta?.domain || 'TABULAR').toUpperCase();
+
+  /* ── Prefer DETERMINISTIC Nuggets if the analyzer saved them.
+        results_json.nuggets is computed server-side from raw rows (Pareto,
+        HHI, weighted YoY, brand SOV) — not picked from Gemini's titles.
+        Older analyses won't have this field; we fall through to the chart-
+        picking logic below for those. See lib/nuggets/synthesize.ts. ── */
+  const computedNuggets = analysis?.results_json?.nuggets ?? null;
+  const hasComputedAsk      = !!(computedNuggets?.ask?.headline);
+  const hasComputedKeyword  = !!(computedNuggets?.keyword?.headline);
+  const hasComputedHelium10 = !!(computedNuggets?.helium10?.headline);
+
+  /* ── Content-pattern detectors (multi-source uploads need these because
+   *    every card may share the same `MULTI-SOURCE` toolLabel) ───────── */
+  const KEYWORD_RE = /\b(keyword|search\s*volume|monthly\s*searches|cpc|bid|search\s*term|long.?tail|head.?term|branded\s*search|negative\s*keyword|search\s*intent|impression\s*share|seo|ppc|google\s*search|paid\s*search|organic\s*search|quick\s*win)\b/i;
+  const HELIUM_RE  = /\b(asin|bsr|listing|product\s*detail|review\s*count|rating|buy\s*box|a\+\s*content|backend|category\s*tree|amazon|helium\s*10|blackbox|cerebro|magnet|fba|sponsored\s*product)\b/i;
+  const cardText   = (c) => `${c.title || ''} ${c.stat || ''} ${c.obs || ''}`;
+  const isKeywordCard = (c) =>
+    /KEYWORD/i.test(c.toolLabel || '') ||
+    /KEYWORD/i.test(c.bucket === 'search' ? 'KEYWORD' : '') ||
+    (c.layer != null && /KEYWORD|MULTI/i.test(toolUp) && KEYWORD_RE.test(cardText(c))) ||
+    KEYWORD_RE.test(cardText(c));
+  const isHeliumCard = (c) =>
+    /AMAZON|HELIUM|BLACKBOX|BSR|FLIPKART|MEESHO/i.test(c.toolLabel || '') ||
+    HELIUM_RE.test(cardText(c));
+
+  /* ── Card 1: Brief North Star ─────────────────────────────────────── */
+  const briefBullets = [];
+  if (brief.brand)     briefBullets.push({ text: <>Brand: <strong>{brief.brand}</strong>{brief.category ? ` · ${brief.category}` : ''}</>, pill: 'brief §audience' });
+  if (audienceDescriptor) briefBullets.push({ text: <>Audience: {audienceDescriptor}</>, pill: 'brief §audience' });
+  if (brief.geography || brief.market) briefBullets.push({ text: <>Market: <strong>{brief.geography || brief.market}</strong>{categoryIntel?.marketValueINR ? ` · ${categoryIntel.marketValueINR}` : ''}</>, pill: 'brief §market' });
+  if (brief.objective) briefBullets.push({ text: <>Objective: {brief.objective}</>, pill: 'brief §objective' });
+  if (brief.competitors) briefBullets.push({ text: <>Competitors: {brief.competitors}</>, pill: 'brief §competitors' });
+  // Brief flavour heuristic
+  const flav = (() => {
+    const t = `${brief.objective || ''} ${brief.brand || ''}`.toLowerCase();
+    if (/\blaunch|new\s+sku|enter|whitespace\b/.test(t)) return 'LAUNCH';
+    if (/\bdefend|protect|threat|leader|hold\b/.test(t)) return 'DEFEND';
+    if (/\bgrow|expand|share|adjacenc/.test(t))         return 'GROW';
+    return null;
+  })();
+  const briefHeadline = flav
+    ? <>Brief flavour: <strong>{flav}</strong> — {brief.objective || brief.brand || 'objective unstated'}.</>
+    : (brief.objective
+        ? <strong>{brief.objective}</strong>
+        : 'No brief uploaded — analysis is descriptive only.');
+
+  /* ── Card 2: Keywords Nuggets ─────────────────────────────────────
+        Prioritise category-LEAD layers (Volume L1, Trend L5, Brand SOV L7)
+        over tactical layers (recommendations L6, toolkit L8). The Nugget
+        should teach the reader about the CATEGORY shape, not surface a
+        specific tactical recommendation. */
+  const KEYWORD_PRIORITY_LAYERS = [1, 5, 7, 3];   // category-shape layers
+  const KEYWORD_DETAIL_LAYERS   = [2, 4, 6, 8];   // tactical / depth layers
+  const keywordCards = [...(charts || [])]
+    .filter(isKeywordCard)
+    .filter(c => (c.conviction ?? 0) >= 70)
+    .sort((a, b) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0));
+  // ACTION = best category-shape card if available, else best overall.
+  const keywordAction = keywordCards.find(c => KEYWORD_PRIORITY_LAYERS.includes(Number(c.layer))) || keywordCards[0];
+  // STAT = best tactical card from a DIFFERENT layer than the action.
+  const keywordStat = keywordCards.find(c => c !== keywordAction && KEYWORD_DETAIL_LAYERS.includes(Number(c.layer)))
+                    || keywordCards.find(c => c !== keywordAction);
+  // HOVER overflow = everything else, capped at 5.
+  const keywordHoverCards = keywordCards.filter(c => c !== keywordAction && c !== keywordStat).slice(0, 5);
+  // ── Attractive plain-English names per layer (drives the eyebrow on the card).
+  //    Each name signals what kind of category learning the card delivers,
+  //    without making the reader decode "L5" or "Volume bucket". ──────
+  const layerToK = {
+    1: 'Search Demand',        // Volume Landscape — total + buckets + Pareto
+    2: 'What Shoppers Want',   // Intent & Length
+    3: 'Conversation Themes',  // Theme Clusters
+    4: 'The Bid Field',        // Competition × Cost
+    5: "What's Heating Up",    // Trend & Seasonality
+    6: 'Quick Wins',           // Strategic Recommendations
+    7: 'Who Owns Search',      // Deep Intel — Brand SOV
+    8: 'The Game Plan',        // Senior Toolkit
+  };
+
+  /* ── Card 3: Helium 10 / E-commerce Nuggets ───────────────────────
+        Prioritise category-LEAD layers (HHI L1, Brand-split L3, Trend L6,
+        Opportunity score L7) over vulnerability/competitive flags. */
+  const HELIUM_PRIORITY_LAYERS = [1, 3, 6, 7];
+  const HELIUM_DETAIL_LAYERS   = [4, 5, 8, 9];
+  const heliumCards = [...(charts || [])]
+    .filter(isHeliumCard)
+    .filter(c => (c.conviction ?? 0) >= 70)
+    .sort((a, b) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0));
+  const heliumAction = heliumCards.find(c => HELIUM_PRIORITY_LAYERS.includes(Number(c.layer))) || heliumCards[0];
+  const heliumStat   = heliumCards.find(c => c !== heliumAction && HELIUM_DETAIL_LAYERS.includes(Number(c.layer)))
+                    || heliumCards.find(c => c !== heliumAction);
+  const heliumHoverCards = heliumCards.filter(c => c !== heliumAction && c !== heliumStat).slice(0, 5);
+  // ── Attractive plain-English names per layer for Helium 10. ──────
+  const layerToH = {
+    1: 'Shelf Concentration',  // Category HHI + KPI strip
+    3: 'Shelf Leaders',        // Brand share by revenue
+    4: 'Reviews → Sales',      // Reviews × Sales correlation
+    5: 'Hero SKUs',            // Top SKUs by revenue
+    6: 'Shelf Momentum',       // 90d trend
+    7: 'The Score',            // Opportunity score
+    8: 'Persona Plays',        // Persona-specific actions
+    9: 'Open Ground',          // Whitespace + vulnerability
+  };
+
+  /* ── Footer: Limitations strip (replaces standalone Risks card) ──── */
+  // Inline strip — each item rendered as a small chip. Static items keyed
+  // by the tool(s) present in this analysis; dynamic items flag missing
+  // layers per file type.
+  const limitations = [];
+  if (keywordCards.length > 0) {
+    limitations.push('Keywords data ≠ organic rankings (needs GSC/SEMrush)');
+    limitations.push('No CTR / conversion data in Keyword Planner');
+  }
+  if (heliumCards.length > 0) {
+    limitations.push('Helium 10 lacks monthly seasonality (use Trendster)');
+    limitations.push('No ACoS / search-term performance (use Amazon Ads + Cerebro)');
+  }
+  if (keywordCards.length === 0 && heliumCards.length === 0) {
+    limitations.push('Generic tabular signal — causality and trended view limited');
+  }
+  const layersPresent = new Set((charts || []).map(c => c.layer).filter(Boolean));
+  if (keywordCards.length > 0) {
+    const missed = [1,2,3,4,5,6,7,8].filter(L => !layersPresent.has(L));
+    if (missed.length > 0) limitations.push(`Keywords: layer${missed.length>1?'s':''} ${missed.join(', ')} returned 0 cards`);
+  }
+  if (heliumCards.length > 0) {
+    const missed = [1,3,4,5,6,7,8,9].filter(L => !layersPresent.has(L));
+    if (missed.length > 0) limitations.push(`Helium 10: layer${missed.length>1?'s':''} ${missed.join(', ')} returned 0 cards`);
+  }
+
+  /* ── Distil each card down to: ONE bold headline + ONE supporting stat.
+        Everything else lives in a hover tooltip. Mirrors StrategicBetCard. */
+
+  const truncate = (s, n) => {
+    const v = String(s ?? '');
+    return v.length > n ? v.slice(0, n - 2) + '…' : v;
+  };
+
+  /* ── FORMULA (consistent across all 3 cards in Row 2) ────────────────
+   *   EYEBROW   — attractive plain-English category name
+   *   HEADLINE  — bold one-line finding with the main number
+   *   STAT      — muted one-line backing fact (two facts joined by · middot)
+   * ──────────────────────────────────────────────────────────────────── */
+
+  // CARD 1 — "★ The Ask" (brief anchor)
+  const askHeadline = brief.brand && brief.objective
+    ? truncate(`${brief.brand} — ${brief.objective}`, 110)
+    : (brief.objective ? truncate(brief.objective, 110)
+        : (brief.brand ? brief.brand : null));
+  const askStat = [
+    brief.category,
+    audienceDescriptor,
+    brief.geography || brief.market,
+  ].filter(Boolean).join(' · ');
+  const askHoverDetails = (
+    <>
+      {categoryIntel?.marketValueINR ? <div>📊 Category value: <strong>{categoryIntel.marketValueINR}</strong>{categoryIntel?.cagr ? ` · ${categoryIntel.cagr} CAGR` : ''}</div> : null}
+      {brief.competitors ? <div>🆚 {brief.competitors}</div> : null}
+      {flav ? <div>🎯 Brief flavour: <strong>{flav}</strong></div> : null}
+    </>
+  );
+
+  // CARD 2 — Keywords (CATEGORY-lead: Volume / YoY / Brand SOV)
+  const kHeadline   = keywordAction?.title ? truncate(keywordAction.title, 110) : null;
+  const kStat       = keywordStat?.stat ? truncate(keywordStat.stat, 90) : (keywordAction?.stat ? truncate(keywordAction.stat, 90) : null);
+  const kEyebrow    = keywordAction
+    ? `🔎 ${layerToK[Number(keywordAction.layer)] || 'Search Pulse'}`
+    : null;
+
+  // CARD 3 — Helium 10 (CATEGORY-lead: HHI / Brand split / Trend)
+  let hHeadline   = heliumAction?.title ? truncate(heliumAction.title, 110) : null;
+  let hStat       = heliumStat?.stat ? truncate(heliumStat.stat, 90) : (heliumAction?.stat ? truncate(heliumAction.stat, 90) : null);
+  let hEyebrow    = heliumAction
+    ? `🛒 ${layerToH[Number(heliumAction.layer)] || 'Shelf Pulse'}`
+    : null;
+  let hHoverLines = null; // overridden from computedNuggets when present
+
+  // CARD 1 + 2 also become reassignable so computed nuggets can override
+  // them without losing the chart-picked fallback.
+  let askEyebrowOverride = null;  // 'The Ask' is always the eyebrow
+  let kHeadline_  = keywordAction?.title ? truncate(keywordAction.title, 110) : null;
+  let kStat_      = keywordStat?.stat ? truncate(keywordStat.stat, 90) : (keywordAction?.stat ? truncate(keywordAction.stat, 90) : null);
+  let kEyebrow_   = keywordAction
+    ? `🔎 ${layerToK[Number(keywordAction.layer)] || 'Search Pulse'}`
+    : null;
+  let kHoverLines = null;
+  let askHeadline_ = askHeadline;
+  let askStat_     = askStat;
+  let askHoverLines_ = null;
+
+  /* ── OVERRIDE with computed nuggets when the analyzer saved them ── */
+  if (hasComputedAsk) {
+    askHeadline_   = computedNuggets.ask.headline;
+    askStat_       = computedNuggets.ask.stat || askStat_;
+    askHoverLines_ = computedNuggets.ask.hoverLines;
+  }
+  if (hasComputedKeyword) {
+    kEyebrow_   = computedNuggets.keyword.eyebrow || kEyebrow_;
+    kHeadline_  = computedNuggets.keyword.headline;
+    kStat_      = computedNuggets.keyword.stat;
+    kHoverLines = computedNuggets.keyword.hoverLines;
+  }
+  if (hasComputedHelium10) {
+    hEyebrow    = computedNuggets.helium10.eyebrow || hEyebrow;
+    hHeadline   = computedNuggets.helium10.headline;
+    hStat       = computedNuggets.helium10.stat;
+    hHoverLines = computedNuggets.helium10.hoverLines;
+  }
+
+  /* ── Bet-style card component (identical signature to StrategicBetCard
+        but with configurable eyebrow colour + richer hover body) ──── */
+  function NuggetBetCard({ eyebrow, eyebrowColor, action, stat, hoverHeading, hoverLines, hoverFooter }) {
+    const [show, setShow] = useState(false);
+    return (
+      <div
+        className="stat-card stat-card--hover"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        style={{ position: 'relative', cursor: 'help', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+      >
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: eyebrowColor, marginBottom: 6 }}>
+          {eyebrow}
+        </div>
+        <div style={{ fontSize: 15, lineHeight: 1.35, fontWeight: 700, color: '#0F172A', letterSpacing: '-.005em', marginBottom: 10 }}>
+          {action}
+        </div>
+        {stat && <div className="stat-card-divider" />}
+        {stat && (
+          <div style={{ fontSize: 12, lineHeight: 1.4, color: '#475569', marginTop: 8 }}>
+            {stat}
+          </div>
+        )}
+        {show && (
+          <div
+            role="tooltip"
+            style={{
+              position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+              width: 360, background: '#0F172A', color: '#E2E8F0',
+              fontSize: 11, lineHeight: 1.6, padding: '14px 16px',
+              borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+              zIndex: 200, whiteSpace: 'normal', textAlign: 'left',
+              fontWeight: 400, letterSpacing: 0,
+            }}
+          >
+            <strong style={{ display: 'block', marginBottom: 8, fontSize: 11.5, color: '#7DD3FC', fontWeight: 700 }}>
+              {hoverHeading}
+            </strong>
+            <div style={{ color: '#CBD5E1' }}>
+              {hoverLines}
+            </div>
+            {hoverFooter && (
+              <div style={{ color: '#94A3B8', fontSize: 10.5, paddingTop: 8, marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+                {hoverFooter}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Helper: render a 4-line "more findings" hover body for K and H cards.
+  // Shows the layer-name (e.g. "Volume bucket", "YoY trend") as the tag —
+  // teaches the reader what kind of insight each line is.
+  const moreFindingsBody = (cards, layerMap) => (
+    <>
+      {cards.slice(0, 4).map((c, i) => {
+        const tag = layerMap[Number(c.layer)] || (c.layer ? `Layer ${c.layer}` : null);
+        return (
+          <div key={i} style={{ marginBottom: 4 }}>
+            • {String(c.stat || c.title || '').slice(0, 130)}
+            {tag && <span style={{ color: '#7DD3FC', fontSize: 10, marginLeft: 4 }}>({tag})</span>}
+          </div>
+        );
+      })}
+    </>
+  );
+
+  /* ── Decide which cards render. Empty domains are CUT entirely
+        (no placeholder slot) per user direction. ───────────────────── */
+  const showAsk      = !!(askHeadline_ || askStat_);
+  const showKeywords = !!kHeadline_;
+  const showHelium   = !!hHeadline;
+  const cardCount    = (showAsk ? 1 : 0) + (showKeywords ? 1 : 0) + (showHelium ? 1 : 0);
+  if (cardCount === 0) return null;
+
+  // Helper: render computed hoverLines as bulleted body for tooltip.
+  const renderComputedHover = (lines) => lines && lines.length > 0 ? (
+    <>
+      {lines.map((l, i) => (
+        <div key={i} style={{ marginBottom: 4 }}>• {l}</div>
+      ))}
+    </>
+  ) : null;
+
+  return (
+    <>
+      {/* Row 2 — uses the SAME .insights-overview-stats grid as Row 1 so the
+          visual rhythm is unbroken. Cards that have no data are cut.
+          Headlines/stats prefer DETERMINISTIC server-computed nuggets
+          (results_json.nuggets), falling back to chart-picked content for
+          older analyses that pre-date the synthesize module. */}
+      <div className="insights-overview-stats" style={{ marginTop: 14 }}>
+
+        {showAsk && (
+          <NuggetBetCard
+            eyebrow="★ The Ask"
+            eyebrowColor="#7C3AED"
+            action={askHeadline_ || askStat_}
+            stat={askHeadline_ && askStat_ ? askStat_ : null}
+            hoverHeading={flav ? `${flav} brief — anchor for this analysis` : 'Brief anchor for this analysis'}
+            hoverLines={hasComputedAsk ? renderComputedHover(askHoverLines_) : askHoverDetails}
+            hoverFooter="Every card on this rail is filtered for relevance to this brief."
+          />
+        )}
+
+        {showKeywords && (
+          <NuggetBetCard
+            eyebrow={kEyebrow_}
+            eyebrowColor="#0891B2"
+            action={kHeadline_}
+            stat={kStat_}
+            hoverHeading={hasComputedKeyword ? 'More search facts' : `${keywordHoverCards.length || 0} more search findings`}
+            hoverLines={hasComputedKeyword ? renderComputedHover(kHoverLines) : moreFindingsBody(keywordHoverCards, layerToK)}
+            hoverFooter={hasComputedKeyword
+              ? `Computed from raw keyword rows · Pareto, weighted YoY, brand SOV.`
+              : `From ${keywordCards.length} keyword-aligned card${keywordCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
+          />
+        )}
+
+        {showHelium && (
+          <NuggetBetCard
+            eyebrow={hEyebrow}
+            eyebrowColor="#B91C1C"
+            action={hHeadline}
+            stat={hStat}
+            hoverHeading={hasComputedHelium10 ? 'More shelf facts' : `${heliumHoverCards.length || 0} more shelf findings`}
+            hoverLines={hasComputedHelium10 ? renderComputedHover(hHoverLines) : moreFindingsBody(heliumHoverCards, layerToH)}
+            hoverFooter={hasComputedHelium10
+              ? `Computed from raw ASIN rows · HHI, brand share, reviews × sales correlation.`
+              : `From ${heliumCards.length} ecom-aligned card${heliumCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
+          />
+        )}
+      </div>
+
+      {/* Limitations footer — thin chip strip below the 6-card grid. */}
+      {limitations.length > 0 && (
+        <div
+          style={{
+            marginTop: 12, padding: '8px 14px',
+            background: '#FFFBEB', border: '1px solid #FDE68A',
+            borderRadius: 8, fontSize: 11, lineHeight: 1.55, color: '#78350F',
+            display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
+          }}
+        >
+          <strong style={{ color: '#B45309', letterSpacing: '0.04em', fontSize: 10.5, textTransform: 'uppercase' }}>
+            ⚠ What's missing:
+          </strong>
+          {limitations.map((l, i) => (
+            <span key={i} style={{ background: '#FEF3C7', padding: '2px 8px', borderRadius: 999, fontSize: 10.5 }}>
+              {l}
+            </span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function SlaStrip({ brief }) {
   const planned = brief.sla_due_at ? new Date(brief.sla_due_at) : null;
   const actual  = brief.actual_completed_at ? new Date(brief.actual_completed_at) : null;
@@ -2134,6 +2528,18 @@ function AnalysisDetail({ id }) {
                 ))}
               </aside>
             )}
+
+            {/* ── Row 2 of stats: Insight Nuggets v2 (Brief North Star +
+                Keywords + Helium 10), plus a limitations footer below the
+                full 6-card grid. Returns a Fragment so it inlines into the
+                same .insights-overview-inner as the top row. */}
+            <NuggetsRail
+              analysis={analysis}
+              charts={charts}
+              sourceBadge={sourceBadge}
+              audienceDescriptor={audienceDescriptor}
+              categoryIntel={categoryIntel}
+            />
           </div>
         </section>
       )}

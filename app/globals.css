@@ -288,6 +288,7 @@ textarea {resize:vertical;min-height:80px}
   .insights-overview-snapshot {font-size:14.5px}
 }
 
+
 /* Bucket-tab strip — sits on the SAME slate-50 surface as the banner
    above and the body below. Only 1px borders mark the boundaries; no
    surface-colour change between zones (drops the 4-greys-stacked feel). */

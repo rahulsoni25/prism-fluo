@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Prism Fluo · Insight Nuggets v2 — Prototype</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────────────
+   *  Visual vocabulary mirrors the live insights page (app/globals.css).
+   *  This is a STATIC mock — open in browser, eyeball, decide.
+   * ───────────────────────────────────────────────────────────────────── */
+  *,*::before,*::after { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif; background:#F1F5F9; color:#0F172A; }
+  .container { max-width:1280px; margin:0 auto; padding:0 36px; }
+
+  /* Top app bar — mock of the dark header */
+  .header { background:#0F172A; color:#fff; padding:14px 0; font-size:14px; }
+  .header-inner { display:flex; align-items:center; gap:24px; max-width:1280px; margin:0 auto; padding:0 36px; }
+  .header-logo { font-weight:800; letter-spacing:0.04em; }
+  .header-spacer { flex:1; }
+
+  /* ─── Executive Summary (existing — unchanged) ───────────────────── */
+  .insights-overview { background:#F8FAFC; padding:36px 0 30px; position:relative; }
+  .insights-overview::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:3px;
+    background:linear-gradient(90deg,#1E3A8A 0%,#2563EB 45%,#14B8A6 100%);
+  }
+  .insights-overview-eyebrow {
+    font-size:11px; font-weight:700; letter-spacing:0.16em; text-transform:uppercase;
+    color:#64748B; margin-bottom:12px;
+  }
+  .insights-overview-headline {
+    font-size:30px; font-weight:800; line-height:1.22; color:#0F172A;
+    margin:0 0 14px 0; letter-spacing:-0.015em;
+  }
+  .insights-overview-snapshot {
+    font-size:15px; line-height:1.72; color:#475569; margin:0;
+  }
+  .insights-overview-stats {
+    display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:14px; margin-top:22px;
+  }
+  .stat-card {
+    background:#fff; border:1px solid #E2E8F0; border-radius:10px;
+    padding:14px 16px; box-shadow:0 1px 2px rgba(15,23,42,0.04);
+  }
+  .stat-card-eyebrow {
+    font-size:10.5px; font-weight:800; letter-spacing:0.08em;
+    text-transform:uppercase; color:#0891B2; margin-bottom:6px;
+  }
+  .stat-card-value { font-size:32px; font-weight:800; color:#1E3A8A; }
+  .stat-card-label { font-size:12.5px; color:#475569; line-height:1.45; margin-top:4px; }
+  .stat-card-action { font-size:15px; line-height:1.35; font-weight:700; color:#0F172A; margin-bottom:10px; }
+  .stat-card-divider { height:1px; background:#E2E8F0; margin:8px 0; }
+  .targeting-ribbon {
+    margin-top:10px; padding:6px 10px; background:#E0F2FE; border:1px solid #BAE6FD;
+    border-radius:6px; font-size:11px; color:#0369A1;
+  }
+  .market-meta { font-size:11.5px; color:#64748B; margin-top:8px; line-height:1.55; }
+
+  /* ─── NEW: Insight Nuggets v2 rail ────────────────────────────────── */
+  .nuggets-rail { background:#FFFFFF; padding:32px 0 36px; border-top:1px solid #E2E8F0; }
+  .nuggets-rail-eyebrow {
+    font-size:11px; font-weight:700; letter-spacing:0.16em; text-transform:uppercase;
+    color:#0F766E; margin-bottom:14px;
+  }
+  .nuggets-rail-title {
+    font-size:20px; font-weight:800; color:#0F172A; margin:0 0 6px 0; letter-spacing:-0.01em;
+  }
+  .nuggets-rail-sub {
+    font-size:13px; color:#64748B; margin:0 0 22px 0;
+  }
+  .nuggets-grid {
+    display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px;
+  }
+
+  .nugget-card {
+    background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px;
+    padding:22px 22px 18px; display:flex; flex-direction:column;
+    box-shadow:0 2px 4px rgba(15,23,42,0.03);
+    transition:border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .nugget-card:hover { border-color:#94A3B8; box-shadow:0 6px 18px -4px rgba(15,23,42,0.12); }
+  .nugget-card-eyebrow {
+    font-size:10.5px; font-weight:800; letter-spacing:0.1em;
+    text-transform:uppercase; margin-bottom:10px;
+  }
+  .nugget-card.is-northstar  .nugget-card-eyebrow { color:#7C3AED; }   /* purple — strategy */
+  .nugget-card.is-file       .nugget-card-eyebrow { color:#0891B2; }   /* teal — data */
+  .nugget-card.is-risk       .nugget-card-eyebrow { color:#B45309; }   /* amber — caution */
+
+  .nugget-card-headline {
+    font-size:16px; font-weight:700; line-height:1.35;
+    color:#0F172A; letter-spacing:-0.005em; margin:0 0 14px 0;
+  }
+  .nugget-card-headline strong { background:linear-gradient(180deg,transparent 55%,#FEF3C7 55%); padding:0 2px; }
+  .nugget-bullets { list-style:none; padding:0; margin:0 0 14px 0; }
+  .nugget-bullets li {
+    font-size:13px; line-height:1.5; color:#1E293B;
+    padding:6px 0 6px 14px; position:relative; border-top:1px dashed #E2E8F0;
+  }
+  .nugget-bullets li:first-child { border-top:none; padding-top:0; }
+  .nugget-bullets li::before {
+    content:'•'; color:#94A3B8; position:absolute; left:0; top:6px; font-weight:700;
+  }
+  .nugget-bullets li:first-child::before { top:0; }
+  .source-pill {
+    display:inline-block; margin-left:6px; padding:1px 7px;
+    background:#F1F5F9; border:1px solid #E2E8F0; border-radius:999px;
+    font-size:10.5px; font-family:'SF Mono',Menlo,Consolas,monospace; color:#64748B;
+  }
+  .nugget-overflow {
+    margin:6px 0 14px 0; padding:8px 12px; background:#F8FAFC;
+    border:1px dashed #CBD5E1; border-radius:8px;
+    font-size:11.5px; color:#64748B; cursor:help; position:relative;
+  }
+  .nugget-overflow:hover .nugget-overflow-tip { display:block; }
+  .nugget-overflow-tip {
+    display:none; position:absolute; top:calc(100% + 6px); left:0; right:0;
+    background:#0F172A; color:#E2E8F0; padding:12px 14px; border-radius:8px;
+    font-size:11.5px; line-height:1.6; z-index:20; box-shadow:0 8px 24px rgba(0,0,0,0.18);
+  }
+  .nugget-overflow-tip strong { color:#7DD3FC; font-weight:700; display:block; margin-bottom:6px; }
+  .nugget-tiein {
+    margin-top:auto; padding-top:12px; border-top:1px solid #E2E8F0;
+    font-size:11.5px; line-height:1.5; color:#475569;
+  }
+  .nugget-tiein strong { color:#0F172A; font-weight:700; }
+
+  /* ─── Bucket tabs (existing — preserved, shown for context) ───────── */
+  .bucket-tabs-bar {
+    background:#F1F5F9; padding:16px 0; border-top:1px solid #E2E8F0;
+  }
+  .bucket-tabs-bar-inner {
+    display:flex; align-items:center; justify-content:space-between;
+    max-width:1280px; margin:0 auto; padding:0 36px;
+  }
+  .bucket-tabs { display:flex; gap:6px; }
+  .bucket-tab {
+    padding:8px 14px; background:#fff; border:1px solid #E2E8F0; border-radius:999px;
+    font-size:12px; font-weight:600; color:#475569; cursor:pointer;
+  }
+  .bucket-tab.active { background:#0F172A; color:#fff; border-color:#0F172A; }
+  .ins-meta { font-size:11.5px; color:#64748B; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <span class="header-logo">P  PRISM</span>
+    <span>← My Briefs</span>
+    <span>🎨 Presentations</span>
+    <span class="header-spacer"></span>
+    <span style="opacity:.7">rahulsoni25 · Sign out</span>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════
+ EXISTING — Executive Summary (UNCHANGED in this proposal)
+ ════════════════════════════════════════════════════════════════════ -->
+<section class="insights-overview">
+  <div class="container">
+    <div class="insights-overview-eyebrow">Executive Summary</div>
+    <h2 class="insights-overview-headline">
+      Powder price searches remain strong, yet liquid and fabric care detergents are surging by over 20%.
+    </h2>
+    <p class="insights-overview-snapshot">
+      For this brief, we are really talking to Indian families making considered choices for their daily laundry needs.
+      The strategic tension is that while cost remains crucial, their searches increasingly reflect a desire for advanced
+      care and specialized detergent formats.
+    </p>
+
+    <div class="insights-overview-stats">
+      <!-- existing MARKET SIZE card -->
+      <div class="stat-card">
+        <div class="stat-card-eyebrow">Market Size</div>
+        <div class="stat-card-value">84M</div>
+        <div class="stat-card-label">addressable audience</div>
+        <div class="targeting-ribbon">
+          <strong>TARGETING:</strong> All Genders · 18–24, 25–34 · SEC All SECs · Metro Cities, Tier 1, Tier 2
+        </div>
+        <div class="market-meta">
+          ₹2,593 Cr addressable (audience)<br>
+          ₹45,000 Cr all-India · 4.1% CAGR · ~55M queries/mo
+        </div>
+      </div>
+      <!-- existing COMMERCE bet -->
+      <div class="stat-card">
+        <div class="stat-card-eyebrow">Commerce</div>
+        <div class="stat-card-action">
+          Analyse Ghadi's recent marketing and pricing actions to understand its growth drivers — adapt similar high-velocity launch tacti…
+        </div>
+        <div class="stat-card-divider"></div>
+        <div class="stat-card-label">Ghadi's sales surged 51% in 90 days, outpacing top brands' declines.</div>
+      </div>
+      <!-- existing CONTENT bet -->
+      <div class="stat-card">
+        <div class="stat-card-eyebrow">Content</div>
+        <div class="stat-card-action">
+          Develop a YouTube content series featuring male influencers demonstrating Sargam Det's effectiveness on activewear stains, targe…
+        </div>
+        <div class="stat-card-divider"></div>
+        <div class="stat-card-label">Active males actively search for 'gym clothes washing tips' and 'stain removal for sport…</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════════
+ NEW — Insight Nuggets v2 rail (full-width grid, sits below Exec Summary)
+ ════════════════════════════════════════════════════════════════════ -->
+<section class="nuggets-rail">
+  <div class="container">
+    <div class="nuggets-rail-eyebrow">Insight Nuggets</div>
+    <h3 class="nuggets-rail-title">5 scannable, decision-ready findings tied to your brief</h3>
+    <p class="nuggets-rail-sub">
+      Every claim cites its source. Sub-bullets below confidence 75 are routed to Card 3 (Risks) rather than padded in.
+    </p>
+
+    <div class="nuggets-grid">
+
+      <!-- ── CARD 1: Brief-Anchored North Star ───────────────────── -->
+      <article class="nugget-card is-northstar">
+        <div class="nugget-card-eyebrow">★ Brief North Star</div>
+        <h4 class="nugget-card-headline">
+          Brief flavour: <strong>DEFEND</strong> — Surf Excel is leader, identify high-intent search to hold ground
+          for 2026 PPC + SEO.
+        </h4>
+        <ul class="nugget-bullets">
+          <li>Brand: <strong>Surf Excel</strong>, category laundry detergent <span class="source-pill">brief §audience</span></li>
+          <li>Market: India, 2026 plan window, ₹2,593 Cr addressable <span class="source-pill">brief §market</span></li>
+          <li>Objective: identify high-intent search opportunities <span class="source-pill">brief §objective</span></li>
+          <li>Channels: PPC + SEO <span class="source-pill">brief §channels</span></li>
+          <li>Audience: 18–34, Metro+Tier 1+Tier 2, all SECs <span class="source-pill">brief §audience</span></li>
+        </ul>
+        <div class="nugget-tiein">
+          <strong>Anchor:</strong> Every Nugget below is filtered for "high-intent search" relevance — keywords that
+          convert, not keywords that just rank.
+        </div>
+      </article>
+
+      <!-- ── CARD 2: Keywords Nuggets (file-specific) ───────────── -->
+      <article class="nugget-card is-file">
+        <div class="nugget-card-eyebrow">🔎 Keywords Nuggets · 8-LAYER · DEFEND</div>
+        <h4 class="nugget-card-headline">
+          <strong>The battle is won on just 4 keywords</strong> — Surf Excel commands the category but Ghadi is one
+          tab away on the digital shelf.
+        </h4>
+        <ul class="nugget-bullets">
+          <li>
+            Top 3 keywords own <strong>58%</strong> of category search volume (K1)
+            <span class="source-pill">KEYWORD_PLANNER · L1 · conv 92</span>
+          </li>
+          <li>
+            "Surf laundry powder" defends the front door — biggest brand-asset keyword to hold (K23)
+            <span class="source-pill">KEYWORD_PLANNER · L6 · conv 96</span>
+          </li>
+          <li>
+            Branded queries dominate (your name = the category) but "detergent powder" still gets 24K monthly (K9)
+            <span class="source-pill">KEYWORD_PLANNER · L2 · conv 93</span>
+          </li>
+          <li>
+            YoY winners: liquid + fabric-care formats <strong>+23%</strong>; powder shrinking (K15)
+            <span class="source-pill">KEYWORD_PLANNER · L5 · conv 85</span>
+          </li>
+          <li>
+            Funnel mapping: "how to wash silk" → "buy surf excel" (full-funnel keyword path) (K22)
+            <span class="source-pill">KEYWORD_PLANNER · L8 · conv 91</span>
+          </li>
+        </ul>
+        <div class="nugget-overflow">
+          ⓘ 3 more findings — hover to expand
+          <div class="nugget-overflow-tip">
+            <strong>Additional Nuggets</strong>
+            • "Tide Surf" cross-shop: 2,400 searches (K23 competitor-steal) <span class="source-pill">L7 · conv 90</span><br>
+            • Ariel 4kg pack-size winning: +100% YoY (K18) <span class="source-pill">L5 · conv 85</span><br>
+            • "Best detergent for sensitive skin" niche: ₹14 bid, low comp (K10 Quick Win) <span class="source-pill">L4 · conv 80</span>
+          </div>
+        </div>
+        <div class="nugget-tiein">
+          <strong>Brief tie-in:</strong> Brief asked "identify high-intent search opportunities" — bullets 1, 2, 5
+          identify where Surf Excel must hold ground; bullets 3, 4 show the adjacent demand to grow into.
+        </div>
+      </article>
+
+      <!-- ── CARD 3: Risks, Caveats & What's Missing ─────────────── -->
+      <article class="nugget-card is-risk">
+        <div class="nugget-card-eyebrow">⚠ Risks & What's Missing</div>
+        <h4 class="nugget-card-headline">
+          Keyword Planner can't answer five things on its own — pair with the tools below before the 2026 plan locks.
+        </h4>
+        <ul class="nugget-bullets">
+          <li>
+            <strong>Actual organic rankings</strong> — needs Google Search Console / SEMrush
+            <span class="source-pill">static · keyword tool limit</span>
+          </li>
+          <li>
+            <strong>Click-through rates</strong> — not exposed in Keyword Planner
+            <span class="source-pill">static · keyword tool limit</span>
+          </li>
+          <li>
+            <strong>Conversion rates</strong> — needs site/listing analytics
+            <span class="source-pill">static · keyword tool limit</span>
+          </li>
+          <li>
+            <strong>Real competitor spend</strong> — only estimable via SEMrush / Similarweb
+            <span class="source-pill">static · keyword tool limit</span>
+          </li>
+          <li>
+            <strong>Layer 4 (Competition × Cost)</strong> returned 0 cards this run — quick-wins quadrant incomplete
+            <span class="source-pill">dynamic · this analysis</span>
+          </li>
+        </ul>
+        <div class="nugget-tiein">
+          <strong>Brief tie-in:</strong> The brief sets a 2026 PPC + SEO plan as the deliverable — bullets 1–4 are
+          tools to procure; bullet 5 is a re-run flag (try uploading a richer keyword export to fire Layer 4).
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════════
+ EXISTING — Bucket tabs (UNCHANGED, shown for context of vertical order)
+ ════════════════════════════════════════════════════════════════════ -->
+<div class="bucket-tabs-bar">
+  <div class="bucket-tabs-bar-inner">
+    <div class="bucket-tabs">
+      <button class="bucket-tab active">Search</button>
+      <button class="bucket-tab">Commerce</button>
+      <button class="bucket-tab">Content</button>
+      <button class="bucket-tab">Communication</button>
+      <button class="bucket-tab">Culture</button>
+    </div>
+    <div class="ins-meta">✅ 16 insights · 6 chart types · KEYWORD_PLANNER</div>
+  </div>
+</div>
+
+<div style="text-align:center; padding:32px; color:#94A3B8; font-size:12px;">
+  ↓ existing bucket cards continue below ↓<br>
+  (no change to the rest of the page in this proposal)
+</div>
+
+</body>
+</html>

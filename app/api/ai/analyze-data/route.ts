@@ -11,6 +11,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM, analyzeKeywordPlannerForPRISM, isKeywordPlannerShape, generateGwiOverview, generateBriefOverview, generateBriefOverviewFromRows, polishGeminiCards } from '@/lib/ai/gemini';
 import type { GwiOverview } from '@/lib/ai/gemini';
+import { synthesizeNuggets } from '@/lib/nuggets/synthesize';
+import type { NuggetsSummary } from '@/lib/nuggets/synthesize';
 import { analyzeWithOpenRouter, analyzeGenericWithOpenRouter, analyzeSocialWithOpenRouter } from '@/lib/ai/openrouter';
 import type { DataSlot, GeminiInsightCard } from '@/lib/ai/gemini';
 import { getPool } from '@/lib/db/client';
@@ -1092,10 +1094,19 @@ async function withBriefOverview(
   domain:       string,
   payload:      Record<string, any>,
   /** Optional pre-running overview promise (from generateBriefOverviewFromRows
-   *  kicked off in parallel with the main card-gen call). Awaiting it here is
-   *  effectively free since both calls overlap. If omitted, falls back to the
-   *  cards-based overview which runs sequentially after cards. */
+   *  kicked off in parallel with the main card-gen call). */
   overviewPromise?: Promise<GwiOverview>,
+  /** Optional raw rows for deterministic Nuggets synthesis. Pass the same
+   *  rows the analyzer was given — synthesize computes Pareto, HHI, brand SOV,
+   *  YoY etc. server-side so the frontend's Nuggets rail renders without
+   *  having to guess from Gemini's chosen phrasing. */
+  synthOpts?: {
+    keywordRows?:  any[] | null;
+    helium10Rows?: any[] | null;
+    brief?:        any;
+    audienceDescriptor?: string | null;
+    categoryIntel?: any;
+  },
 ): Promise<NextResponse> {
   const overview = overviewPromise
     ? await overviewPromise.catch((err: any) => {
@@ -1110,7 +1121,20 @@ async function withBriefOverview(
         console.warn('[analyze-data] Brief overview failed:', err?.message);
         return { headline: '', audienceSnapshot: '' } as GwiOverview;
       });
-  return NextResponse.json({ ...payload, insights, overview });
+
+  // Deterministic Nuggets summary — computed from the raw rows, not from
+  // Gemini's chosen titles. Soft-fails on any error so the response still
+  // ships if the math throws.
+  let nuggets: NuggetsSummary | undefined;
+  if (synthOpts) {
+    try {
+      nuggets = synthesizeNuggets(synthOpts);
+    } catch (err: any) {
+      console.warn('[analyze-data] Nugget synthesis failed:', err?.message);
+    }
+  }
+
+  return NextResponse.json({ ...payload, insights, overview, ...(nuggets ? { nuggets } : {}) });
 }
 
 // ── Route ─────────────────────────────────────────────────────
@@ -1398,7 +1422,7 @@ export async function POST(req: NextRequest) {
           return withBriefOverview(polished, context, briefContext, 'KEYWORD_PLANNER', {
             slots: [],
             path:  'keyword-8layer',
-          }, overviewPromise);
+          }, overviewPromise, { keywordRows: rows, brief: null });
         }
       } catch (err: any) {
         console.warn('[analyze-data] Keyword 8-layer Gemini failed:', err.message);
@@ -1421,7 +1445,7 @@ export async function POST(req: NextRequest) {
               slots:    [],
               path:     'keyword-8layer',
               fallback: 'openrouter',
-            });
+            }, undefined, { keywordRows: rows, brief: null });
           }
         } catch (orErr: any) {
           console.warn('[analyze-data] OpenRouter keyword fallback failed:', orErr.message);
@@ -1440,6 +1464,11 @@ export async function POST(req: NextRequest) {
     // walks the full chain. 60s wasn't enough to traverse it; 120s leaves
     // room for the worst case while still preserving ~180s under the route's
     // 300s maxDuration for OpenRouter (Tier 2) and auto-analysis (Tier 3).
+    // Detect whether the current generic-tabular run is an ecom export so
+    // synthesize gets the rows in the right slot for the Helium 10 Nugget.
+    const isEcomTool = /AMAZON|HELIUM|BLACKBOX|FLIPKART|MEESHO|BSR/i.test(toolLabel);
+    const synthOptsGeneric = isEcomTool ? { helium10Rows: rows, brief: null } : undefined;
+
     try {
       const insights = await withTimeout(
         analyzeGenericTabularForPRISM(rows, context, toolLabel, briefContext),
@@ -1450,7 +1479,7 @@ export async function POST(req: NextRequest) {
         return withBriefOverview(polished, context, briefContext, toolLabel, {
           slots: [],
           path:  'generic-tabular',
-        });
+        }, undefined, synthOptsGeneric);
       }
     } catch (err: any) {
       console.warn('[analyze-data] Generic tabular Gemini failed:', err.message);
@@ -1470,7 +1499,7 @@ export async function POST(req: NextRequest) {
             slots:    [],
             path:     'generic-tabular',
             fallback: 'openrouter',
-          });
+          }, undefined, synthOptsGeneric);
         }
       } catch (orErr: any) {
         console.warn('[analyze-data] OpenRouter generic fallback failed:', orErr.message);
