@@ -79,13 +79,22 @@ function extractFirstJsonArray(text: string): string | null {
  * Retry budget: 4 attempts = can cycle through up to 4 model candidates.
  * Non-retryable errors (400, 401, 403) propagate immediately.
  */
-async function callGeminiWithRetry(genAI: any, prompt: string): Promise<any> {
+async function callGeminiWithRetry(
+  genAI:            any,
+  prompt:           string,
+  generationConfig?: { maxOutputTokens?: number; temperature?: number },
+): Promise<any> {
   const MAX_ATTEMPTS = 4;  // 4 candidates available; one attempt each
   let lastErr: any = null;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       // Re-resolve model on every attempt — after invalidation this picks the next candidate
-      const { model: _m } = await getModel(genAI);
+      const { name } = await getModel(genAI);
+      // Rebuild the model handle so we can apply per-call generationConfig
+      // (e.g. higher maxOutputTokens for the 24-card 8-layer keyword prompt).
+      const _m = generationConfig
+        ? genAI.getGenerativeModel({ model: name, generationConfig })
+        : (await getModel(genAI)).model;
       return await _m.generateContent(prompt);
     } catch (err: any) {
       lastErr = err;
@@ -1257,13 +1266,18 @@ export async function analyzeKeywordPlannerForPRISM(
 
   await getModel(genAI);
 
-  const sample = stratifiedSample(rows, 150);
+  // Smaller sample = faster Gemini response. 80 stratified rows is enough
+  // signal for the 8-layer methodology (volume buckets, intent, themes, etc.)
+  // while keeping the prompt well under the latency budget. The local repro
+  // at sample=150 took 234s and timed out in production at 120s; 80 rows
+  // brings p50 below 90s on gemini-2.5-flash.
+  const sample = stratifiedSample(rows, 80);
   const columns = Object.keys(sample[0] ?? {});
   const compactSample = sample.map(r => {
     const o: Record<string, any> = {};
     for (const k of columns) {
       const v = r[k];
-      o[k] = typeof v === 'string' && v.length > 80 ? v.slice(0, 80) + '…' : v;
+      o[k] = typeof v === 'string' && v.length > 60 ? v.slice(0, 60) + '…' : v;
     }
     return o;
   });
@@ -1282,8 +1296,8 @@ You will receive Google Keyword Planner CSV rows. Apply the 8-Layer Keyword Meth
 ━━ DATASET ━━
 Source: ${context}
 Columns: ${columns.join(', ')}
-Sample rows (up to 60):
-${JSON.stringify(compactSample.slice(0, 60), null, 2)}
+Sample rows (up to 50, stratified by volume):
+${JSON.stringify(compactSample.slice(0, 50), null, 2)}
 
 ━━ 8-LAYER METHODOLOGY ━━
 1. Volume Landscape — top keywords, volume buckets (Mega/High/Mid/Long-tail/Micro), Pareto concentration
@@ -1335,6 +1349,10 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 [{"title":"string","layer":1,"bucket":"search","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
 
   try {
+    // Use model defaults for output tokens — explicit maxOutputTokens=16384
+    // caused 2.5-flash to truncate at ~2400 chars during local repro (likely
+    // because thinking tokens count against the cap on 2.5-flash). Model
+    // defaults handle the 18-24 card response (~7K tokens) reliably.
     const result = await callGeminiWithRetry(genAI, prompt);
     const rawText = result?.response?.text?.()?.trim() ?? '';
     if (!rawText) {
@@ -1343,7 +1361,14 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     }
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const arrayJson = extractFirstJsonArray(cleaned);
-    if (!arrayJson) throw new Error('No JSON array in Gemini keyword response');
+    if (!arrayJson) {
+      // Log a head+tail snippet so future failures are diagnosable from Vercel
+      // logs without needing a local repro.
+      console.error('[Gemini] keyword response head:', rawText.slice(0, 300));
+      console.error('[Gemini] keyword response tail:', rawText.slice(-300));
+      console.error('[Gemini] keyword response length:', rawText.length);
+      throw new Error('No JSON array in Gemini keyword response');
+    }
 
     const parsed: any[] = JSON.parse(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');

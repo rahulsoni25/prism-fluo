@@ -1316,11 +1316,20 @@ export async function POST(req: NextRequest) {
     // authoritative methodology.
     const isKeywordPath = toolLabel === 'KEYWORD_PLANNER' || isKeywordPlannerShape(rows);
     if (isKeywordPath) {
+      console.log('[analyze-data] Keyword path entered (8-layer methodology)');
+      // 220s budget — local repro of this prompt completed in 234s on a 1.2K
+      // keyword file with 18-24 card output. 120s was too tight and silently
+      // fell through to generic-tabular in production (giving the user 8 cards
+      // with no `layer` field). 220s leaves 80s of the route's 300s budget for
+      // OpenRouter fallback below.
       try {
+        const t0 = Date.now();
         const insights = await withTimeout(
           analyzeKeywordPlannerForPRISM(rows, context, 'KEYWORD_PLANNER', briefContext),
-          120_000, 'Gemini KEYWORD_PLANNER (8-layer)',
+          220_000, 'Gemini KEYWORD_PLANNER (8-layer)',
         );
+        const ms = Date.now() - t0;
+        console.log(`[analyze-data] Keyword 8-layer Gemini returned ${insights.length} cards in ${ms}ms`);
         if (insights.length > 0)
           return NextResponse.json({
             insights: rebalanceCards(enforceChartTypeRules(polishGeminiCards(insights))),
@@ -1330,8 +1339,33 @@ export async function POST(req: NextRequest) {
       } catch (err: any) {
         console.warn('[analyze-data] Keyword 8-layer Gemini failed:', err.message);
       }
-      // Falls through to generic-tabular as a soft fallback so the user
-      // still gets cards if the 8-layer prompt fails for some reason.
+
+      // ── Tier 2: OpenRouter fallback for keyword path ──
+      // If Gemini timed out or rate-limited, retry the same 8-layer task on
+      // OpenRouter before degrading to the generic-tabular prompt.
+      if (process.env.OPENROUTER_API_KEY) {
+        try {
+          const orCards = await withTimeout(
+            analyzeGenericWithOpenRouter(rows, context, 'KEYWORD_PLANNER', briefContext),
+            60_000,
+            'OpenRouter KEYWORD_PLANNER',
+          );
+          if (orCards.length > 0) {
+            console.log(`[analyze-data] Keyword OpenRouter fallback returned ${orCards.length} cards`);
+            return NextResponse.json({
+              insights: rebalanceCards(orCards),
+              slots:    [],
+              path:     'keyword-8layer',
+              fallback: 'openrouter',
+            });
+          }
+        } catch (orErr: any) {
+          console.warn('[analyze-data] OpenRouter keyword fallback failed:', orErr.message);
+        }
+      }
+      // Final fallback: continue to generic-tabular below so the user still
+      // gets some cards rather than a 422.
+      console.warn('[analyze-data] Keyword path exhausted — degrading to generic-tabular');
     }
 
     // ── Generic tabular path (Helium10, Amazon, sales, etc.) ──
