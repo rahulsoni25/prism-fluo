@@ -1209,6 +1209,176 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
   }
 }
 
+// ── Keyword Planner — 8-Layer Methodology ─────────────────────
+
+/**
+ * Detect whether a row set is keyword-volume data (Google Keyword Planner
+ * shape) regardless of filename. Looks for the signature columns the
+ * methodology relies on. If `Keyword` + `Avg. monthly searches` are both
+ * present, it's keyword data — fire the 8-layer analyzer.
+ */
+export function isKeywordPlannerShape(rows: any[]): boolean {
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  const r0 = rows[0];
+  if (!r0 || typeof r0 !== 'object') return false;
+  const keys = Object.keys(r0).map(k => k.toLowerCase());
+  const hasKeyword = keys.some(k => k === 'keyword');
+  const hasVolume  = keys.some(k => k.includes('avg. monthly searches') || k.includes('search volume'));
+  return hasKeyword && hasVolume;
+}
+
+/**
+ * Analyse a Google Keyword Planner CSV (or any keyword-volume table) using
+ * the 8-Layer Methodology — see `.claude/skills/keyword-strategist/SKILL.md`
+ * for the authoritative spec. Each layer produces 2-4 cards mapped to the
+ * closest existing PRISM bucket (search / content / pricing / commerce /
+ * communication / media / culture / creative) so the existing bucket-tab UI
+ * keeps working. Cards also carry a `layer` field (1-8) for future grouping.
+ *
+ * Returns 18-24 cards typically, sized to the data:
+ *   Layer 1 Volume Landscape    → 2-3 cards (search)
+ *   Layer 2 Intent & Length     → 2 cards   (search + content)
+ *   Layer 3 Theme Clusters      → 2-3 cards (content)
+ *   Layer 4 Competition × Cost  → 2 cards   (pricing + commerce)
+ *   Layer 5 Trend & Seasonality → 2 cards   (culture)
+ *   Layer 6 Recommendations     → 3 cards   (commerce + content)
+ *   Layer 7 Deep Intelligence   → 3-4 cards (communication + commerce)
+ *   Layer 8 Senior Toolkit      → 3 cards   (media + creative + commerce)
+ */
+export async function analyzeKeywordPlannerForPRISM(
+  rows:         any[],
+  context:      string,
+  toolLabel:    string,
+  briefContext: string = '',
+): Promise<GeminiInsightCard[]> {
+  const genAI = await getGenAI();
+  if (!genAI) throw new Error('GEMINI_API_KEY is not set');
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  await getModel(genAI);
+
+  const sample = stratifiedSample(rows, 150);
+  const columns = Object.keys(sample[0] ?? {});
+  const compactSample = sample.map(r => {
+    const o: Record<string, any> = {};
+    for (const k of columns) {
+      const v = r[k];
+      o[k] = typeof v === 'string' && v.length > 80 ? v.slice(0, 80) + '…' : v;
+    }
+    return o;
+  });
+
+  const briefBlock = briefContext ? `
+━━ CLIENT BRIEF — READ BEFORE WRITING ANY CARD ━━
+${briefContext}
+RELEVANCE RULE: Every recommendation must serve this brief's objective. Cite brand by name where relevant. Skip data signals with no bearing on this brand/category.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` : '';
+
+  const prompt = `You are a senior Search & Performance Strategist at PRISM, advising brand managers and PPC/SEO leads in India.
+${briefBlock}
+You will receive Google Keyword Planner CSV rows. Apply the 8-Layer Keyword Methodology and return PRISM insight cards.
+
+━━ DATASET ━━
+Source: ${context}
+Columns: ${columns.join(', ')}
+Sample rows (up to 60):
+${JSON.stringify(compactSample.slice(0, 60), null, 2)}
+
+━━ 8-LAYER METHODOLOGY ━━
+1. Volume Landscape — top keywords, volume buckets (Mega/High/Mid/Long-tail/Micro), Pareto concentration
+2. Intent & Length — short/mid/long tail × Navigational/Transactional/Commercial/Informational/Generic
+3. Theme Clusters — token-based multi-label clusters with volume + competition per theme
+4. Competition × Cost — 5-quadrant matrix (Quick Wins / Battlegrounds / Easy Long-tail / Avoid / Unknown), premium-cost keywords
+5. Trend & Seasonality — YoY winners/losers, 3-month momentum, peak/trough months
+6. Strategic Recommendations — Quick Wins (vol >1K, low/med comp, below-median bid), Rising Stars (YoY >50%), Brand Defense, Long-tail SEO targets
+7. Deep Intelligence — Brand SOV, question mining, comparator pairs (X vs Y), price sensitivity, n-grams, brand×intent matrix, competitor-steal
+8. Senior Toolkit — Winnability score (0.4×vol + 0.4×inv_comp + 0.2×bid_affordability), Pillar-cluster, Match-type strategy, Negative keywords, Campaign blueprint, Branded vs non-branded split, Funnel mapping (TOFU/MOFU/BOFU)
+
+━━ SKIP CONDITIONS ━━
+< 50 keywords → skip Layer 3 themes. < 6 months data → skip Layer 5 seasonality. No brand tokens → skip Layers 7.1/7.11/7.12. No bid columns → skip Layer 7.8/8.7 budget detail.
+
+━━ AUDIENCE & TONE ━━
+Write for media planners + brand managers. Plain English, short sentences, active voice.
+Never: tailspin, momentum, volatility, breakout, dominance, leverage, cohort, synergy, touchpoint, holistic, robust, utilize, paradigm, seamless, over-index.
+Use: shoppers, searchers, buyers, families, 1 in 3, nearly twice, here's the thing.
+
+━━ ANTI-HALLUCINATION ━━
+Every number/keyword in your cards MUST come from the sample rows. Zero invented benchmarks, zero made-up keywords.
+
+━━ BUCKET MAPPING ━━
+Each card must carry a \`bucket\` field (one of: content/commerce/communication/culture/channel/media/creative/pricing/search) AND a \`layer\` field (1-8).
+- Layer 1 (Volume), Layer 2 (Intent) → bucket: 'search'
+- Layer 3 (Themes), Layer 6 long-tail SEO → bucket: 'content'
+- Layer 4 (Competition × Cost), Layer 8 budget → bucket: 'pricing'
+- Layer 6 quick wins / rising stars → bucket: 'commerce'
+- Layer 5 (Trend & Seasonality) → bucket: 'culture'
+- Layer 7 Brand SOV / competitor-steal → bucket: 'communication'
+- Layer 8 match-type / campaign blueprint → bucket: 'media'
+
+━━ CARD FORMAT ━━
+TITLE (max 12 words): magazine cover line + one plain-English number from the data.
+OBSERVATION (3 sentences): hook → exact numbers from the data → strategic so-what.
+STAT: one crisp plain-English number that would make a room go quiet.
+RECOMMENDATION: ONE sentence to a PPC/SEO lead — specific action, named keyword cluster, specific platform.
+
+━━ UNIQUENESS ━━
+Write 18-24 cards total, distributed across the 8 layers per the table above. No two cards share the same opening sentence, stat, or keyword cluster.
+
+━━ CHART DATA ━━
+Pick labels + values from the sample rows (up to 8 items per chart). Use actual values from the data.
+
+━━ CHART VARIETY — MANDATORY ━━
+Use at least 5 DIFFERENT chart types across all cards. Never hbar or bar for more than 4 cards. Never assign the same chart type to consecutive cards.
+
+Return ONLY valid JSON — no markdown, no fences, no explanation:
+[{"title":"string","layer":1,"bucket":"search","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
+
+  try {
+    const result = await callGeminiWithRetry(genAI, prompt);
+    const rawText = result?.response?.text?.()?.trim() ?? '';
+    if (!rawText) {
+      invalidateModelCache(_resolvedModelName ?? undefined);
+      throw new Error('Gemini returned empty text for keyword analysis');
+    }
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const arrayJson = extractFirstJsonArray(cleaned);
+    if (!arrayJson) throw new Error('No JSON array in Gemini keyword response');
+
+    const parsed: any[] = JSON.parse(arrayJson);
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
+
+    const validBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
+    const validTypes: ChartType[] = [
+      'hbar','bar','line','area','pie','doughnut',
+      'scatter','combo','histogram','radar','waterfall','funnel',
+    ];
+
+    return parsed.slice(0, 24).map(c => ({
+      title:        String(c.title || 'Insight'),
+      bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'search') as GeminiInsightCard['bucket'],
+      type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as ChartType,
+      conviction:   Number(c.conviction) || 85,
+      obs:          String(c.obs  || ''),
+      stat:         String(c.stat || ''),
+      rec:          String(c.rec  || ''),
+      toolLabel,
+      // Layer 1-8 carried through for future "Group by layer" UI.
+      layer:        Number(c.layer) >= 1 && Number(c.layer) <= 8 ? Number(c.layer) : undefined,
+      chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
+      chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
+      chartValues2: Array.isArray(c.chartValues2) && (c.chartValues2 as any[]).length > 0
+        ? c.chartValues2.map(Number) : undefined,
+      chartTitle:   c.chartTitle  ? String(c.chartTitle)  : undefined,
+      chartSeries:  Array.isArray(c.chartSeries)  ? c.chartSeries.map(String)  : undefined,
+    } as any));
+
+  } catch (err) {
+    console.error('[Gemini] analyzeKeywordPlannerForPRISM failed:', (err as Error).message);
+    throw err;
+  }
+}
+
 // ── Social Listening / Share of Voice analysis ────────────────
 
 /**

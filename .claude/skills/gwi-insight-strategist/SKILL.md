@@ -241,6 +241,7 @@ When invoked, the rules above govern:
 
 ## When NOT to apply this skill
 
-- Non-GWI data (Amazon, Helium10, sales, marketing exports) — those go through `analyzeGenericTabularForPRISM` with its own prompt.
+- Keyword Planner data — use the `keyword-strategist` skill (8-Layer Methodology) instead.
+- Non-GWI tabular data (Amazon, Helium10, sales, marketing exports) — those go through `analyzeGenericTabularForPRISM` with its own prompt.
 - Social listening data — uses `analyzeSocialListeningForPRISM`.
-- Any path tagged `path: 'generic-tabular'` or `path: 'social-listening'` in the API response.
+- Any path tagged `path: 'keyword-8layer'`, `path: 'generic-tabular'` or `path: 'social-listening'` in the API response.
