@@ -931,6 +931,175 @@ function StrategicBetCard({ bet }) {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+ * NuggetsRail — Insight Nuggets v2 (3 source-grounded cards below the
+ * Executive Summary). See:
+ *   .claude/skills/keyword-strategist/SKILL.md
+ *   .claude/skills/commerce-strategist/SKILL.md
+ * for the v2 contract. Every claim cites a source pill synthesized from
+ * (toolLabel, layer, lens, conviction) — no analyzer change needed.
+ *
+ * Cards (in order):
+ *   1. ★ Brief North Star    — from analysis.brief
+ *   2. 🔎 File-Specific Nuggets — top conviction cards mapped to K-codes
+ *      (keyword) / H-codes (Helium10) / fallback themes for other tools
+ *   3. ⚠ Risks & What's Missing — static per-tool + dynamic layer flags
+ * ───────────────────────────────────────────────────────────────────── */
+function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, categoryIntel }) {
+  const brief    = analysis?.brief ?? {};
+  const toolUp   = String(sourceBadge || analysis?.results_json?.meta?.domain || 'TABULAR').toUpperCase();
+  const isKw     = toolUp.includes('KEYWORD');
+  const isEcom   = toolUp.includes('AMAZON') || toolUp.includes('HELIUM') || toolUp.includes('FLIPKART') || toolUp.includes('MEESHO');
+
+  /* ── Card 1: Brief North Star ─────────────────────────────────────── */
+  const briefBullets = [];
+  if (brief.brand)     briefBullets.push({ text: <>Brand: <strong>{brief.brand}</strong>{brief.category ? ` · ${brief.category}` : ''}</>, pill: 'brief §audience' });
+  if (audienceDescriptor) briefBullets.push({ text: <>Audience: {audienceDescriptor}</>, pill: 'brief §audience' });
+  if (brief.geography || brief.market) briefBullets.push({ text: <>Market: <strong>{brief.geography || brief.market}</strong>{categoryIntel?.marketValueINR ? ` · ${categoryIntel.marketValueINR}` : ''}</>, pill: 'brief §market' });
+  if (brief.objective) briefBullets.push({ text: <>Objective: {brief.objective}</>, pill: 'brief §objective' });
+  if (brief.competitors) briefBullets.push({ text: <>Competitors: {brief.competitors}</>, pill: 'brief §competitors' });
+  // Brief flavour heuristic
+  const flav = (() => {
+    const t = `${brief.objective || ''} ${brief.brand || ''}`.toLowerCase();
+    if (/\blaunch|new\s+sku|enter|whitespace\b/.test(t)) return 'LAUNCH';
+    if (/\bdefend|protect|threat|leader|hold\b/.test(t)) return 'DEFEND';
+    if (/\bgrow|expand|share|adjacenc/.test(t))         return 'GROW';
+    return null;
+  })();
+  const briefHeadline = flav
+    ? <>Brief flavour: <strong>{flav}</strong> — {brief.objective || brief.brand || 'objective unstated'}.</>
+    : (brief.objective
+        ? <strong>{brief.objective}</strong>
+        : 'No brief uploaded — analysis is descriptive only.');
+
+  /* ── Card 2: File-Specific Nuggets ───────────────────────────────── */
+  const ranked = [...(charts || [])]
+    .filter(c => (c.conviction ?? 0) >= 75)
+    .sort((a, b) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0));
+  const top = ranked.slice(0, 6);
+  const overflow = ranked.slice(6, 9);
+  const layerToK = { 1: 'K1', 2: 'K4', 3: 'K7', 4: 'K10', 5: 'K15', 6: 'K10', 7: 'K8', 8: 'K22' };
+  const layerToH = { 1: 'H1', 3: 'H4', 4: 'H9', 5: 'H6', 6: 'H18', 7: 'H20', 8: 'H19', 9: 'H13' };
+  const code     = (layer) => (isKw ? layerToK[layer] : isEcom ? layerToH[layer] : null);
+  const fileEyebrow = isKw   ? '🔎 Keywords Nuggets · 8-Layer'
+                     : isEcom ? '🛒 E-commerce Nuggets · 9-Layer'
+                     : '📊 File Nuggets';
+  const fileHeadline = top[0]?.title
+    ? <strong>{String(top[0].title).slice(0, 110)}</strong>
+    : 'Top findings from this analysis.';
+
+  /* ── Card 3: Risks & What's Missing ──────────────────────────────── */
+  // Static "this tool can't answer" per data source.
+  const staticRisks = isKw
+    ? [
+        { text: <><strong>Actual organic rankings</strong> — needs Google Search Console / SEMrush</>, pill: 'static · kw limit' },
+        { text: <><strong>Click-through rates</strong> — not exposed in Keyword Planner</>, pill: 'static · kw limit' },
+        { text: <><strong>Conversion rates</strong> — needs site / listing analytics</>, pill: 'static · kw limit' },
+        { text: <><strong>Real competitor spend</strong> — only via SEMrush / Similarweb</>, pill: 'static · kw limit' },
+      ]
+    : isEcom
+    ? [
+        { text: <><strong>Genuine monthly seasonality</strong> — needs Helium 10 Trendster</>, pill: 'static · ecom limit' },
+        { text: <><strong>Actual ad spend / ACoS</strong> — needs Amazon Ads console</>, pill: 'static · ecom limit' },
+        { text: <><strong>Search-term performance</strong> — needs Cerebro / ABA</>, pill: 'static · ecom limit' },
+        { text: <><strong>Buy Box win-rate over time</strong> — snapshot only here</>, pill: 'static · ecom limit' },
+      ]
+    : [
+        { text: <><strong>Causality</strong> — this data shows what, not why</>, pill: 'static · general limit' },
+        { text: <><strong>Off-channel context</strong> — single-source view only</>, pill: 'static · general limit' },
+        { text: <><strong>Trended view</strong> — most exports are snapshots</>, pill: 'static · general limit' },
+      ];
+  // Dynamic: which layers fired this run vs expected?
+  const layersPresent = new Set((charts || []).map(c => c.layer).filter(Boolean));
+  const expectedLayers = isKw ? [1,2,3,4,5,6,7,8] : isEcom ? [1,3,4,5,6,7,8,9] : [];
+  const layersMissed = expectedLayers.filter(L => !layersPresent.has(L));
+  const dynamicRisks = layersMissed.length > 0
+    ? [{ text: <>Layer{layersMissed.length > 1 ? 's' : ''} <strong>{layersMissed.join(', ')}</strong> returned 0 cards this run — consider re-running with a richer export.</>, pill: 'dynamic · this run' }]
+    : [];
+  const allRisks = [...staticRisks, ...dynamicRisks].slice(0, 5);
+
+  return (
+    <section className="nuggets-rail">
+      <div className="nuggets-rail-inner">
+        <div className="nuggets-rail-head">
+          <div className="nuggets-rail-eyebrow">Insight Nuggets</div>
+          <div className="nuggets-rail-title">3 source-grounded findings tied to your brief</div>
+        </div>
+
+        <div className="nuggets-grid">
+          {/* ── CARD 1 ── */}
+          <article className="nugget-card is-northstar">
+            <div className="nugget-card-eyebrow">★ Brief North Star</div>
+            <div className="nugget-card-headline">{briefHeadline}</div>
+            <ul className="nugget-bullets">
+              {briefBullets.length > 0 ? briefBullets.map((b, i) => (
+                <li key={i}>{b.text}<span className="source-pill">{b.pill}</span></li>
+              )) : (
+                <li style={{ color: '#94A3B8', fontStyle: 'italic' }}>No structured brief fields — using filename only.</li>
+              )}
+            </ul>
+            <div className="nugget-tiein">
+              <strong>Anchor:</strong> Every Nugget in this rail is filtered for relevance to this brief.
+            </div>
+          </article>
+
+          {/* ── CARD 2 ── */}
+          <article className="nugget-card is-file">
+            <div className="nugget-card-eyebrow">{fileEyebrow}</div>
+            <div className="nugget-card-headline">{fileHeadline}</div>
+            <ul className="nugget-bullets">
+              {top.slice(0, 5).map((c, i) => {
+                const kcode = code(c.layer);
+                const pill = `${toolUp}${c.layer ? ` · L${c.layer}` : ''} · conv ${c.conviction ?? '?'}`;
+                return (
+                  <li key={i}>
+                    {String(c.stat || c.title || '').slice(0, 130)}
+                    {kcode && <span style={{ color: '#94A3B8', marginLeft: 4 }}>({kcode})</span>}
+                    <span className="source-pill">{pill}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            {overflow.length > 0 && (
+              <div className="nugget-overflow">
+                ⓘ {overflow.length} more finding{overflow.length > 1 ? 's' : ''} — hover to expand
+                <div className="nugget-overflow-tip">
+                  <strong>Additional Nuggets</strong>
+                  {overflow.map((c, i) => (
+                    <div key={i} style={{ marginBottom: 4 }}>
+                      • {String(c.stat || c.title || '').slice(0, 120)}
+                      <span className="source-pill" style={{ marginLeft: 6 }}>L{c.layer ?? '?'} · conv {c.conviction ?? '?'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="nugget-tiein">
+              <strong>Brief tie-in:</strong> Highest-conviction findings ranked across {ranked.length} insight card{ranked.length === 1 ? '' : 's'}, filtered to conviction ≥ 75.
+            </div>
+          </article>
+
+          {/* ── CARD 3 ── */}
+          <article className="nugget-card is-risk">
+            <div className="nugget-card-eyebrow">⚠ Risks & What's Missing</div>
+            <div className="nugget-card-headline">
+              {toolUp.split('_')[0]} can't answer everything on its own — pair with the tools below before the plan locks.
+            </div>
+            <ul className="nugget-bullets">
+              {allRisks.map((r, i) => (
+                <li key={i}>{r.text}<span className="source-pill">{r.pill}</span></li>
+              ))}
+            </ul>
+            <div className="nugget-tiein">
+              <strong>Brief tie-in:</strong> Each gap above maps to a tool or re-run that would close it before the strategy is finalised.
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SlaStrip({ brief }) {
   const planned = brief.sla_due_at ? new Date(brief.sla_due_at) : null;
   const actual  = brief.actual_completed_at ? new Date(brief.actual_completed_at) : null;
@@ -2137,6 +2306,19 @@ function AnalysisDetail({ id }) {
           </div>
         </section>
       )}
+
+      {/* ── NEW: Insight Nuggets v2 rail ──
+          Brief North Star + File-Specific Nuggets + Risks & What's Missing.
+          Synthesised from existing card metadata (toolLabel · layer · lens ·
+          conviction) — zero analyzer changes. See NuggetsRail function for
+          the data contract. */}
+      <NuggetsRail
+        analysis={analysis}
+        charts={charts}
+        sourceBadge={sourceBadge}
+        audienceDescriptor={audienceDescriptor}
+        categoryIntel={categoryIntel}
+      />
 
       {/* ── Bucket tab navigation ──
           Moved out of the dark hero so reading order is hero → summary →
