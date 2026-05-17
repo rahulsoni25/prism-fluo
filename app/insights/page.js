@@ -1018,82 +1018,100 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
     : [];
   const allRisks = [...staticRisks, ...dynamicRisks].slice(0, 5);
 
+  // Inline styles — reuse the exact .stat-card visual rhythm above this rail.
+  // No custom CSS classes; just like StrategicBetCard, eyebrow colour + body
+  // styles are inlined so the rail picks up the existing .stat-card shell.
+  const eyebrowStyle = (color) => ({
+    fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em',
+    textTransform: 'uppercase', color, marginBottom: 6,
+  });
+  const headlineStyle = {
+    fontSize: 13.5, lineHeight: 1.4, fontWeight: 700, color: '#0F172A',
+    letterSpacing: '-.005em', marginBottom: 10,
+  };
+  const bulletStyle = {
+    fontSize: 11.5, lineHeight: 1.45, color: '#1E293B',
+    padding: '6px 0', borderTop: '1px dashed #E2E8F0',
+  };
+  const pillStyle = {
+    display: 'inline-block', marginLeft: 6, padding: '0 6px',
+    background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 999,
+    fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace",
+    color: '#64748B', verticalAlign: 1,
+  };
+  const tieinStyle = {
+    marginTop: 'auto', paddingTop: 10, borderTop: '1px solid #E2E8F0',
+    fontSize: 10.5, lineHeight: 1.45, color: '#475569',
+  };
+
+  const Card = ({ eyebrow, eyebrowColor, headline, bullets, footer, overflow }) => (
+    <div className="stat-card stat-card--hover" style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={eyebrowStyle(eyebrowColor)}>{eyebrow}</div>
+      <div style={headlineStyle}>{headline}</div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 8px 0' }}>
+        {bullets.map((b, i) => (
+          <li key={i} style={{ ...bulletStyle, ...(i === 0 ? { borderTop: 'none', paddingTop: 0 } : {}) }}>
+            {b.text}<span style={pillStyle}>{b.pill}</span>
+          </li>
+        ))}
+      </ul>
+      {overflow}
+      <div style={tieinStyle}><strong style={{ color: '#0F172A', fontWeight: 700 }}>Brief tie-in:</strong> {footer}</div>
+    </div>
+  );
+
   return (
-    <section className="nuggets-rail">
-      <div className="nuggets-rail-inner">
-        <div className="nuggets-rail-head">
-          <div className="nuggets-rail-eyebrow">Insight Nuggets</div>
-          <div className="nuggets-rail-title">3 source-grounded findings tied to your brief</div>
+    <section style={{ background: '#F8FAFC', padding: '24px 0 28px', borderTop: '1px solid #E2E8F0' }}>
+      <div className="container" style={{ maxWidth: 1280, margin: '0 auto', padding: '0 36px' }}>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#0F766E', marginBottom: 4 }}>
+            Insight Nuggets
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', letterSpacing: '-0.005em' }}>
+            3 source-grounded findings tied to your brief
+          </div>
         </div>
 
-        <div className="nuggets-grid">
-          {/* ── CARD 1 ── */}
-          <article className="nugget-card is-northstar">
-            <div className="nugget-card-eyebrow">★ Brief North Star</div>
-            <div className="nugget-card-headline">{briefHeadline}</div>
-            <ul className="nugget-bullets">
-              {briefBullets.length > 0 ? briefBullets.map((b, i) => (
-                <li key={i}>{b.text}<span className="source-pill">{b.pill}</span></li>
-              )) : (
-                <li style={{ color: '#94A3B8', fontStyle: 'italic' }}>No structured brief fields — using filename only.</li>
-              )}
-            </ul>
-            <div className="nugget-tiein">
-              <strong>Anchor:</strong> Every Nugget in this rail is filtered for relevance to this brief.
-            </div>
-          </article>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 14 }}>
+          {/* CARD 1 — Brief North Star */}
+          <Card
+            eyebrow="★ Brief North Star"
+            eyebrowColor="#7C3AED"
+            headline={briefHeadline}
+            bullets={briefBullets.length > 0 ? briefBullets : [{ text: 'No structured brief fields — using filename only.', pill: 'brief missing' }]}
+            footer="Every Nugget in this rail is filtered for relevance to this brief."
+          />
 
-          {/* ── CARD 2 ── */}
-          <article className="nugget-card is-file">
-            <div className="nugget-card-eyebrow">{fileEyebrow}</div>
-            <div className="nugget-card-headline">{fileHeadline}</div>
-            <ul className="nugget-bullets">
-              {top.slice(0, 5).map((c, i) => {
-                const kcode = code(c.layer);
-                const pill = `${toolUp}${c.layer ? ` · L${c.layer}` : ''} · conv ${c.conviction ?? '?'}`;
-                return (
-                  <li key={i}>
-                    {String(c.stat || c.title || '').slice(0, 130)}
-                    {kcode && <span style={{ color: '#94A3B8', marginLeft: 4 }}>({kcode})</span>}
-                    <span className="source-pill">{pill}</span>
-                  </li>
-                );
-              })}
-            </ul>
-            {overflow.length > 0 && (
-              <div className="nugget-overflow">
+          {/* CARD 2 — File-Specific Nuggets */}
+          <Card
+            eyebrow={fileEyebrow}
+            eyebrowColor="#0891B2"
+            headline={fileHeadline}
+            bullets={top.slice(0, 5).map(c => {
+              const kcode = code(c.layer);
+              const pill  = `${toolUp}${c.layer ? ` · L${c.layer}` : ''} · conv ${c.conviction ?? '?'}`;
+              return {
+                text: <>{String(c.stat || c.title || '').slice(0, 130)}{kcode && <span style={{ color: '#94A3B8', marginLeft: 4 }}> ({kcode})</span>}</>,
+                pill,
+              };
+            })}
+            overflow={overflow.length > 0 && (
+              <div style={{ margin: '0 0 8px 0', padding: '6px 10px', background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 6, fontSize: 10.5, color: '#64748B', position: 'relative', cursor: 'help' }}
+                   title={overflow.map(c => `• ${String(c.stat || c.title || '').slice(0,110)} · L${c.layer ?? '?'} · conv ${c.conviction ?? '?'}`).join('\n')}>
                 ⓘ {overflow.length} more finding{overflow.length > 1 ? 's' : ''} — hover to expand
-                <div className="nugget-overflow-tip">
-                  <strong>Additional Nuggets</strong>
-                  {overflow.map((c, i) => (
-                    <div key={i} style={{ marginBottom: 4 }}>
-                      • {String(c.stat || c.title || '').slice(0, 120)}
-                      <span className="source-pill" style={{ marginLeft: 6 }}>L{c.layer ?? '?'} · conv {c.conviction ?? '?'}</span>
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
-            <div className="nugget-tiein">
-              <strong>Brief tie-in:</strong> Highest-conviction findings ranked across {ranked.length} insight card{ranked.length === 1 ? '' : 's'}, filtered to conviction ≥ 75.
-            </div>
-          </article>
+            footer={`Highest-conviction findings ranked across ${ranked.length} insight card${ranked.length === 1 ? '' : 's'}, filtered to conviction ≥ 75.`}
+          />
 
-          {/* ── CARD 3 ── */}
-          <article className="nugget-card is-risk">
-            <div className="nugget-card-eyebrow">⚠ Risks & What's Missing</div>
-            <div className="nugget-card-headline">
-              {toolUp.split('_')[0]} can't answer everything on its own — pair with the tools below before the plan locks.
-            </div>
-            <ul className="nugget-bullets">
-              {allRisks.map((r, i) => (
-                <li key={i}>{r.text}<span className="source-pill">{r.pill}</span></li>
-              ))}
-            </ul>
-            <div className="nugget-tiein">
-              <strong>Brief tie-in:</strong> Each gap above maps to a tool or re-run that would close it before the strategy is finalised.
-            </div>
-          </article>
+          {/* CARD 3 — Risks & What's Missing */}
+          <Card
+            eyebrow="⚠ Risks & What's Missing"
+            eyebrowColor="#B45309"
+            headline={<>{toolUp.split('_')[0]} can't answer everything on its own — pair with the tools below before the plan locks.</>}
+            bullets={allRisks}
+            footer="Each gap above maps to a tool or re-run that would close it before the strategy is finalised."
+          />
         </div>
       </div>
     </section>
