@@ -958,6 +958,16 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
   const brief  = analysis?.brief ?? {};
   const toolUp = String(sourceBadge || analysis?.results_json?.meta?.domain || 'TABULAR').toUpperCase();
 
+  /* ── Prefer DETERMINISTIC Nuggets if the analyzer saved them.
+        results_json.nuggets is computed server-side from raw rows (Pareto,
+        HHI, weighted YoY, brand SOV) — not picked from Gemini's titles.
+        Older analyses won't have this field; we fall through to the chart-
+        picking logic below for those. See lib/nuggets/synthesize.ts. ── */
+  const computedNuggets = analysis?.results_json?.nuggets ?? null;
+  const hasComputedAsk      = !!(computedNuggets?.ask?.headline);
+  const hasComputedKeyword  = !!(computedNuggets?.keyword?.headline);
+  const hasComputedHelium10 = !!(computedNuggets?.helium10?.headline);
+
   /* ── Content-pattern detectors (multi-source uploads need these because
    *    every card may share the same `MULTI-SOURCE` toolLabel) ───────── */
   const KEYWORD_RE = /\b(keyword|search\s*volume|monthly\s*searches|cpc|bid|search\s*term|long.?tail|head.?term|branded\s*search|negative\s*keyword|search\s*intent|impression\s*share|seo|ppc|google\s*search|paid\s*search|organic\s*search|quick\s*win)\b/i;
@@ -1116,11 +1126,44 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
     : null;
 
   // CARD 3 — Helium 10 (CATEGORY-lead: HHI / Brand split / Trend)
-  const hHeadline   = heliumAction?.title ? truncate(heliumAction.title, 110) : null;
-  const hStat       = heliumStat?.stat ? truncate(heliumStat.stat, 90) : (heliumAction?.stat ? truncate(heliumAction.stat, 90) : null);
-  const hEyebrow    = heliumAction
+  let hHeadline   = heliumAction?.title ? truncate(heliumAction.title, 110) : null;
+  let hStat       = heliumStat?.stat ? truncate(heliumStat.stat, 90) : (heliumAction?.stat ? truncate(heliumAction.stat, 90) : null);
+  let hEyebrow    = heliumAction
     ? `🛒 ${layerToH[Number(heliumAction.layer)] || 'Shelf Pulse'}`
     : null;
+  let hHoverLines = null; // overridden from computedNuggets when present
+
+  // CARD 1 + 2 also become reassignable so computed nuggets can override
+  // them without losing the chart-picked fallback.
+  let askEyebrowOverride = null;  // 'The Ask' is always the eyebrow
+  let kHeadline_  = keywordAction?.title ? truncate(keywordAction.title, 110) : null;
+  let kStat_      = keywordStat?.stat ? truncate(keywordStat.stat, 90) : (keywordAction?.stat ? truncate(keywordAction.stat, 90) : null);
+  let kEyebrow_   = keywordAction
+    ? `🔎 ${layerToK[Number(keywordAction.layer)] || 'Search Pulse'}`
+    : null;
+  let kHoverLines = null;
+  let askHeadline_ = askHeadline;
+  let askStat_     = askStat;
+  let askHoverLines_ = null;
+
+  /* ── OVERRIDE with computed nuggets when the analyzer saved them ── */
+  if (hasComputedAsk) {
+    askHeadline_   = computedNuggets.ask.headline;
+    askStat_       = computedNuggets.ask.stat || askStat_;
+    askHoverLines_ = computedNuggets.ask.hoverLines;
+  }
+  if (hasComputedKeyword) {
+    kEyebrow_   = computedNuggets.keyword.eyebrow || kEyebrow_;
+    kHeadline_  = computedNuggets.keyword.headline;
+    kStat_      = computedNuggets.keyword.stat;
+    kHoverLines = computedNuggets.keyword.hoverLines;
+  }
+  if (hasComputedHelium10) {
+    hEyebrow    = computedNuggets.helium10.eyebrow || hEyebrow;
+    hHeadline   = computedNuggets.helium10.headline;
+    hStat       = computedNuggets.helium10.stat;
+    hHoverLines = computedNuggets.helium10.hoverLines;
+  }
 
   /* ── Bet-style card component (identical signature to StrategicBetCard
         but with configurable eyebrow colour + richer hover body) ──── */
@@ -1193,44 +1236,53 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
 
   /* ── Decide which cards render. Empty domains are CUT entirely
         (no placeholder slot) per user direction. ───────────────────── */
-  const showAsk      = !!(askHeadline || askStat);
-  const showKeywords = !!kHeadline;
+  const showAsk      = !!(askHeadline_ || askStat_);
+  const showKeywords = !!kHeadline_;
   const showHelium   = !!hHeadline;
   const cardCount    = (showAsk ? 1 : 0) + (showKeywords ? 1 : 0) + (showHelium ? 1 : 0);
   if (cardCount === 0) return null;
 
+  // Helper: render computed hoverLines as bulleted body for tooltip.
+  const renderComputedHover = (lines) => lines && lines.length > 0 ? (
+    <>
+      {lines.map((l, i) => (
+        <div key={i} style={{ marginBottom: 4 }}>• {l}</div>
+      ))}
+    </>
+  ) : null;
+
   return (
     <>
       {/* Row 2 — uses the SAME .insights-overview-stats grid as Row 1 so the
-          visual rhythm is unbroken. Cards that have no data are cut (not
-          rendered as empty placeholders) per user direction.
-
-          Formula across all three cards:
-            EYEBROW (plain-English name) → HEADLINE (bold finding + number)
-            → STAT (muted backing fact, two parts joined by · middot)        */}
+          visual rhythm is unbroken. Cards that have no data are cut.
+          Headlines/stats prefer DETERMINISTIC server-computed nuggets
+          (results_json.nuggets), falling back to chart-picked content for
+          older analyses that pre-date the synthesize module. */}
       <div className="insights-overview-stats" style={{ marginTop: 14 }}>
 
         {showAsk && (
           <NuggetBetCard
             eyebrow="★ The Ask"
             eyebrowColor="#7C3AED"
-            action={askHeadline || askStat}
-            stat={askHeadline && askStat ? askStat : null}
+            action={askHeadline_ || askStat_}
+            stat={askHeadline_ && askStat_ ? askStat_ : null}
             hoverHeading={flav ? `${flav} brief — anchor for this analysis` : 'Brief anchor for this analysis'}
-            hoverLines={askHoverDetails}
+            hoverLines={hasComputedAsk ? renderComputedHover(askHoverLines_) : askHoverDetails}
             hoverFooter="Every card on this rail is filtered for relevance to this brief."
           />
         )}
 
         {showKeywords && (
           <NuggetBetCard
-            eyebrow={kEyebrow}
+            eyebrow={kEyebrow_}
             eyebrowColor="#0891B2"
-            action={kHeadline}
-            stat={kStat}
-            hoverHeading={`${keywordHoverCards.length || 0} more search findings`}
-            hoverLines={moreFindingsBody(keywordHoverCards, layerToK)}
-            hoverFooter={`From ${keywordCards.length} keyword-aligned card${keywordCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
+            action={kHeadline_}
+            stat={kStat_}
+            hoverHeading={hasComputedKeyword ? 'More search facts' : `${keywordHoverCards.length || 0} more search findings`}
+            hoverLines={hasComputedKeyword ? renderComputedHover(kHoverLines) : moreFindingsBody(keywordHoverCards, layerToK)}
+            hoverFooter={hasComputedKeyword
+              ? `Computed from raw keyword rows · Pareto, weighted YoY, brand SOV.`
+              : `From ${keywordCards.length} keyword-aligned card${keywordCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
           />
         )}
 
@@ -1240,9 +1292,11 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
             eyebrowColor="#B91C1C"
             action={hHeadline}
             stat={hStat}
-            hoverHeading={`${heliumHoverCards.length || 0} more shelf findings`}
-            hoverLines={moreFindingsBody(heliumHoverCards, layerToH)}
-            hoverFooter={`From ${heliumCards.length} ecom-aligned card${heliumCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
+            hoverHeading={hasComputedHelium10 ? 'More shelf facts' : `${heliumHoverCards.length || 0} more shelf findings`}
+            hoverLines={hasComputedHelium10 ? renderComputedHover(hHoverLines) : moreFindingsBody(heliumHoverCards, layerToH)}
+            hoverFooter={hasComputedHelium10
+              ? `Computed from raw ASIN rows · HHI, brand share, reviews × sales correlation.`
+              : `From ${heliumCards.length} ecom-aligned card${heliumCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
           />
         )}
       </div>

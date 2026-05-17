@@ -135,6 +135,12 @@ function UploadDataInner() {
   // Main Headline + Audience Snapshot from the first file's GWI analysis.
   // Only one overview per analysis run (the first one with content wins).
   const [analysisOverview, setAnalysisOverview] = useState<{ headline: string; audienceSnapshot: string } | null>(null);
+  // Nuggets payload — { ask?, keyword?, helium10? } — synthesised server-side
+  // from the raw rows during analysis. Persisted into results_json.nuggets so
+  // the insights page can render the v2 rail without recomputing on every
+  // load. Functional setState merges multi-file uploads (keyword + ecom can
+  // each populate their own slot).
+  const [analysisNuggets, setAnalysisNuggets] = useState<any | null>(null);
 
   // ── Data Mapper: sheet selection state ──
   const [mapperPending, setMapperPending] = useState<{
@@ -228,7 +234,7 @@ function UploadDataInner() {
     }
   }
 
-  async function processFile(entry: FileEntry, entryIdx: number): Promise<{ charts: ChartSpec[]; uploadId: string; overview?: { headline: string; audienceSnapshot: string }; existingAnalysisId?: string }> {
+  async function processFile(entry: FileEntry, entryIdx: number): Promise<{ charts: ChartSpec[]; uploadId: string; overview?: { headline: string; audienceSnapshot: string }; nuggets?: any; existingAnalysisId?: string }> {
     let { file } = entry;
     updateEntry(entryIdx, { status: 'uploading' });
     addLog(`📤 Uploading "${file.name}"…`);
@@ -506,10 +512,11 @@ function UploadDataInner() {
         if (aiRes.status === 503) addLog('   ↳ GEMINI_API_KEY may not be set on the server');
       } else {
         const body = await aiRes.json();
-        const { insights, fallback, overview, geminiErrors } = body as {
+        const { insights, fallback, overview, nuggets, geminiErrors } = body as {
           insights?: any[];
           fallback?: 'openrouter' | 'auto' | boolean;
           overview?: { headline: string; audienceSnapshot: string };
+          nuggets?:  any;   // NuggetsSummary { ask?, keyword?, helium10? }
           geminiErrors?: string[];
         };
         // (Cache hits short-circuit at the upload layer — frontend never
@@ -524,10 +531,14 @@ function UploadDataInner() {
           const source = fallback === 'openrouter' ? 'OpenRouter' : fallback ? 'Auto-analysis' : 'Gemini';
           addLog(`✨ ${source} generated ${insights.length} PRISM insights`);
           if (overview?.headline) addLog(`📝 Main Headline ready`);
+          if (nuggets && (nuggets.keyword || nuggets.helium10 || nuggets.ask)) {
+            const slots = [nuggets.ask && 'Ask', nuggets.keyword && 'Search', nuggets.helium10 && 'Shelf'].filter(Boolean).join(' + ');
+            addLog(`💎 Nuggets synthesised: ${slots}`);
+          }
           const charts: ChartSpec[] = insightsToCharts(insights, entryIdx);
           updateEntry(entryIdx, { status: 'done', chartsFound: charts.length });
           addLog(`✅ "${file.name}" → ${charts.length} insights ready${fallback ? ` (${source.toLowerCase()})` : ''}`);
-          return { charts, uploadId, overview };
+          return { charts, uploadId, overview, nuggets };
         } else {
           geminiError = 'No insights returned';
           addLog(`⚠ ${geminiError}`);
@@ -605,6 +616,7 @@ function UploadDataInner() {
             strategicBrief: null,
             anomalies:      [],
             overview:       analysisOverview ?? null,
+            nuggets:        analysisNuggets ?? null,
             meta: { domain: domainValue, title: combinedName, cls: 'content' },
           },
         }),
@@ -644,15 +656,25 @@ function UploadDataInner() {
       let firstExistingAnalysisId: string | null = null;
 
       for (let i = 0; i < entries.length; i++) {
-        const { charts, uploadId, overview, existingAnalysisId } = await processFile(entries[i], existingOffset + i);
+        const { charts, uploadId, overview, nuggets, existingAnalysisId } = await processFile(entries[i], existingOffset + i);
         if (i === 0) batchFirstUploadId = uploadId;
         if (i === 0 && existingAnalysisId) firstExistingAnalysisId = existingAnalysisId;
         batchCharts.push(...charts);
         // Capture the first non-empty overview from this run.
-        // Functional setState avoids the stale-closure bug across files in a batch
-        // and across multiple batches in the same upload session.
         if (overview?.headline) {
           setAnalysisOverview(prev => prev ?? overview);
+        }
+        // Merge Nuggets slots from each file. A keyword upload populates
+        // .keyword + .ask; an ecom upload populates .helium10 + .ask. Both
+        // together populate all three slots. We keep the FIRST non-empty
+        // value per slot (rather than overwriting) so multi-file behaviour
+        // is order-independent.
+        if (nuggets && (nuggets.ask || nuggets.keyword || nuggets.helium10)) {
+          setAnalysisNuggets(prev => ({
+            ask:      prev?.ask      ?? nuggets.ask,
+            keyword:  prev?.keyword  ?? nuggets.keyword,
+            helium10: prev?.helium10 ?? nuggets.helium10,
+          }));
         }
       }
 
