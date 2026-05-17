@@ -1011,7 +1011,19 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
                     || keywordCards.find(c => c !== keywordAction);
   // HOVER overflow = everything else, capped at 5.
   const keywordHoverCards = keywordCards.filter(c => c !== keywordAction && c !== keywordStat).slice(0, 5);
-  const layerToK = { 1: 'Volume bucket', 2: 'Intent split', 3: 'Theme cluster', 4: 'Comp×Cost', 5: 'YoY trend', 6: 'Quick Win', 7: 'Brand SOV', 8: 'Funnel map' };
+  // ── Attractive plain-English names per layer (drives the eyebrow on the card).
+  //    Each name signals what kind of category learning the card delivers,
+  //    without making the reader decode "L5" or "Volume bucket". ──────
+  const layerToK = {
+    1: 'Search Demand',        // Volume Landscape — total + buckets + Pareto
+    2: 'What Shoppers Want',   // Intent & Length
+    3: 'Conversation Themes',  // Theme Clusters
+    4: 'The Bid Field',        // Competition × Cost
+    5: "What's Heating Up",    // Trend & Seasonality
+    6: 'Quick Wins',           // Strategic Recommendations
+    7: 'Who Owns Search',      // Deep Intel — Brand SOV
+    8: 'The Game Plan',        // Senior Toolkit
+  };
 
   /* ── Card 3: Helium 10 / E-commerce Nuggets ───────────────────────
         Prioritise category-LEAD layers (HHI L1, Brand-split L3, Trend L6,
@@ -1026,7 +1038,17 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
   const heliumStat   = heliumCards.find(c => c !== heliumAction && HELIUM_DETAIL_LAYERS.includes(Number(c.layer)))
                     || heliumCards.find(c => c !== heliumAction);
   const heliumHoverCards = heliumCards.filter(c => c !== heliumAction && c !== heliumStat).slice(0, 5);
-  const layerToH = { 1: 'Category HHI', 3: 'Brand share', 4: 'Reviews × sales', 5: 'Top SKU', 6: '90d trend', 7: 'Opportunity score', 8: 'Persona actions', 9: 'Whitespace' };
+  // ── Attractive plain-English names per layer for Helium 10. ──────
+  const layerToH = {
+    1: 'Shelf Concentration',  // Category HHI + KPI strip
+    3: 'Shelf Leaders',        // Brand share by revenue
+    4: 'Reviews → Sales',      // Reviews × Sales correlation
+    5: 'Hero SKUs',            // Top SKUs by revenue
+    6: 'Shelf Momentum',       // 90d trend
+    7: 'The Score',            // Opportunity score
+    8: 'Persona Plays',        // Persona-specific actions
+    9: 'Open Ground',          // Whitespace + vulnerability
+  };
 
   /* ── Footer: Limitations strip (replaces standalone Risks card) ──── */
   // Inline strip — each item rendered as a small chip. Static items keyed
@@ -1062,31 +1084,42 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
     return v.length > n ? v.slice(0, n - 2) + '…' : v;
   };
 
-  // CARD 1 prep — Brief North Star (always renders if any brief field present)
-  const northStarAction = brief.objective
-    ? truncate(brief.objective, 130)
-    : (brief.brand ? `${brief.brand} brief` : null);
-  const northStarStat = [brief.brand, brief.category, audienceDescriptor].filter(Boolean).join(' · ');
-  const northStarHoverDetails = (
+  /* ── FORMULA (consistent across all 3 cards in Row 2) ────────────────
+   *   EYEBROW   — attractive plain-English category name
+   *   HEADLINE  — bold one-line finding with the main number
+   *   STAT      — muted one-line backing fact (two facts joined by · middot)
+   * ──────────────────────────────────────────────────────────────────── */
+
+  // CARD 1 — "★ The Ask" (brief anchor)
+  const askHeadline = brief.brand && brief.objective
+    ? truncate(`${brief.brand} — ${brief.objective}`, 110)
+    : (brief.objective ? truncate(brief.objective, 110)
+        : (brief.brand ? brief.brand : null));
+  const askStat = [
+    brief.category,
+    audienceDescriptor,
+    brief.geography || brief.market,
+  ].filter(Boolean).join(' · ');
+  const askHoverDetails = (
     <>
-      {brief.geography || brief.market ? <div>📍 <strong>{brief.geography || brief.market}</strong>{categoryIntel?.marketValueINR ? ` · ${categoryIntel.marketValueINR} category` : ''}</div> : null}
+      {categoryIntel?.marketValueINR ? <div>📊 Category value: <strong>{categoryIntel.marketValueINR}</strong>{categoryIntel?.cagr ? ` · ${categoryIntel.cagr} CAGR` : ''}</div> : null}
       {brief.competitors ? <div>🆚 {brief.competitors}</div> : null}
       {flav ? <div>🎯 Brief flavour: <strong>{flav}</strong></div> : null}
     </>
   );
 
-  // CARD 2 prep — Keywords (CATEGORY-lead: Volume/YoY/SOV)
-  const kAction      = keywordAction?.title ? truncate(keywordAction.title, 130) : null;
-  const kSupporting  = keywordStat?.stat ? truncate(keywordStat.stat, 100) : (keywordAction?.stat ? truncate(keywordAction.stat, 100) : null);
-  const kEyebrow     = keywordAction
-    ? `🔎 Keywords · ${layerToK[Number(keywordAction.layer)] || `L${keywordAction.layer ?? '?'}`}`
+  // CARD 2 — Keywords (CATEGORY-lead: Volume / YoY / Brand SOV)
+  const kHeadline   = keywordAction?.title ? truncate(keywordAction.title, 110) : null;
+  const kStat       = keywordStat?.stat ? truncate(keywordStat.stat, 90) : (keywordAction?.stat ? truncate(keywordAction.stat, 90) : null);
+  const kEyebrow    = keywordAction
+    ? `🔎 ${layerToK[Number(keywordAction.layer)] || 'Search Pulse'}`
     : null;
 
-  // CARD 3 prep — Helium 10 (CATEGORY-lead: HHI/Brand split/Trend)
-  const hAction      = heliumAction?.title ? truncate(heliumAction.title, 130) : null;
-  const hSupporting  = heliumStat?.stat ? truncate(heliumStat.stat, 100) : (heliumAction?.stat ? truncate(heliumAction.stat, 100) : null);
-  const hEyebrow     = heliumAction
-    ? `🛒 Helium 10 · ${layerToH[Number(heliumAction.layer)] || `L${heliumAction.layer ?? '?'}`}`
+  // CARD 3 — Helium 10 (CATEGORY-lead: HHI / Brand split / Trend)
+  const hHeadline   = heliumAction?.title ? truncate(heliumAction.title, 110) : null;
+  const hStat       = heliumStat?.stat ? truncate(heliumStat.stat, 90) : (heliumAction?.stat ? truncate(heliumAction.stat, 90) : null);
+  const hEyebrow    = heliumAction
+    ? `🛒 ${layerToH[Number(heliumAction.layer)] || 'Shelf Pulse'}`
     : null;
 
   /* ── Bet-style card component (identical signature to StrategicBetCard
@@ -1159,31 +1192,33 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
   );
 
   /* ── Decide which cards render. Empty domains are CUT entirely
-        (no placeholder slot) per user spec: "leave blank the card if card
-        does not have any information." Brief North Star always renders if
-        we have at least the objective or brand. */
-  const showNorthStar = !!(northStarAction || northStarStat);
-  const showKeywords  = !!kAction;
-  const showHelium    = !!hAction;
-  const cardCount     = (showNorthStar ? 1 : 0) + (showKeywords ? 1 : 0) + (showHelium ? 1 : 0);
+        (no placeholder slot) per user direction. ───────────────────── */
+  const showAsk      = !!(askHeadline || askStat);
+  const showKeywords = !!kHeadline;
+  const showHelium   = !!hHeadline;
+  const cardCount    = (showAsk ? 1 : 0) + (showKeywords ? 1 : 0) + (showHelium ? 1 : 0);
   if (cardCount === 0) return null;
 
   return (
     <>
       {/* Row 2 — uses the SAME .insights-overview-stats grid as Row 1 so the
           visual rhythm is unbroken. Cards that have no data are cut (not
-          rendered as empty placeholders) per user direction. */}
+          rendered as empty placeholders) per user direction.
+
+          Formula across all three cards:
+            EYEBROW (plain-English name) → HEADLINE (bold finding + number)
+            → STAT (muted backing fact, two parts joined by · middot)        */}
       <div className="insights-overview-stats" style={{ marginTop: 14 }}>
 
-        {showNorthStar && (
+        {showAsk && (
           <NuggetBetCard
-            eyebrow="★ Brief North Star"
+            eyebrow="★ The Ask"
             eyebrowColor="#7C3AED"
-            action={northStarAction || northStarStat}
-            stat={northStarStat && northStarAction ? northStarStat : null}
+            action={askHeadline || askStat}
+            stat={askHeadline && askStat ? askStat : null}
             hoverHeading={flav ? `${flav} brief — anchor for this analysis` : 'Brief anchor for this analysis'}
-            hoverLines={northStarHoverDetails}
-            hoverFooter="Every Nugget in this rail is filtered for relevance to this brief."
+            hoverLines={askHoverDetails}
+            hoverFooter="Every card on this rail is filtered for relevance to this brief."
           />
         )}
 
@@ -1191,11 +1226,11 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
           <NuggetBetCard
             eyebrow={kEyebrow}
             eyebrowColor="#0891B2"
-            action={kAction}
-            stat={kSupporting}
-            hoverHeading={`${keywordHoverCards.length || 0} more category-lead findings`}
+            action={kHeadline}
+            stat={kStat}
+            hoverHeading={`${keywordHoverCards.length || 0} more search findings`}
             hoverLines={moreFindingsBody(keywordHoverCards, layerToK)}
-            hoverFooter={`Synthesised from ${keywordCards.length} keyword-aligned card${keywordCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
+            hoverFooter={`From ${keywordCards.length} keyword-aligned card${keywordCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
           />
         )}
 
@@ -1203,11 +1238,11 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
           <NuggetBetCard
             eyebrow={hEyebrow}
             eyebrowColor="#B91C1C"
-            action={hAction}
-            stat={hSupporting}
-            hoverHeading={`${heliumHoverCards.length || 0} more category-lead findings`}
+            action={hHeadline}
+            stat={hStat}
+            hoverHeading={`${heliumHoverCards.length || 0} more shelf findings`}
             hoverLines={moreFindingsBody(heliumHoverCards, layerToH)}
-            hoverFooter={`Synthesised from ${heliumCards.length} ecom-aligned card${heliumCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
+            hoverFooter={`From ${heliumCards.length} ecom-aligned card${heliumCards.length === 1 ? '' : 's'} · category-shape layers prioritised over tactical.`}
           />
         )}
       </div>
