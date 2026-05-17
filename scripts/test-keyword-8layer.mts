@@ -6,7 +6,7 @@
  *   node --env-file=.env.local --import tsx scripts/test-keyword-8layer.mts
  */
 import { readFileSync } from 'node:fs';
-import { analyzeKeywordPlannerForPRISM, isKeywordPlannerShape } from '../lib/ai/gemini';
+import { analyzeKeywordPlannerForPRISM, isKeywordPlannerShape, generateBriefOverview, generateBriefOverviewFromRows } from '../lib/ai/gemini';
 
 const CSV_PATH = 'C:/Users/habib/Downloads/Keyword Stats 2026-05-15 at 07_49_22.csv';
 
@@ -56,15 +56,16 @@ function parseRow(line: string): string[] {
   console.log('First row sample:', JSON.stringify(rows[0], null, 2));
   console.log('isKeywordPlannerShape →', isKeywordPlannerShape(rows));
 
-  console.log('\nCalling analyzeKeywordPlannerForPRISM…');
+  console.log('\nCalling analyzeKeywordPlannerForPRISM + generateBriefOverviewFromRows IN PARALLEL…');
   const t0 = Date.now();
   try {
-    const cards = await analyzeKeywordPlannerForPRISM(
-      rows,
-      'Local repro · detergent niche',
-      'KEYWORD_PLANNER',
-      'Brand: Surf Excel / category: laundry detergent / market: India / objective: identify high-intent search opportunities for 2026 PPC + SEO plan.',
-    );
+    const brief = 'Brand: Surf Excel / category: laundry detergent / market: India / objective: identify high-intent search opportunities for 2026 PPC + SEO plan.';
+    // Parallel — both Gemini calls run at the same time, mirroring the
+    // production route's withBriefOverview(..., overviewPromise) flow.
+    const [cards, overview] = await Promise.all([
+      analyzeKeywordPlannerForPRISM(rows, 'Local repro · detergent niche', 'KEYWORD_PLANNER', brief),
+      generateBriefOverviewFromRows(rows, 'Local repro · detergent niche', brief, 'KEYWORD_PLANNER'),
+    ]);
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`\n✅ Returned ${cards.length} cards in ${elapsed}s`);
     const byLayer:  Record<string, number> = {};
@@ -89,6 +90,11 @@ function parseRow(line: string): string[] {
     cards.forEach((c: any, i: number) => {
       console.log(`  ${String(i + 1).padStart(2)}. [conv ${String(c.conviction).padStart(3)} · L${c.layer ?? '?'} · ${(c.lens ?? '?').padEnd(8)} · ${c.bucket}] ${c.title}`);
     });
+
+    // Executive Summary — already returned by the parallel Promise.all above
+    console.log('\n=== EXECUTIVE SUMMARY (parallel with cards) ===');
+    console.log(`Headline:         ${overview.headline}`);
+    console.log(`AudienceSnapshot: ${overview.audienceSnapshot}`);
   } catch (err: any) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.error(`\n❌ THREW after ${elapsed}s:`, err.message);

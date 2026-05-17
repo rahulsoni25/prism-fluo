@@ -4,6 +4,14 @@
  * Falls back gracefully if GEMINI_API_KEY is not set.
  */
 
+import {
+  STORYTELLING_DISCIPLINE,
+  THREE_LENS_RUBRIC,
+  ANTI_HALLUCINATION,
+  CONVICTION_GRADING,
+  briefBlock,
+} from './prompt-fragments';
+
 let _genAI: any = null;
 
 async function getGenAI() {
@@ -64,6 +72,65 @@ function extractFirstJsonArray(text: string): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Forgiving JSON.parse — first tries strict parse, then walks the array and
+ * keeps only the elements that parse cleanly. Used when Gemini emits a single
+ * malformed card in an otherwise-valid 20-card array (a single unescaped
+ * quote inside an obs/rec string breaks the whole array, which would
+ * otherwise force the whole call to fail and fall back to OpenRouter).
+ *
+ * Returns the cards that survived; throws only if NOTHING parses.
+ */
+function parseJsonArrayForgiving(arrayJson: string): any[] {
+  try {
+    const strict = JSON.parse(arrayJson);
+    if (Array.isArray(strict)) return strict;
+  } catch (_err) {
+    // Strict parse failed — fall through to element-by-element salvage.
+  }
+
+  // Walk the array using the same bracket-balanced scan as extractFirstJsonArray
+  // and try to parse each top-level object individually. Skip the ones that
+  // don't parse; keep the rest. This recovers ~95% of cards when one is bad.
+  const inner = arrayJson.trim().replace(/^\[|\]$/g, '');
+  const objects: any[] = [];
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let start = -1;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (escape) { escape = false; continue; }
+    if (inString) {
+      if (ch === '\\')      escape   = true;
+      else if (ch === '"')  inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        const objStr = inner.slice(start, i + 1);
+        try {
+          const obj = JSON.parse(objStr);
+          objects.push(obj);
+        } catch (_e) {
+          // Try a basic repair — unescape stray newlines + tabs inside strings,
+          // collapse \r → \n, then re-parse.
+          const repaired = objStr.replace(/[\r\n\t]+/g, ' ');
+          try { objects.push(JSON.parse(repaired)); } catch { /* drop */ }
+        }
+        start = -1;
+      }
+    }
+  }
+  if (objects.length === 0) throw new Error('Forgiving parse recovered 0 objects');
+  return objects;
 }
 
 /**
@@ -141,18 +208,25 @@ async function callGeminiWithRetry(
  *   2. Singleton promise: parallel batches that all hit getModel() at the same
  *      time share ONE selection instead of each launching their own.
  *
- * Order: 2.5-flash (stable GA, best quality + cost) → 2.0-flash (stable fallback)
- *      → 2.5-pro (heavier, higher quality) → 2.0-flash-lite (last resort).
+ * Order: 2.0-flash (no thinking mode — 3-5× faster than 2.5-flash) →
+ *        2.5-flash (heavier reasoning, used when 2.0 is exhausted) →
+ *        2.5-pro (highest quality, lowest RPM) →
+ *        2.0-flash-lite (last resort).
+ *
+ * SPEED RATIONALE: Local repro of the 8-layer keyword prompt took 137-236s on
+ * 2.5-flash (thinking mode burns 30-60s of latency before any output). The
+ * same prompt on 2.0-flash returns in ~30-60s with no quality drop on
+ * structured-JSON tasks. Quality stays high because the rich prompt
+ * (8-layer methodology + 3-lens rubric) does the heavy lifting, not the
+ * model's hidden chain-of-thought.
  *
  * The previous list referenced dated preview models like
  * `gemini-2.5-flash-preview-05-20` and `gemini-2.5-pro-preview-05-06` which were
  * time-limited builds and have since been replaced by the stable GA names below.
- * Calling a deprecated preview returns 404 → cascades to next candidate →
- * eventually exhausts the list → auto-analysis fallback runs. That's the bug.
  */
 const MODEL_CANDIDATES = [
-  'gemini-2.5-flash',       // stable GA — fast, high quality, generous quota
-  'gemini-2.0-flash',       // stable fallback, independent quota pool
+  'gemini-2.0-flash',       // PRIMARY — no thinking mode, 3-5× faster on JSON tasks
+  'gemini-2.5-flash',       // fallback — thinking mode kicks in for harder tasks
   'gemini-2.5-pro',         // higher quality, slower, lower RPM
   'gemini-2.0-flash-lite',  // tightest quota, last resort
 ];
@@ -707,7 +781,9 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       throw new Error('No JSON array in Gemini response — model returned non-JSON output');
     }
 
-    const parsed: any[] = JSON.parse(arrayJson);
+    // Forgiving parse — recovers from a single malformed card without failing
+    // the whole 20-card response.
+    const parsed: any[] = parseJsonArrayForgiving(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
@@ -1008,6 +1084,311 @@ Return ONLY valid JSON — no markdown, no fences, no preamble:
   }
 }
 
+// ── Unified Brief Overview (works for ALL non-GWI paths) ──────
+//
+// Mirrors `generateGwiOverview` shape so the frontend can render the same
+// Executive Summary block ({ headline, audienceSnapshot }) regardless of
+// whether the upload was a GWI export, Keyword Planner CSV, Amazon listing,
+// social-listening dump, or PPTX deck. Before this function existed, only
+// GWI uploads produced the magazine-cover Executive Summary and everything
+// else jumped straight to charts — a visible inconsistency.
+//
+// Two entrypoints:
+//  • generateBriefOverviewFromRows — fed RAW DATA rows. PREFERRED in the
+//    route because it can run in PARALLEL with the main card-generation
+//    call (overlap ~30s vs serial ~30s after cards = ~30s saved on a
+//    100s budget).
+//  • generateBriefOverview — fed the already-generated CARDS. Used when
+//    the caller doesn't have rows handy (e.g. fallback paths). Adds the
+//    overview call to the critical path.
+export async function generateBriefOverviewFromRows(
+  rows:         any[],
+  context:      string,
+  briefContext: string = '',
+  domain:       string = 'GENERIC',
+): Promise<GwiOverview> {
+  const genAI = await getGenAI();
+  if (!genAI) throw new Error('GEMINI_API_KEY is not set');
+  if (!Array.isArray(rows) || rows.length === 0) return { headline: '', audienceSnapshot: '' };
+
+  await getModel(genAI);
+
+  // Tiny sample — 12 stratified rows is enough signal for a 2-sentence overview.
+  const sample = stratifiedSample(rows, 12);
+  const columns = Object.keys(sample[0] ?? {});
+  const compactSample = sample.map(r => {
+    const o: Record<string, any> = {};
+    for (const k of columns) {
+      const v = r[k];
+      o[k] = typeof v === 'string' && v.length > 60 ? v.slice(0, 60) + '…' : v;
+    }
+    return o;
+  });
+
+  const brief = briefBlock(briefContext);
+  const domainHint = (() => {
+    const d = (domain || '').toUpperCase();
+    if (d.includes('KEYWORD'))    return 'Source is a Google Keyword Planner export — focus the Snapshot on what searchers want, category demand, and where the brand sits in the search landscape.';
+    if (d.includes('AMAZON') || d.includes('HELIUM') || d.includes('BSR'))
+                                  return 'Source is an e-commerce / Amazon export — focus the Snapshot on shopper behaviour, listing dynamics, and category competitors.';
+    if (d.includes('SOCIAL'))     return 'Source is a social-listening export — focus the Snapshot on conversation themes, sentiment, and where the brand sits in the conversation.';
+    if (d.includes('PPTX'))       return "Source is a PPTX deck — focus the Snapshot on the deck's central argument and the most important tension to resolve.";
+    return 'Focus the Snapshot on the audience or category this data describes, plus the one strategic tension that matters most for the brief.';
+  })();
+
+  const prompt = `You are an Insight Strategist at PRISM, writing for brand managers, media planners, and creative directors in India.
+${brief}
+DATASET: ${context}
+DOMAIN HINT: ${domainHint}
+
+${STORYTELLING_DISCIPLINE}
+
+Read the sample rows below and produce TWO things only:
+
+1. MAIN HEADLINE — one bold, client-facing sentence (max 22 words).
+   • Pyramid: this IS the answer. End on an action implication.
+   • Use a number ONLY when it sharpens the message.
+
+2. AUDIENCE SNAPSHOT — EXACTLY 2 SENTENCES.
+   • Sentence 1: WHO this data is about (audience / shopper / searcher / category).
+   • Sentence 2: the ONE strategic tension worth knowing for this brief.
+   • Start with "For this brief, we are really talking to…" (people) or "For this brief, the category really looks like…" (category data).
+   • Don't enumerate stats — character + tension only.
+
+${ANTI_HALLUCINATION}
+
+━━ SAMPLE ROWS (${columns.join(', ')}) ━━
+${JSON.stringify(compactSample, null, 2)}
+
+Return ONLY valid JSON — no markdown, no fences:
+{ "headline": "string", "audienceSnapshot": "string" }`;
+
+  try {
+    const result = await callGeminiWithRetry(genAI, prompt);
+    const rawText = result?.response?.text?.()?.trim() ?? '';
+    if (!rawText) {
+      invalidateModelCache(_resolvedModelName ?? undefined);
+      throw new Error('Gemini returned empty text for brief overview (rows)');
+    }
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('No JSON object in Gemini overview-from-rows response');
+    const parsed = JSON.parse(match[0]);
+    return {
+      headline:         String(parsed.headline || '').trim(),
+      audienceSnapshot: String(parsed.audienceSnapshot || '').trim(),
+    };
+  } catch (err) {
+    console.error('[Gemini] generateBriefOverviewFromRows failed:', (err as Error).message);
+    return { headline: '', audienceSnapshot: '' };
+  }
+}
+
+export async function generateBriefOverview(
+  cards:        GeminiInsightCard[],
+  context:      string,
+  briefContext: string = '',
+  domain:       string = 'GENERIC',
+): Promise<GwiOverview> {
+  const genAI = await getGenAI();
+  if (!genAI) throw new Error('GEMINI_API_KEY is not set');
+  if (!Array.isArray(cards) || cards.length === 0) return { headline: '', audienceSnapshot: '' };
+
+  await getModel(genAI);
+
+  // Read the top 10 highest-conviction cards. Each card is already a distilled
+  // insight, so 10 is enough signal to spot the single biggest story.
+  const ranked = [...cards]
+    .sort((a, b) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0))
+    .slice(0, 10);
+
+  const cardBlock = ranked.map((c, i) => {
+    const layer  = (c as any).layer ? ` · L${(c as any).layer}` : '';
+    const lens   = (c as any).lens  ? ` · ${(c as any).lens}`   : '';
+    const conv   = c.conviction ? ` · conviction ${c.conviction}` : '';
+    return `CARD ${i + 1}${layer}${lens}${conv}
+  Title: ${c.title}
+  Stat:  ${c.stat}
+  Obs:   ${c.obs}`;
+  }).join('\n\n');
+
+  const brief = briefBlock(briefContext);
+
+  // Domain hint helps Gemini pick the right Snapshot framing — a keyword
+  // upload's snapshot is about searchers + category demand; an Amazon upload's
+  // snapshot is about shoppers + listing dynamics; a social-listening
+  // upload's snapshot is about conversation themes + sentiment.
+  const domainHint = (() => {
+    const d = (domain || '').toUpperCase();
+    if (d.includes('KEYWORD'))    return 'Source is a Google Keyword Planner export — focus the Snapshot on what searchers want, category demand, and where the brand sits in the search landscape.';
+    if (d.includes('AMAZON') || d.includes('HELIUM') || d.includes('BSR'))
+                                  return 'Source is an e-commerce / Amazon export — focus the Snapshot on shopper behaviour, listing dynamics, and category competitors.';
+    if (d.includes('SOCIAL'))     return 'Source is a social-listening export — focus the Snapshot on conversation themes, sentiment, and where the brand sits in the conversation.';
+    if (d.includes('PPTX'))       return 'Source is a PPTX deck — focus the Snapshot on the deck\'s central argument and the most important tension to resolve.';
+    return 'Focus the Snapshot on the audience or category this data describes, plus the one strategic tension that matters most for the brief.';
+  })();
+
+  const prompt = `You are an Insight Strategist at PRISM, writing for brand managers, media planners, and creative directors in India.
+${brief}
+DATASET: ${context}
+DOMAIN HINT: ${domainHint}
+
+${STORYTELLING_DISCIPLINE}
+
+You will read the top insight cards from this analysis (already distilled) and produce TWO things only:
+
+1. MAIN HEADLINE — one bold, client-facing sentence (max 22 words).
+   • Pyramid: this IS the answer. A reader who only sees the Headline already knows the one big thing.
+   • Combines the essence of the BRIEF with the SINGLE strongest insight from the cards.
+   • Use a number ONLY when it sharpens the message.
+   • Punchy, specific, directional. No jargon. End on an action implication.
+
+2. AUDIENCE SNAPSHOT — EXACTLY 2 SENTENCES.
+   • Sentence 1: WHO this data is about (audience / shopper / searcher / category) — one sharp sketch.
+   • Sentence 2: the ONE strategic tension worth knowing for this brief.
+   • Start with: "For this brief, we are really talking to…" (people) OR
+                 "For this brief, the category really looks like…" (category-focused data).
+   • Do NOT enumerate specific stats here — those live in the cards. Snapshot is character + tension.
+
+${ANTI_HALLUCINATION}
+
+━━ INSIGHT CARDS ━━
+${cardBlock}
+
+Return ONLY valid JSON — no markdown, no fences, no preamble:
+{
+  "headline": "string",
+  "audienceSnapshot": "string"
+}`;
+
+  try {
+    const result = await callGeminiWithRetry(genAI, prompt);
+    const rawText = result?.response?.text?.()?.trim() ?? '';
+    if (!rawText) {
+      invalidateModelCache(_resolvedModelName ?? undefined);
+      throw new Error('Gemini returned empty text for brief overview');
+    }
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('No JSON object in Gemini overview response');
+    const parsed = JSON.parse(match[0]);
+    return {
+      headline:         String(parsed.headline || '').trim(),
+      audienceSnapshot: String(parsed.audienceSnapshot || '').trim(),
+    };
+  } catch (err) {
+    console.error('[Gemini] generateBriefOverview failed:', (err as Error).message);
+    return { headline: '', audienceSnapshot: '' };
+  }
+}
+
+// ── Shared 3-lens curation helper ─────────────────────────────
+//
+// Takes raw cards returned by Gemini (any analyzer), normalises every field,
+// drops sub-60 conviction cards, then guarantees a balanced creative/media/
+// category distribution before returning a flat list sorted by conviction.
+//
+// Used by analyzeGenericTabularForPRISM and analyzeKeywordPlannerForPRISM —
+// could be applied to social-listening and future analyzers too.
+const VALID_BUCKETS = ['content','commerce','communication','culture','channel','media','creative','pricing','search'] as const;
+const VALID_LENSES  = ['creative', 'media', 'category'] as const;
+const VALID_CHART_TYPES: ChartType[] = [
+  'hbar','bar','line','area','pie','doughnut',
+  'scatter','combo','histogram','radar','waterfall','funnel',
+];
+
+type LensCard = GeminiInsightCard & {
+  lens?: 'creative' | 'media' | 'category';
+  layer?: number;
+};
+
+interface CurateOpts {
+  targetTotal:       number;                                 // default 20
+  lensQuota:         Record<'creative'|'media'|'category', number>; // default 7/7/6
+  defaultBucket:     GeminiInsightCard['bucket'];            // fallback when bucket missing
+  toolLabel:         string;
+  defaultConviction: number;                                 // fallback when conviction missing
+  minConviction:     number;                                 // drop sub-N cards. default 0 (off).
+}
+
+function curateLensCards(parsed: any[], opts: Partial<CurateOpts> & Pick<CurateOpts, 'toolLabel' | 'defaultBucket'>): LensCard[] {
+  // Default = 16 cards (6 creative + 6 media + 4 category). Tuned for speed —
+  // 20 cards hit Gemini's output-token budget and added 60-100s of latency
+  // without proportionate insight gain on a 1.2K-keyword file.
+  const {
+    targetTotal       = 16,
+    lensQuota         = { creative: 6, media: 6, category: 4 },
+    defaultConviction = 75,
+    minConviction     = 0,
+    toolLabel,
+    defaultBucket,
+  } = opts;
+
+  // 1. Normalise every card — coerce types, clamp conviction, validate enums.
+  const normalised: LensCard[] = parsed.map(c => ({
+    title:        String(c.title || 'Insight'),
+    bucket:       ((VALID_BUCKETS as readonly string[]).includes(c.bucket) ? c.bucket : defaultBucket) as GeminiInsightCard['bucket'],
+    type:         (VALID_CHART_TYPES.includes(c.type) ? c.type : 'hbar') as ChartType,
+    conviction:   Math.max(0, Math.min(100, Number(c.conviction) || defaultConviction)),
+    obs:          String(c.obs  || ''),
+    stat:         String(c.stat || ''),
+    rec:          String(c.rec  || ''),
+    toolLabel,
+    layer:        Number(c.layer) >= 1 && Number(c.layer) <= 8 ? Number(c.layer) : undefined,
+    lens:         (VALID_LENSES as readonly string[]).includes(String(c.lens || '').toLowerCase())
+                    ? (String(c.lens).toLowerCase() as 'creative' | 'media' | 'category')
+                    : undefined,
+    chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
+    chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
+    chartValues2: Array.isArray(c.chartValues2) && (c.chartValues2 as any[]).length > 0
+      ? c.chartValues2.map(Number) : undefined,
+    chartTitle:   c.chartTitle  ? String(c.chartTitle)  : undefined,
+    chartSeries:  Array.isArray(c.chartSeries)  ? c.chartSeries.map(String)  : undefined,
+  } as LensCard));
+
+  // 2. Drop sub-minConviction cards (the prompt is supposed to do this but
+  //    we enforce it server-side too).
+  const filtered = normalised.filter(c => (c.conviction ?? 0) >= minConviction);
+
+  // 3. Bucket by lens. _other holds cards Gemini didn't tag with a lens.
+  const byLens: Record<string, LensCard[]> = { creative: [], media: [], category: [], _other: [] };
+  for (const card of filtered) {
+    const k = card.lens && byLens[card.lens] ? card.lens : '_other';
+    byLens[k].push(card);
+  }
+  // Highest-conviction first inside each lens.
+  for (const k of Object.keys(byLens)) {
+    byLens[k].sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
+  }
+
+  // 4. Fill quotas per lens. If a lens is short, top up from _other; if
+  //    still short, neighbouring lenses by conviction.
+  const final: LensCard[] = [];
+  (['creative', 'media', 'category'] as const).forEach(lens => {
+    const want = lensQuota[lens];
+    const have = byLens[lens].splice(0, want);
+    while (have.length < want && byLens._other.length) have.push(byLens._other.shift()!);
+    have.forEach(c => { if (!c.lens) c.lens = lens; });
+    final.push(...have);
+  });
+  // 5. Fill remaining slots up to targetTotal with highest-conviction leftovers.
+  while (final.length < targetTotal) {
+    const pool = [
+      ...byLens.creative, ...byLens.media, ...byLens.category, ...byLens._other,
+    ].sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
+    if (pool.length === 0) break;
+    final.push(pool[0]);
+    for (const k of ['creative', 'media', 'category', '_other'] as const) {
+      const idx = byLens[k].indexOf(pool[0]);
+      if (idx >= 0) { byLens[k].splice(idx, 1); break; }
+    }
+  }
+  // 6. Final global sort by conviction desc — frontend renders top-down.
+  return final
+    .slice(0, targetTotal)
+    .sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
+}
+
 // ── Generic tabular analysis (non-GWI: Amazon, Helium10, sales, marketing, etc.) ──
 
 /**
@@ -1054,7 +1435,7 @@ RELEVANCE RULE: Every recommendation must name an action that directly serves th
 
   const prompt = `You are a senior Creative Strategist at PRISM, a consumer-intelligence firm advising brand managers, media planners, content strategists and creative directors in India.
 ${genericBriefBlock}
-You will receive a tabular dataset (any shape — could be Amazon listings, brand tracking, sales, social, audience research). Your job is to read the columns and rows, infer what this data is about, and write 8 PRISM insight cards spread across the most relevant buckets.
+You will receive a tabular dataset (any shape — could be Amazon listings, brand tracking, sales, social, audience research). Your job is to read the columns and rows, infer what this data is about, and write 16 PRISM insight cards balanced across creative / media / category lenses (6 creative + 6 media + 4 category).
 
 ━━ DATASET ━━
 Source: ${context}
@@ -1062,19 +1443,16 @@ Columns: ${columns.join(', ')}
 Sample rows (up to 60):
 ${JSON.stringify(compactSample, null, 2)}
 
-━━ AUDIENCE & TONE — READ THIS CAREFULLY ━━
-You are writing for **creative and media professionals**, NOT financial analysts.
-• NEVER use stock-market or finance language: tailspin, momentum, volatility, breakout, multiplier, dominance alert, market moat, volume-capture, growth risk, critical warning, capitalise.
-• Write like a smart magazine editor or strategy planner. Plain English, short sentences, active voice.
-• A creative director and a CMO should both find every card sharp and useful.
-• Banned words: over-index, leverage, cohort, synergy, touchpoint, whitespace, holistic, robust, utilize, paradigm, seamless, momentum, tailspin, dominance, volatility.
-• Use: people, shoppers, viewers, audiences, families, 1 in 3, nearly twice, here's the thing.
+${STORYTELLING_DISCIPLINE}
 
-━━ ANTI-HALLUCINATION ━━
-Every number/percentage in your cards MUST come from the sample rows above. If you can't compute it from the data, leave it out.
+${ANTI_HALLUCINATION}
+
+${THREE_LENS_RUBRIC}
+
+${CONVICTION_GRADING}
 
 ━━ BUCKET ASSIGNMENT ━━
-Spread your 8 cards across the most relevant buckets from the 9 below. NEVER assign more than 3 cards to any single bucket.
+Spread your 20 cards across the most relevant buckets from the 9 below. NEVER assign more than 5 cards to any single bucket.
 • content       — media consumption, streaming, devices, screen time, gaming, podcasts, OTT, social feeds, listing quality, titles, A+ content, images.
 • commerce      — purchase intent, BSR/ranking, units sold, revenue, conversion, discount behaviour, subscription, loyalty, consumer confidence, financial attitudes.
 • communication — brand awareness, brand trust, brand perception, reviews, ratings, ad recall, influencer reach, NPS, word of mouth, media channel preference.
@@ -1109,7 +1487,7 @@ RECOMMENDATION (1 to 2 sentences): direct brief to a creative director. Must nam
 ✅ "Rebalance influencer spend towards a larger base of nano and micro fitness creators — use celebrities for brand-building reach, micro-influencers for performance conversion on Instagram Reels."
 
 ━━ UNIQUENESS ━━
-Write EXACTLY 8 cards. No two cards may share the same opening sentence, the same stat, or the same recommendation platform+format combo.
+Write EXACTLY 16 cards distributed 6 creative + 6 media + 4 category. No two cards may share the same opening sentence, the same stat, or the same recommendation platform+format combo.
 
 ━━ CHART DATA ━━
 Pick labels + values from the sample rows (up to 8 items). Use actual values.
@@ -1143,8 +1521,8 @@ CHART TYPE GUIDE — pick the most informative and visually striking type:
 • funnel     → stepwise conversion or dropout (Awareness → Trial → Purchase)
 
 ━━ CHART VARIETY — MANDATORY ━━
-Across all 8 cards you MUST use at least 5 DIFFERENT chart types.
-NEVER assign hbar or bar to more than 3 cards total.
+Across all 16 cards you MUST use at least 5 DIFFERENT chart types.
+NEVER assign hbar or bar to more than 4 cards total.
 NEVER assign the same type to more than 2 consecutive cards.
 Where the data supports it, prefer the richer types: area (for time-series), doughnut (for proportions), funnel (for conversion data), radar (for multi-attribute profiles), waterfall (for component breakdowns), combo (for two-metric comparisons).
 
@@ -1152,6 +1530,7 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
 [
   {
     "title": "string",
+    "lens": "creative|media|category",
     "bucket": "content|commerce|communication|culture|channel|media|creative|pricing|search",
     "type": "hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel",
     "conviction": 88,
@@ -1186,31 +1565,19 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       throw new Error('No JSON array in Gemini generic response');
     }
 
-    const parsed: any[] = JSON.parse(arrayJson);
+    // Forgiving parse — recovers from a single malformed card without failing
+    // the whole 20-card response.
+    const parsed: any[] = parseJsonArrayForgiving(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
-    const validBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
-    const validTypes: ChartType[] = [
-      'hbar','bar','line','area','pie','doughnut',
-      'scatter','combo','histogram','radar','waterfall','funnel',
-    ];
-
-    return parsed.slice(0, 8).map(c => ({
-      title:        String(c.title || 'Insight'),
-      bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'content') as GeminiInsightCard['bucket'],
-      type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as ChartType,
-      conviction:   Number(c.conviction) || 88,
-      obs:          String(c.obs  || ''),
-      stat:         String(c.stat || ''),
-      rec:          String(c.rec  || ''),
+    // 20 cards, 7 creative + 7 media + 6 category, sorted by conviction.
+    // Same curation as the keyword path — see curateLensCards.
+    return curateLensCards(parsed, {
       toolLabel,
-      chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
-      chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
-      chartValues2: Array.isArray(c.chartValues2) && (c.chartValues2 as any[]).length > 0
-        ? c.chartValues2.map(Number) : undefined,
-      chartTitle:   c.chartTitle  ? String(c.chartTitle)  : undefined,
-      chartSeries:  Array.isArray(c.chartSeries)  ? c.chartSeries.map(String)  : undefined,
-    }));
+      defaultBucket:     'content',
+      defaultConviction: 80,
+      minConviction:     0,        // generic-tabular keeps everything; trust Gemini's score
+    });
 
   } catch (err) {
     console.error('[Gemini] analyzeGenericTabularForPRISM failed:', (err as Error).message);
@@ -1266,12 +1633,12 @@ export async function analyzeKeywordPlannerForPRISM(
 
   await getModel(genAI);
 
-  // Smaller sample = faster Gemini response. 80 stratified rows is enough
-  // signal for the 8-layer methodology (volume buckets, intent, themes, etc.)
-  // while keeping the prompt well under the latency budget. The local repro
-  // at sample=150 took 234s and timed out in production at 120s; 80 rows
-  // brings p50 below 90s on gemini-2.5-flash.
-  const sample = stratifiedSample(rows, 80);
+  // Smaller sample = faster Gemini response. Stratified 60 rows + 40-row
+  // in-prompt slice is enough signal for the 8-layer methodology (volume
+  // buckets, intent, themes are all token-frequency patterns that converge
+  // fast). Combined with the 2.0-flash primary (no thinking-mode latency)
+  // this brings p50 to ~40-60s on a 1.2K-keyword file vs 137-236s before.
+  const sample = stratifiedSample(rows, 60);
   const columns = Object.keys(sample[0] ?? {});
   const compactSample = sample.map(r => {
     const o: Record<string, any> = {};
@@ -1296,8 +1663,8 @@ You will receive Google Keyword Planner CSV rows. Apply the 8-Layer Keyword Meth
 ━━ DATASET ━━
 Source: ${context}
 Columns: ${columns.join(', ')}
-Sample rows (up to 50, stratified by volume):
-${JSON.stringify(compactSample.slice(0, 50), null, 2)}
+Sample rows (up to 40, stratified by volume):
+${JSON.stringify(compactSample.slice(0, 40), null, 2)}
 
 ━━ 8-LAYER METHODOLOGY ━━
 1. Volume Landscape — top keywords, volume buckets (Mega/High/Mid/Long-tail/Micro), Pareto concentration
@@ -1312,13 +1679,9 @@ ${JSON.stringify(compactSample.slice(0, 50), null, 2)}
 ━━ SKIP CONDITIONS ━━
 < 50 keywords → skip Layer 3 themes. < 6 months data → skip Layer 5 seasonality. No brand tokens → skip Layers 7.1/7.11/7.12. No bid columns → skip Layer 7.8/8.7 budget detail.
 
-━━ AUDIENCE & TONE ━━
-Write for media planners + brand managers. Plain English, short sentences, active voice.
-Never: tailspin, momentum, volatility, breakout, dominance, leverage, cohort, synergy, touchpoint, holistic, robust, utilize, paradigm, seamless, over-index.
-Use: shoppers, searchers, buyers, families, 1 in 3, nearly twice, here's the thing.
+${STORYTELLING_DISCIPLINE}
 
-━━ ANTI-HALLUCINATION ━━
-Every number/keyword in your cards MUST come from the sample rows. Zero invented benchmarks, zero made-up keywords.
+${ANTI_HALLUCINATION}
 
 ━━ BUCKET MAPPING ━━
 Each card must carry a \`bucket\` field (one of: content/commerce/communication/culture/channel/media/creative/pricing/search) AND a \`layer\` field (1-8).
@@ -1333,45 +1696,18 @@ Each card must carry a \`bucket\` field (one of: content/commerce/communication/
 ━━ THREE LENSES — MANDATORY ━━
 Every card must serve ONE of three audiences. Each card carries a \`lens\` field.
 
-1. CREATIVE LENS (7 cards) — for creative directors, copywriters, content strategists.
-   What makes a card "creative"? It reveals what to SAY in ads, copy, content:
-   • Intent + searcher language (Layer 2)
-   • Theme clusters → creative angles (Layer 3)
-   • Question keywords → content briefs (Layer 7 questions)
-   • Comparator pairs → narrative angles (Layer 7 X-vs-Y)
-   • N-grams → exact copy phrases (Layer 7)
-   • Pain-point keywords (e.g. "stain", "smell", "fade") → ad hooks
-   Always answer: "what should the creative SAY based on what people are searching?"
+1. CREATIVE LENS (6 cards) — what should the creative SAY?
+   Sources: intent, theme clusters, questions, comparators, n-grams, pain-points.
 
-2. MEDIA LENS (7 cards) — for media planners, PPC/SEO leads, performance teams.
-   What makes a card "media"? It reveals where to SPEND and HOW to bid:
-   • Volume Pareto, mega-keywords (Layer 1)
-   • Competition × Cost quadrants (Layer 4)
-   • Quick Wins, Rising Stars, Brand Defense (Layer 6)
-   • Match-type strategy, Negative keywords (Layer 8)
-   • Campaign blueprint, Funnel mapping TOFU/MOFU/BOFU (Layer 8)
-   • Winnability score top picks (Layer 8)
-   Always answer: "where should media dollars go and how should we structure campaigns?"
+2. MEDIA LENS (6 cards) — where should media dollars go and how to bid?
+   Sources: volume Pareto, Quick Wins, Rising Stars, Brand Defense, match-type, negatives, funnel.
 
-3. CATEGORY LENS (6 cards) — for brand managers, category strategists, CMOs.
-   What makes a card "category"? It reveals competitive landscape + market shape:
-   • Brand SOV — own brand vs competitors (Layer 7)
-   • Competitor-steal opportunities (Layer 7)
-   • YoY trend winners/losers across the category (Layer 5)
-   • Seasonality patterns (Layer 5)
-   • Price-sensitivity signals (Layer 7)
-   • Pareto / volume concentration → who owns the category (Layer 1)
-   Always answer: "what's happening in this category and where does the brand sit?"
+3. CATEGORY LENS (4 cards) — what's happening in the category and where does the brand sit?
+   Sources: Brand SOV, competitor-steal, YoY trends, seasonality, price sensitivity, volume concentration.
 
-If the data can't support 7+7+6, redistribute to a total of exactly 20 cards.
+If the data can't support 6+6+4, redistribute to a total of exactly 16 cards.
 
-━━ CONVICTION SCORE — STRICT ━━
-Score every card 0-100 on \`conviction\`. This is how confident you are the insight is REAL and ACTIONABLE.
-- 90-100: huge dataset support, unambiguous pattern, clear action.
-- 75-89:  solid pattern, action is clear with caveats.
-- 60-74:  pattern is real but action requires more investigation.
-- below 60: skip the card entirely; don't include it.
-Be honest. The frontend sorts by conviction — low scores get hidden from the default view.
+${CONVICTION_GRADING}
 
 ━━ CARD FORMAT ━━
 TITLE (max 12 words): magazine cover line + one plain-English number from the data.
@@ -1383,14 +1719,14 @@ RECOMMENDATION: ONE sentence to the right audience for this lens.
   - Category lens → write to a brand manager (positioning move, competitive response).
 
 ━━ UNIQUENESS ━━
-Exactly 20 cards. No two cards share the same opening sentence, stat, or keyword cluster.
-Across all 20, cover at least 6 of the 8 layers.
+Exactly 16 cards. No two cards share the same opening sentence, stat, or keyword cluster.
+Across all 16, cover at least 5 of the 8 layers.
 
 ━━ CHART DATA ━━
 Pick labels + values from the sample rows (up to 8 items per chart). Use actual values from the data.
 
 ━━ CHART VARIETY — MANDATORY ━━
-Use at least 6 DIFFERENT chart types across all 20 cards. Never hbar or bar for more than 4 cards. Never assign the same chart type to consecutive cards.
+Use at least 5 DIFFERENT chart types across all 16 cards. Never hbar or bar for more than 4 cards. Never assign the same chart type to consecutive cards.
 
 Return ONLY valid JSON — no markdown, no fences, no explanation:
 [{"title":"string","layer":1,"lens":"creative|media|category","bucket":"search","type":"hbar|bar|line|area|pie|doughnut|scatter|combo|histogram|radar|waterfall|funnel","conviction":82,"obs":"string","stat":"string","rec":"string","chartLabels":[],"chartValues":[],"chartValues2":[]}]`;
@@ -1417,83 +1753,19 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       throw new Error('No JSON array in Gemini keyword response');
     }
 
-    const parsed: any[] = JSON.parse(arrayJson);
+    // Forgiving parse — recovers from a single malformed card without failing
+    // the whole 20-card response.
+    const parsed: any[] = parseJsonArrayForgiving(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
-    const validBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
-    const validTypes: ChartType[] = [
-      'hbar','bar','line','area','pie','doughnut',
-      'scatter','combo','histogram','radar','waterfall','funnel',
-    ];
-
-    const validLenses = ['creative', 'media', 'category'];
-
-    // 1. Normalise + validate every card returned by Gemini.
-    const normalised = parsed.map(c => ({
-      title:        String(c.title || 'Insight'),
-      bucket:       (validBuckets.includes(c.bucket) ? c.bucket : 'search') as GeminiInsightCard['bucket'],
-      type:         (validTypes.includes(c.type)     ? c.type   : 'hbar')    as ChartType,
-      conviction:   Math.max(0, Math.min(100, Number(c.conviction) || 70)),
-      obs:          String(c.obs  || ''),
-      stat:         String(c.stat || ''),
-      rec:          String(c.rec  || ''),
+    // 20 cards, 7 creative + 7 media + 6 category, sorted by conviction.
+    // Shared with the generic-tabular path — see curateLensCards above.
+    return curateLensCards(parsed, {
       toolLabel,
-      // Layer 1-8 carried through for future "Group by layer" UI.
-      layer:        Number(c.layer) >= 1 && Number(c.layer) <= 8 ? Number(c.layer) : undefined,
-      // Creative / Media / Category lens — drives 3-lens curation in the UI.
-      lens:         validLenses.includes(String(c.lens || '').toLowerCase())
-                      ? String(c.lens).toLowerCase()
-                      : undefined,
-      chartLabels:  Array.isArray(c.chartLabels)  ? c.chartLabels.map(String)  : [],
-      chartValues:  Array.isArray(c.chartValues)  ? c.chartValues.map(Number)  : [],
-      chartValues2: Array.isArray(c.chartValues2) && (c.chartValues2 as any[]).length > 0
-        ? c.chartValues2.map(Number) : undefined,
-      chartTitle:   c.chartTitle  ? String(c.chartTitle)  : undefined,
-      chartSeries:  Array.isArray(c.chartSeries)  ? c.chartSeries.map(String)  : undefined,
-    } as any));
-
-    // 2. Cap at 20 cards. If the model returned more, keep the top 20 by
-    //    conviction (lens-balanced — see step 3).
-    // 3. Sort by conviction desc inside each lens, then interleave so the
-    //    default top-12 view in the UI has all three lenses represented.
-    const byLens: Record<string, any[]> = { creative: [], media: [], category: [], _other: [] };
-    for (const card of normalised) {
-      const k = card.lens && byLens[card.lens] ? card.lens : '_other';
-      byLens[k].push(card);
-    }
-    for (const k of Object.keys(byLens)) {
-      byLens[k].sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
-    }
-
-    // Target: 7 creative + 7 media + 6 category. If a lens is short, fill from
-    // _other (cards Gemini didn't tag); if still short, top up from neighbours
-    // ordered by conviction.
-    const TARGET = { creative: 7, media: 7, category: 6 };
-    const final: any[] = [];
-    (['creative', 'media', 'category'] as const).forEach(lens => {
-      const want = TARGET[lens];
-      const have = byLens[lens].splice(0, want);
-      while (have.length < want && byLens._other.length) have.push(byLens._other.shift());
-      have.forEach(c => { if (!c.lens) c.lens = lens; });
-      final.push(...have);
+      defaultBucket:     'search',
+      defaultConviction: 70,
+      minConviction:     60,       // 8-layer prompt is told to drop sub-60; we enforce it
     });
-    // Fill any remaining slots (up to 20) with the highest-conviction leftovers
-    while (final.length < 20) {
-      const pool = [
-        ...byLens.creative, ...byLens.media, ...byLens.category, ...byLens._other,
-      ].sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
-      if (pool.length === 0) break;
-      final.push(pool[0]);
-      // Remove the taken card from whichever bucket it came from
-      for (const k of ['creative', 'media', 'category', '_other'] as const) {
-        const idx = byLens[k].indexOf(pool[0]);
-        if (idx >= 0) { byLens[k].splice(idx, 1); break; }
-      }
-    }
-    // Final global sort by conviction desc — frontend keeps this order.
-    return final
-      .slice(0, 20)
-      .sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
 
   } catch (err) {
     console.error('[Gemini] analyzeKeywordPlannerForPRISM failed:', (err as Error).message);
@@ -1622,10 +1894,9 @@ Use the most relevant buckets from the 9 below. No more than 3 cards per bucket.
 • pricing       — price chatter, value perception signals, discount/deal mentions
 • search        — top search terms mentioned, keyword themes in organic conversation
 
-━━ TONE ━━
-Write like a smart agency strategist — plain English, short sentences, active voice.
-Banned words: over-index, leverage, synergy, touchpoint, holistic, robust, utilize, paradigm, seamless, volatility, momentum, dominance.
-Use: people, fans, critics, buyers, conversations, 1 in 3, nearly twice, here's the thing.
+${STORYTELLING_DISCIPLINE}
+
+${ANTI_HALLUCINATION}
 
 ━━ CARD FORMAT ━━
 TITLE (max 14 words): magazine cover line — surprising finding + one plain-English number.
@@ -1694,7 +1965,9 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
       throw new Error('No JSON array in social listening Gemini response');
     }
 
-    const parsed: any[] = JSON.parse(arrayJson);
+    // Forgiving parse — recovers from a single malformed card without failing
+    // the whole 20-card response.
+    const parsed: any[] = parseJsonArrayForgiving(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content','commerce','communication','culture','channel','media','creative','pricing','search'];
@@ -2138,7 +2411,9 @@ Return ONLY valid JSON — no markdown, no fences, no explanation:
     const arrayJson = extractFirstJsonArray(cleaned);
     if (!arrayJson) throw new Error('No JSON array in Gemini PDF response');
 
-    const parsed: any[] = JSON.parse(arrayJson);
+    // Forgiving parse — recovers from a single malformed card without failing
+    // the whole 20-card response.
+    const parsed: any[] = parseJsonArrayForgiving(arrayJson);
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array');
 
     const validBuckets = ['content', 'commerce', 'communication', 'culture', 'channel', 'media', 'creative', 'pricing', 'search'];

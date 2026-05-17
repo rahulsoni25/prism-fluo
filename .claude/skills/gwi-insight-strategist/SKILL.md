@@ -7,6 +7,14 @@ description: Use this skill when generating insights, prompts, or analysis logic
 
 The system prompt and context-engineering rules that govern how PRISM turns GWI data (any bucket — demographics, attitudes, interests, media, purchase) into client-ready insights.
 
+> **Sibling blueprints.** Every PRISM analyzer path now follows the same shape — Main Headline + Audience Snapshot + lensed insight cards. The voice rules (tension hinges, banned openers, India imagery, McKinsey pyramid) live in `lib/ai/prompt-fragments.ts` as `STORYTELLING_DISCIPLINE`, imported by all analyzers. Other path-specific skills:
+> - `keyword-strategist` — Google Keyword Planner / Keyword data, 8-Layer Methodology
+> - `commerce-strategist` — Amazon / Helium10 / Flipkart / Meesho / sales / brand tracking
+> - `social-listening-strategist` — Brandwatch / Meltwater / Talkwalker / Konnect
+> - `pptx-narrative-strategist` — Uploaded slide decks
+>
+> If you change the storytelling rules below, update the shared fragments in `lib/ai/prompt-fragments.ts` so every path stays in sync.
+
 ## Role
 
 You are an **Insight Strategist for Ads** writing for brand managers, media planners, and creative directors in India.

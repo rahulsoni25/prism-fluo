@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM, analyzeKeywordPlannerForPRISM, isKeywordPlannerShape, generateGwiOverview, polishGeminiCards } from '@/lib/ai/gemini';
+import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM, analyzeKeywordPlannerForPRISM, isKeywordPlannerShape, generateGwiOverview, generateBriefOverview, generateBriefOverviewFromRows, polishGeminiCards } from '@/lib/ai/gemini';
 import type { GwiOverview } from '@/lib/ai/gemini';
 import { analyzeWithOpenRouter, analyzeGenericWithOpenRouter, analyzeSocialWithOpenRouter } from '@/lib/ai/openrouter';
 import type { DataSlot, GeminiInsightCard } from '@/lib/ai/gemini';
@@ -1070,6 +1070,49 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
+/**
+ * Generates the Executive Summary (headline + audienceSnapshot) from the
+ * already-generated insight cards and attaches it to the response payload.
+ *
+ * Before this helper existed, only the GWI path produced an overview block —
+ * keyword, generic-tabular, social-listening, PPTX and auto-fallback all
+ * returned `insights` without `overview`, so the frontend's Executive Summary
+ * section silently hid on every non-GWI upload. That made GWI uploads look
+ * polished and everything else look thin.
+ *
+ * Soft-fails: if the overview Gemini call errors or times out, returns the
+ * payload with `overview: { headline: '', audienceSnapshot: '' }` and the
+ * frontend gracefully omits the block. No card output is ever blocked on
+ * overview success.
+ */
+async function withBriefOverview(
+  insights:     GeminiInsightCard[],
+  context:      string,
+  briefContext: string,
+  domain:       string,
+  payload:      Record<string, any>,
+  /** Optional pre-running overview promise (from generateBriefOverviewFromRows
+   *  kicked off in parallel with the main card-gen call). Awaiting it here is
+   *  effectively free since both calls overlap. If omitted, falls back to the
+   *  cards-based overview which runs sequentially after cards. */
+  overviewPromise?: Promise<GwiOverview>,
+): Promise<NextResponse> {
+  const overview = overviewPromise
+    ? await overviewPromise.catch((err: any) => {
+        console.warn('[analyze-data] Parallel overview failed:', err?.message);
+        return { headline: '', audienceSnapshot: '' } as GwiOverview;
+      })
+    : await withTimeout(
+        generateBriefOverview(insights, context, briefContext, domain),
+        30_000,
+        'Gemini brief overview',
+      ).catch((err: any) => {
+        console.warn('[analyze-data] Brief overview failed:', err?.message);
+        return { headline: '', audienceSnapshot: '' } as GwiOverview;
+      });
+  return NextResponse.json({ ...payload, insights, overview });
+}
+
 // ── Route ─────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
@@ -1282,8 +1325,13 @@ export async function POST(req: NextRequest) {
           analyzeSocialListeningForPRISM(rows, context, 'Social Listening', briefContext),
           40_000, 'Gemini social-listening',
         );
-        if (insights.length > 0)
-          return NextResponse.json({ insights: rebalanceCards(insights), slots: [], path: 'social-listening' });
+        if (insights.length > 0) {
+          const polished = rebalanceCards(insights);
+          return withBriefOverview(polished, context, briefContext, 'SOCIAL_LISTENING', {
+            slots: [],
+            path:  'social-listening',
+          });
+        }
       } catch (err: any) {
         console.warn('[analyze-data] Social Listening Gemini failed:', err.message);
       }
@@ -1295,8 +1343,14 @@ export async function POST(req: NextRequest) {
             40_000,
             'OpenRouter social-listening',
           );
-          if (orCards.length > 0)
-            return NextResponse.json({ insights: rebalanceCards(orCards), slots: [], path: 'social-listening', fallback: 'openrouter' });
+          if (orCards.length > 0) {
+            const polished = rebalanceCards(orCards);
+            return withBriefOverview(polished, context, briefContext, 'SOCIAL_LISTENING', {
+              slots:    [],
+              path:     'social-listening',
+              fallback: 'openrouter',
+            });
+          }
         } catch (orErr: any) {
           console.warn('[analyze-data] OpenRouter social fallback failed:', orErr.message);
         }
@@ -1317,10 +1371,19 @@ export async function POST(req: NextRequest) {
     const isKeywordPath = toolLabel === 'KEYWORD_PLANNER' || isKeywordPlannerShape(rows);
     if (isKeywordPath) {
       console.log('[analyze-data] Keyword path entered (8-layer methodology)');
-      // 220s budget — local repro of this prompt completed in 234s on a 1.2K
-      // keyword file with 18-24 card output. 120s was too tight and silently
-      // fell through to generic-tabular in production (giving the user 8 cards
-      // with no `layer` field). 220s leaves 80s of the route's 300s budget for
+      // Kick off the Executive Summary IN PARALLEL with the main card-gen
+      // call. Same data, two prompts — they run concurrently. Saves ~15-30s
+      // wall time vs running overview serially after cards.
+      const overviewPromise = withTimeout(
+        generateBriefOverviewFromRows(rows, context, briefContext, 'KEYWORD_PLANNER'),
+        90_000, 'Gemini brief overview (parallel, keyword)',
+      ).catch((err: any) => {
+        console.warn('[analyze-data] Keyword parallel overview failed:', err?.message);
+        return { headline: '', audienceSnapshot: '' } as GwiOverview;
+      });
+
+      // 220s budget — local repro of this prompt completed in 137-234s on a
+      // 1.2K keyword file. 220s leaves 80s of the route's 300s budget for
       // OpenRouter fallback below.
       try {
         const t0 = Date.now();
@@ -1330,12 +1393,13 @@ export async function POST(req: NextRequest) {
         );
         const ms = Date.now() - t0;
         console.log(`[analyze-data] Keyword 8-layer Gemini returned ${insights.length} cards in ${ms}ms`);
-        if (insights.length > 0)
-          return NextResponse.json({
-            insights: rebalanceCards(enforceChartTypeRules(polishGeminiCards(insights))),
-            slots:    [],
-            path:     'keyword-8layer',
-          });
+        if (insights.length > 0) {
+          const polished = rebalanceCards(enforceChartTypeRules(polishGeminiCards(insights)));
+          return withBriefOverview(polished, context, briefContext, 'KEYWORD_PLANNER', {
+            slots: [],
+            path:  'keyword-8layer',
+          }, overviewPromise);
+        }
       } catch (err: any) {
         console.warn('[analyze-data] Keyword 8-layer Gemini failed:', err.message);
       }
@@ -1352,8 +1416,8 @@ export async function POST(req: NextRequest) {
           );
           if (orCards.length > 0) {
             console.log(`[analyze-data] Keyword OpenRouter fallback returned ${orCards.length} cards`);
-            return NextResponse.json({
-              insights: rebalanceCards(orCards),
+            const polished = rebalanceCards(orCards);
+            return withBriefOverview(polished, context, briefContext, 'KEYWORD_PLANNER', {
               slots:    [],
               path:     'keyword-8layer',
               fallback: 'openrouter',
@@ -1381,8 +1445,13 @@ export async function POST(req: NextRequest) {
         analyzeGenericTabularForPRISM(rows, context, toolLabel, briefContext),
         120_000, `Gemini ${toolLabel}`,
       );
-      if (insights.length > 0)
-        return NextResponse.json({ insights: rebalanceCards(insights), slots: [], path: 'generic-tabular' });
+      if (insights.length > 0) {
+        const polished = rebalanceCards(insights);
+        return withBriefOverview(polished, context, briefContext, toolLabel, {
+          slots: [],
+          path:  'generic-tabular',
+        });
+      }
     } catch (err: any) {
       console.warn('[analyze-data] Generic tabular Gemini failed:', err.message);
     }
@@ -1395,8 +1464,14 @@ export async function POST(req: NextRequest) {
           40_000,
           `OpenRouter ${toolLabel}`,
         );
-        if (orCards.length > 0)
-          return NextResponse.json({ insights: rebalanceCards(orCards), slots: [], path: 'generic-tabular', fallback: 'openrouter' });
+        if (orCards.length > 0) {
+          const polished = rebalanceCards(orCards);
+          return withBriefOverview(polished, context, briefContext, toolLabel, {
+            slots:    [],
+            path:     'generic-tabular',
+            fallback: 'openrouter',
+          });
+        }
       } catch (orErr: any) {
         console.warn('[analyze-data] OpenRouter generic fallback failed:', orErr.message);
       }
@@ -1408,11 +1483,11 @@ export async function POST(req: NextRequest) {
       const autoCards = generateFallbackCards(genericSlots, toolLabel);
       if (autoCards.length > 0) {
         console.warn('[analyze-data] Using auto-analysis fallback for generic tabular data');
-        return NextResponse.json({
-          insights:  rebalanceCards(autoCards),
-          slots:     genericSlots,
-          path:      'generic-tabular',
-          fallback:  'auto',
+        const polished = rebalanceCards(autoCards);
+        return withBriefOverview(polished, context, briefContext, toolLabel, {
+          slots:    genericSlots,
+          path:     'generic-tabular',
+          fallback: 'auto',
         });
       }
     }
@@ -1428,11 +1503,11 @@ export async function POST(req: NextRequest) {
       const deckCards = generatePptxFallbackCards(rows, toolLabel);
       if (deckCards.length > 0) {
         console.warn('[analyze-data] Using pptx_deck deterministic fallback (tier 4)');
-        return NextResponse.json({
-          insights:  rebalanceCards(deckCards),
-          slots:     [],
-          path:      'pptx-deterministic',
-          fallback:  'auto',
+        const polished = rebalanceCards(deckCards);
+        return withBriefOverview(polished, context, briefContext, 'PPTX', {
+          slots:    [],
+          path:     'pptx-deterministic',
+          fallback: 'auto',
         });
       }
     }
