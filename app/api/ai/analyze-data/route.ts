@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM, generateGwiOverview, polishGeminiCards } from '@/lib/ai/gemini';
+import { analyzeDataForPRISM, analyzeGenericTabularForPRISM, analyzeSocialListeningForPRISM, analyzeKeywordPlannerForPRISM, isKeywordPlannerShape, generateGwiOverview, polishGeminiCards } from '@/lib/ai/gemini';
 import type { GwiOverview } from '@/lib/ai/gemini';
 import { analyzeWithOpenRouter, analyzeGenericWithOpenRouter, analyzeSocialWithOpenRouter } from '@/lib/ai/openrouter';
 import type { DataSlot, GeminiInsightCard } from '@/lib/ai/gemini';
@@ -1307,7 +1307,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Generic tabular path (Helium10, Keywords, Amazon, etc.) ──
+    // ── Keyword Planner path — 8-Layer Methodology ──
+    // Triggered when toolLabel was tagged KEYWORD_PLANNER by filename OR when
+    // the row shape itself carries `Keyword` + `Avg. monthly searches` columns
+    // (Google Keyword Planner export signature). This path embeds the 8-layer
+    // blueprint into the Gemini prompt — see lib/ai/gemini.ts
+    // `analyzeKeywordPlannerForPRISM` + the keyword-strategist skill for the
+    // authoritative methodology.
+    const isKeywordPath = toolLabel === 'KEYWORD_PLANNER' || isKeywordPlannerShape(rows);
+    if (isKeywordPath) {
+      try {
+        const insights = await withTimeout(
+          analyzeKeywordPlannerForPRISM(rows, context, 'KEYWORD_PLANNER', briefContext),
+          120_000, 'Gemini KEYWORD_PLANNER (8-layer)',
+        );
+        if (insights.length > 0)
+          return NextResponse.json({
+            insights: rebalanceCards(enforceChartTypeRules(polishGeminiCards(insights))),
+            slots:    [],
+            path:     'keyword-8layer',
+          });
+      } catch (err: any) {
+        console.warn('[analyze-data] Keyword 8-layer Gemini failed:', err.message);
+      }
+      // Falls through to generic-tabular as a soft fallback so the user
+      // still gets cards if the 8-layer prompt fails for some reason.
+    }
+
+    // ── Generic tabular path (Helium10, Amazon, sales, etc.) ──
     // Timeout raised 40s → 60s → 120s. The inner callGeminiWithRetry cycles
     // through 4 model candidates on rate-limit (Flash → Flash 2.0 → Pro →
     // Flash-Lite), each attempt taking 10–30s. After several uploads in a
