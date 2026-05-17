@@ -275,14 +275,55 @@ function synthesizeCompetition(opts: {
   const { keywordRows, helium10Rows, briefCompetitors, briefBrand } = opts;
   if (briefCompetitors.length === 0 && !briefBrand) return null;
 
-  // Build the brand match list — our brand + named competitors, lowercased.
-  const brandList = [briefBrand, ...briefCompetitors]
-    .filter(Boolean)
-    .map(b => String(b).toLowerCase().trim());
-  if (brandList.length === 0) return null;
+  // Build brand-match list as {display, key, tokens, isOurs} so we can
+  // preserve original case ("Surf Excel" not "Surf excel"), do multi-word
+  // matching, and tag our own brand cleanly.
+  interface BrandSpec { display: string; key: string; tokens: string[]; isOurs: boolean; }
+  const brandSpecs: BrandSpec[] = [briefBrand, ...briefCompetitors]
+    .filter((b): b is string => !!b)
+    .map(b => {
+      // Strip punctuation like "Mr.", normalise whitespace
+      const display = String(b).trim();
+      const cleaned = display.replace(/[.,;:!?]/g, '').replace(/\s+/g, ' ').toLowerCase();
+      const tokens  = cleaned.split(/\s+/).filter(t => t.length > 1);
+      return {
+        display,
+        key:     cleaned,
+        tokens,
+        isOurs:  briefBrand ? cleaned === String(briefBrand).replace(/[.,;:!?]/g, '').replace(/\s+/g, ' ').toLowerCase() : false,
+      };
+    })
+    // Dedupe by key
+    .filter((spec, i, arr) => arr.findIndex(s => s.key === spec.key) === i);
+
+  if (brandSpecs.length === 0) return null;
+
+  // Tokens that are too generic to use as brand discriminators (would
+  // create false positives like "wheel" matching "front wheel washer").
+  // For these brands we require the FULL phrase to match.
+  const GENERIC_TOKS = new Set(['wheel','active','complete','easy','quick','plus','color','white','black','blue']);
+
+  // Match function: full-phrase first, then last unique token (avoiding generics),
+  // then first token if non-generic.
+  const matchKw = (kw: string, spec: BrandSpec): boolean => {
+    // Full phrase
+    if (new RegExp(`\\b${escapeRe(spec.key)}\\b`).test(kw)) return true;
+    // For multi-word brands, require either full phrase OR a unique token
+    if (spec.tokens.length > 1) {
+      // Try last token if non-generic (often the brand-distinctive one — "white" in "Mr White")
+      // Actually for "Mr White" the distinguishing token is "white" but it's generic.
+      // So fall back to first non-generic token.
+      const distinct = spec.tokens.find(t => !GENERIC_TOKS.has(t));
+      if (distinct && new RegExp(`\\b${escapeRe(distinct)}\\b`).test(kw)) return true;
+      return false;
+    }
+    // Single-word brand — match the single token if non-generic
+    if (GENERIC_TOKS.has(spec.tokens[0])) return false;
+    return new RegExp(`\\b${escapeRe(spec.tokens[0])}\\b`).test(kw);
+  };
 
   // ── Search volume per brand (from keyword rows) ──────────────────
-  let kwVolumes: Record<string, number> = {};
+  const kwVolumes: Record<string, number> = {};
   let kwTotalCategoryVol = 0;
   if (keywordRows.length > 0) {
     const sample = keywordRows[0];
@@ -292,11 +333,10 @@ function synthesizeCompetition(opts: {
         const kw = String(r.Keyword || r.keyword || '').toLowerCase();
         const v  = toNum(r[volKey]);
         kwTotalCategoryVol += v;
-        for (const b of brandList) {
-          // First token (e.g. "Surf Excel" → "surf") OR full match
-          const first = b.split(/\s+/)[0];
-          if (new RegExp(`\\b${escapeRe(first)}\\b`).test(kw)) {
-            kwVolumes[b] = (kwVolumes[b] || 0) + v;
+        for (const spec of brandSpecs) {
+          if (matchKw(kw, spec)) {
+            kwVolumes[spec.key] = (kwVolumes[spec.key] || 0) + v;
+            break; // assign to first match only — no double counting
           }
         }
       });
@@ -304,7 +344,7 @@ function synthesizeCompetition(opts: {
   }
 
   // ── Revenue share per brand (from Helium 10 rows) ────────────────
-  let amzRevenue: Record<string, number> = {};
+  const amzRevenue: Record<string, number> = {};
   let amzTotal = 0;
   if (helium10Rows.length > 0) {
     const sample = helium10Rows[0];
@@ -312,13 +352,13 @@ function synthesizeCompetition(opts: {
     const brandKey = findCol(sample, /^brand$/i);
     if (revKey && brandKey) {
       helium10Rows.forEach(r => {
-        const b = String(r[brandKey] || '').toLowerCase().trim();
+        const b = String(r[brandKey] || '').replace(/[.,;:!?]/g, '').replace(/\s+/g, ' ').toLowerCase().trim();
         const v = toNum(r[revKey]);
         amzTotal += v;
-        for (const target of brandList) {
-          const first = target.split(/\s+/)[0];
-          if (b === target || b.includes(first) || first.includes(b)) {
-            amzRevenue[target] = (amzRevenue[target] || 0) + v;
+        for (const spec of brandSpecs) {
+          // Amazon brand column is usually clean — exact or substring match
+          if (b === spec.key || b.includes(spec.key) || spec.key.includes(b)) {
+            amzRevenue[spec.key] = (amzRevenue[spec.key] || 0) + v;
             break;
           }
         }
@@ -327,91 +367,149 @@ function synthesizeCompetition(opts: {
   }
 
   // ── Build merged table sorted by combined share ──────────────────
-  const combined = brandList.map(b => {
-    const kwVol  = kwVolumes[b] || 0;
+  const combined = brandSpecs.map(spec => {
+    const kwVol  = kwVolumes[spec.key] || 0;
     const kwPct  = kwTotalCategoryVol > 0 ? Math.round(kwVol / kwTotalCategoryVol * 100) : 0;
-    const amzVol = amzRevenue[b] || 0;
+    const amzVol = amzRevenue[spec.key] || 0;
     const amzPct = amzTotal > 0 ? Math.round(amzVol / amzTotal * 100) : 0;
-    return { brand: b, kwVol, kwPct, amzVol, amzPct, isOurs: b === (briefBrand || '').toLowerCase() };
+    return { brand: spec.display, key: spec.key, kwVol, kwPct, amzVol, amzPct, isOurs: spec.isOurs };
   }).filter(x => x.kwVol > 0 || x.amzVol > 0);
 
   if (combined.length === 0) return null;
 
-  // Sort by search share desc (the cheaper signal — present even when no Amazon data)
+  // Sort by search share desc (present even when no Amazon data)
   combined.sort((a, b) => b.kwPct - a.kwPct);
   const leader = combined[0];
   const ourBrand = combined.find(c => c.isOurs);
 
   // ── Headline + stat ──────────────────────────────────────────────
+  const eyebrow = '🏆 Competition';
   let headline: string;
-  let eyebrow = '🏆 Competition';
-  if (ourBrand && leader && leader.brand !== ourBrand.brand) {
-    headline = `${cap(leader.brand)} leads category search at ${leader.kwPct}% · ${cap(ourBrand.brand)} sits at ${ourBrand.kwPct}% — ${ourBrand.kwPct < leader.kwPct ? `gap of ${leader.kwPct - ourBrand.kwPct}pts to close` : 'within striking distance'}.`;
+  if (ourBrand && leader && leader.key !== ourBrand.key) {
+    const gap = leader.kwPct - ourBrand.kwPct;
+    headline = `${leader.brand} leads category search at ${leader.kwPct}% · ${ourBrand.brand} sits at ${ourBrand.kwPct}% — ${gap > 0 ? `${gap}pt gap to close` : 'within striking distance'}.`;
   } else if (ourBrand) {
-    headline = `${cap(ourBrand.brand)} leads category search at ${ourBrand.kwPct}% across ${combined.length} tracked brands.`;
+    headline = `${ourBrand.brand} leads category search at ${ourBrand.kwPct}% across ${combined.length} tracked brands.`;
   } else if (leader) {
-    headline = `${cap(leader.brand)} leads the named competitor set at ${leader.kwPct}% of category search volume.`;
+    headline = `${leader.brand} leads the named competitor set at ${leader.kwPct}% of category search volume.`;
   } else {
     return null;
   }
 
-  const statParts: string[] = [];
-  statParts.push(`Search SOV across ${combined.length} brands`);
+  const statParts: string[] = [`Search SOV across ${combined.length} brands`];
   if (amzTotal > 0) {
     const amzLeader = [...combined].sort((a, b) => b.amzPct - a.amzPct)[0];
     if (amzLeader && amzLeader.amzPct > 0) {
-      statParts.push(`${cap(amzLeader.brand)} leads shelf at ${amzLeader.amzPct}% revenue`);
+      statParts.push(`${amzLeader.brand} leads shelf at ${amzLeader.amzPct}% revenue`);
     }
   }
   const stat = statParts.join(' · ');
 
-  // ── Hover: brand-by-brand table ──────────────────────────────────
+  // ── Hover: brand-by-brand table (preserves original case) ────────
   const hoverLines: string[] = combined.slice(0, 8).map(c => {
     const parts: string[] = [];
     if (c.kwPct > 0) parts.push(`search ${c.kwPct}%`);
     if (c.amzPct > 0) parts.push(`shelf ${c.amzPct}%`);
+    if (parts.length === 0) parts.push('no data');
     const tag = c.isOurs ? ' ← our brand' : '';
-    return `${cap(c.brand)}${tag} — ${parts.join(' · ')}`;
+    return `${c.brand}${tag} — ${parts.join(' · ')}`;
   });
+  hoverLines.push(`From ${brandSpecs.length} named brand${brandSpecs.length === 1 ? '' : 's'} in brief · search SOV from keyword rows · shelf share from Helium 10 rows`);
 
   return { eyebrow, headline, stat, hoverLines };
 }
 
 /* ── CULTURAL CUES synthesis (Section D, partial) ─────────────────────
-   Mines top theme clusters from keyword data using simple token frequency.
-   Surfaces the strongest content/creative territories as direction signals.
-   Caveat: this is a token-frequency proxy, NOT proper LDA/embedding clusters.
-   For full Section D coverage upload GWI genre data. */
+   Mines top theme clusters from keyword data using bigram frequency.
+   Bigrams (2-word phrases) carry more semantic signal than single tokens
+   — "stain removal", "color clothes", "fabric softener" point at real
+   creative territories, whereas "stain" alone is just a token.
+   Caveat: still a frequency proxy, not LDA/embedding clusters. For full
+   Section D coverage upload GWI genre data. */
 function synthesizeCulturalCues(rows: any[]): NuggetCard | null {
   if (!Array.isArray(rows) || rows.length < 20) return null;
   const sample = rows[0];
   const volKey = findCol(sample, /avg.*month.*search/i, /search\s*volume/i, /monthly\s*searches/i);
   if (!volKey) return null;
 
-  // Stopwords + generic category words to ignore so clusters surface meaningful themes.
+  // Words that have no creative-territory meaning. Goes hard so themes are
+  // genuinely insight-bearing.
   const STOP = new Set([
-    'the','and','for','with','from','this','that','your','best','top','how','what','where','when',
-    'why','near','near me','in','of','to','a','an','is','are','my','me','i',
-    // category-generic words
-    'detergent','washing','powder','liquid','soap','laundry','clothes','machine','wash',
+    // grammatical
+    'the','and','for','with','from','this','that','your','our','their','my','me','i','we','they',
+    'in','of','to','a','an','is','are','was','were','be','been','has','have','had','do','does','did',
+    'on','at','by','as','it','its','if','or','but','so','not','no','than','then','also',
+    // generic search prefixes
+    'best','top','how','what','where','when','why','which','near','online','buy','price','cheap',
+    'good','better','new','old','old','review','reviews',
+    // category-generic words (detergent space)
+    'detergent','washing','powder','liquid','soap','laundry','clothes','clothing','garment',
+    'machine','wash','washer','dryer','load','front','top','semi','fully','automatic','manual',
+    // pack-size / format generics
+    'kg','gm','gms','grams','ml','litre','liter','small','large','big',
+    // numbers as words
+    'one','two','three','four','five','six','seven','eight','nine','ten',
+    // location generics
+    'india','indian','online','offline','shop','store','retailer',
+    // commerce verbs/nouns
+    'buying','selling','sale','sales','offer','offers','deal','deals','discount',
   ]);
 
-  // Token-volume map
-  const tokVol: Record<string, number> = {};
+  // Brand fragments (single-word and bigram chunks). These surface as
+  // "trending" because branded queries have huge volume — but they carry
+  // ZERO creative direction. Exclude aggressively.
+  const BRAND_FRAGS = new Set([
+    'surf','excel','matic','easy','quick','active','complete',
+    'ariel','tide','plus','color','colour',
+    'ghadi','nirma','nise','nima','rin','wheel','henko',
+    'patanjali','fena','genteel','safed','vimal','sasa',
+    'mr','white','black','blue','green','red',
+    'presto','amazon','brand','godrej','fab','aer',
+    'persil','omo','dynamo','cold','power',
+    'more','light','comfort',  // sub-brands often leak: "More Light", "Comfort"
+    'lakme','dove','vim','lux','rexona','sunsilk','clinic','pears',  // adjacent FMCG brands that may co-occur
+  ]);
+
+  const isBrandFragment = (s: string) => BRAND_FRAGS.has(s);
+  // Pure numbers AND composite numerics like "1kg" / "500ml" / "2l" caught here.
+  const isStop          = (s: string) => STOP.has(s) || s.length < 3 || /^\d+[a-z]{0,3}$/.test(s);
+
+  // ── Bigram-volume map ─────────────────────────────────────────────
+  const bigramVol: Record<string, number> = {};
   rows.forEach(r => {
-    const kw  = String(r.Keyword || r.keyword || '').toLowerCase();
-    const v   = toNum(r[volKey]);
-    if (v < 50) return;  // skip noise
-    const toks = kw.split(/[\s\-_]+/).filter(t => t.length > 2 && !STOP.has(t));
-    toks.forEach(t => { tokVol[t] = (tokVol[t] || 0) + v; });
+    const kw = String(r.Keyword || r.keyword || '').toLowerCase().trim();
+    const v  = toNum(r[volKey]);
+    if (v < 50) return; // skip noise
+    const toks = kw.split(/[\s\-_]+/).filter(t => t.length > 0);
+    for (let i = 0; i < toks.length - 1; i++) {
+      const a = toks[i];
+      const b = toks[i + 1];
+      // Both tokens must be content-bearing
+      if (isStop(a) || isStop(b)) continue;
+      if (isBrandFragment(a) || isBrandFragment(b)) continue;
+      const bg = `${a} ${b}`;
+      bigramVol[bg] = (bigramVol[bg] || 0) + v;
+    }
   });
 
-  // Rank tokens by volume, exclude tokens that are likely brand names
-  const KNOWN_BRAND_TOKS = new Set(['surf','ariel','tide','ghadi','nirma','rin','wheel','henko','patanjali','fena','genteel','safed','vimal','sasa','mr','presto','godrej']);
-  const themes = Object.entries(tokVol)
-    .filter(([t]) => !KNOWN_BRAND_TOKS.has(t) && isNaN(Number(t)))
+  // ── Backstop: also include strong single tokens if bigrams are sparse
+  // (e.g. very short keyword lists). Filtered just like bigrams. ────
+  const singleVol: Record<string, number> = {};
+  if (Object.keys(bigramVol).length < 5) {
+    rows.forEach(r => {
+      const kw = String(r.Keyword || r.keyword || '').toLowerCase().trim();
+      const v  = toNum(r[volKey]);
+      if (v < 50) return;
+      kw.split(/[\s\-_]+/).forEach(t => {
+        if (isStop(t) || isBrandFragment(t)) return;
+        singleVol[t] = (singleVol[t] || 0) + v;
+      });
+    });
+  }
+
+  const themes = Object.entries(Object.keys(bigramVol).length >= 5 ? bigramVol : singleVol)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 8);
+    .slice(0, 10);
 
   if (themes.length < 3) return null;
 
@@ -420,10 +518,11 @@ function synthesizeCulturalCues(rows: any[]): NuggetCard | null {
   // ── Headline + stat ──────────────────────────────────────────────
   const eyebrow = '🎬 Cultural Cues';
   const headline = `"${top3[0][0]}" leads the conversation at ${fmt(top3[0][1])} monthly queries — strongest creative territory.`;
-  const stat = `Top 3 themes: ${top3.map(([t, v]) => `${t} (${fmt(v)})`).join(' · ')}`;
+  const stat = `Top themes: ${top3.map(([t]) => `"${t}"`).join(' · ')}`;
 
-  const hoverLines: string[] = themes.slice(0, 6).map(([t, v]) => `"${t}" — ${fmt(v)} monthly mentions`);
+  const hoverLines: string[] = themes.slice(0, 6).map(([t, v]) => `"${t}" — ${fmt(v)} monthly queries`);
   hoverLines.push('Read these as content/creative angle hooks — landing pages, ad copy, video themes');
+  hoverLines.push('Section D (full genre map) requires GWI viewer-preference data');
 
   return { eyebrow, headline, stat, hoverLines };
 }

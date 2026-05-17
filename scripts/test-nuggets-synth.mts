@@ -50,7 +50,8 @@ const brief = {
   category: 'Laundry detergent',
   objective: 'Identify high-intent search opportunities for 2026 PPC + SEO plan',
   geography: 'India',
-  competitors: 'Ariel, Tide, Ghadi, Nirma',
+  // User's full named competitor list (mass-market detergents, no premium/pods):
+  competitors: 'Ghadi, Nirma, Rin, Wheel, Active Wheel, Fena, Mr. White, Patanjali, Nise',
 };
 
 const nuggets = synthesizeNuggets({
