@@ -1038,9 +1038,13 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
         Older analyses won't have this field; we fall through to the chart-
         picking logic below for those. See lib/nuggets/synthesize.ts. ── */
   const computedNuggets = analysis?.results_json?.nuggets ?? null;
-  const hasComputedAsk      = !!(computedNuggets?.ask?.headline);
-  const hasComputedKeyword  = !!(computedNuggets?.keyword?.headline);
-  const hasComputedHelium10 = !!(computedNuggets?.helium10?.headline);
+  const hasComputedAsk         = !!(computedNuggets?.ask?.headline);
+  const hasComputedKeyword     = !!(computedNuggets?.keyword?.headline);
+  const hasComputedHelium10    = !!(computedNuggets?.helium10?.headline);
+  // Framework cards (Sections J / D / I of the audience brief)
+  const hasComputedCompetition = !!(computedNuggets?.competition?.headline);
+  const hasComputedCultural    = !!(computedNuggets?.cultural?.headline);
+  const hasComputedTrust       = !!(computedNuggets?.trust?.headline);
 
   /* ── Content-pattern detectors (multi-source uploads need these because
    *    every card may share the same `MULTI-SOURCE` toolLabel) ───────── */
@@ -1159,6 +1163,20 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
     const missed = [1,3,4,5,6,7,8,9].filter(L => !layersPresent.has(L));
     if (missed.length > 0) limitations.push(`Helium 10: layer${missed.length>1?'s':''} ${missed.join(', ')} returned 0 cards`);
   }
+  /* ── Framework-aware gaps (Sections A-J of the audience brief) ──
+     Surface which sections of the strategic framework need additional
+     data uploads beyond the current files. Helps the reader understand
+     what's NOT answerable from the data they have. */
+  const hasGwi    = /GWI/i.test(toolUp) || (charts || []).some(c => /GWI/i.test(c.toolLabel || ''));
+  const hasSocial = /SOCIAL|BRANDWATCH|MELTWATER|KONNECT|TALKWALKER/i.test(toolUp);
+  if (!hasGwi) {
+    limitations.push('Section A/F/G (digital usage, creator influence, behaviour) needs GWI upload');
+  }
+  if (!hasSocial) {
+    limitations.push('Section I (full trust map) needs social listening or brand tracker upload');
+  }
+  // Section H (time spent by format) almost always requires panel data
+  limitations.push('Section H (time-spent by format) requires Nielsen/Comscore panel data');
 
   /* ── Distil each card down to: ONE bold headline + ONE supporting stat.
         Everything else lives in a hover tooltip. Mirrors StrategicBetCard. */
@@ -1374,6 +1392,48 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
           />
         )}
       </div>
+
+      {/* ── Row 3: Framework Nuggets (Sections J / D / I of audience brief)
+          Only renders when at least one of the three computed slots exists.
+          Each card draws from synthesizeCompetition / synthesizeCulturalCues
+          / synthesizeTrustBuilders in lib/nuggets/synthesize.ts. */}
+      {(hasComputedCompetition || hasComputedCultural || hasComputedTrust) && (
+        <div className="insights-overview-stats" style={{ marginTop: 12 }}>
+          {hasComputedCompetition && (
+            <NuggetBetCard
+              eyebrow={computedNuggets.competition.eyebrow || '🏆 Competition'}
+              eyebrowColor="#DC2626"
+              action={computedNuggets.competition.headline}
+              stat={computedNuggets.competition.stat}
+              hoverHeading="Brand-by-brand share table"
+              hoverLines={renderComputedHover(computedNuggets.competition.hoverLines)}
+              hoverFooter="Search SOV from keyword rows · shelf share from Helium 10 rows · competitors from brief.competitors."
+            />
+          )}
+          {hasComputedCultural && (
+            <NuggetBetCard
+              eyebrow={computedNuggets.cultural.eyebrow || '🎬 Cultural Cues'}
+              eyebrowColor="#9333EA"
+              action={computedNuggets.cultural.headline}
+              stat={computedNuggets.cultural.stat}
+              hoverHeading="Top themes — creative direction signals"
+              hoverLines={renderComputedHover(computedNuggets.cultural.hoverLines)}
+              hoverFooter="Token-frequency proxy — full Section D coverage requires GWI genre data upload."
+            />
+          )}
+          {hasComputedTrust && (
+            <NuggetBetCard
+              eyebrow={computedNuggets.trust.eyebrow || '🛡️ Trust Signals'}
+              eyebrowColor="#0D9488"
+              action={computedNuggets.trust.headline}
+              stat={computedNuggets.trust.stat}
+              hoverHeading="What converts consideration → trial"
+              hoverLines={renderComputedHover(computedNuggets.trust.hoverLines)}
+              hoverFooter="Branded mix from search · review-sales correlation from shelf · full trust map needs brand tracker."
+            />
+          )}
+        </div>
+      )}
 
       {/* Limitations footer — thin chip strip below the 6-card grid. */}
       {limitations.length > 0 && (

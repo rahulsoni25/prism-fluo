@@ -1422,7 +1422,7 @@ export async function POST(req: NextRequest) {
           return withBriefOverview(polished, context, briefContext, 'KEYWORD_PLANNER', {
             slots: [],
             path:  'keyword-8layer',
-          }, overviewPromise, { keywordRows: rows, brief: null });
+          }, overviewPromise, { keywordRows: rows, brief });
         }
       } catch (err: any) {
         console.warn('[analyze-data] Keyword 8-layer Gemini failed:', err.message);
@@ -1445,7 +1445,7 @@ export async function POST(req: NextRequest) {
               slots:    [],
               path:     'keyword-8layer',
               fallback: 'openrouter',
-            }, undefined, { keywordRows: rows, brief: null });
+            }, undefined, { keywordRows: rows, brief });
           }
         } catch (orErr: any) {
           console.warn('[analyze-data] OpenRouter keyword fallback failed:', orErr.message);
@@ -1467,7 +1467,7 @@ export async function POST(req: NextRequest) {
     // Detect whether the current generic-tabular run is an ecom export so
     // synthesize gets the rows in the right slot for the Helium 10 Nugget.
     const isEcomTool = /AMAZON|HELIUM|BLACKBOX|FLIPKART|MEESHO|BSR/i.test(toolLabel);
-    const synthOptsGeneric = isEcomTool ? { helium10Rows: rows, brief: null } : undefined;
+    const synthOptsGeneric = isEcomTool ? { helium10Rows: rows, brief } : undefined;
 
     try {
       const insights = await withTimeout(
