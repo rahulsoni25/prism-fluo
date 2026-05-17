@@ -1138,45 +1138,10 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
     9: 'Open Ground',          // Whitespace + vulnerability
   };
 
-  /* ── Footer: Limitations strip (replaces standalone Risks card) ──── */
-  // Inline strip — each item rendered as a small chip. Static items keyed
-  // by the tool(s) present in this analysis; dynamic items flag missing
-  // layers per file type.
-  const limitations = [];
-  if (keywordCards.length > 0) {
-    limitations.push('Keywords data ≠ organic rankings (needs GSC/SEMrush)');
-    limitations.push('No CTR / conversion data in Keyword Planner');
-  }
-  if (heliumCards.length > 0) {
-    limitations.push('Helium 10 lacks monthly seasonality (use Trendster)');
-    limitations.push('No ACoS / search-term performance (use Amazon Ads + Cerebro)');
-  }
-  if (keywordCards.length === 0 && heliumCards.length === 0) {
-    limitations.push('Generic tabular signal — causality and trended view limited');
-  }
-  const layersPresent = new Set((charts || []).map(c => c.layer).filter(Boolean));
-  if (keywordCards.length > 0) {
-    const missed = [1,2,3,4,5,6,7,8].filter(L => !layersPresent.has(L));
-    if (missed.length > 0) limitations.push(`Keywords: layer${missed.length>1?'s':''} ${missed.join(', ')} returned 0 cards`);
-  }
-  if (heliumCards.length > 0) {
-    const missed = [1,3,4,5,6,7,8,9].filter(L => !layersPresent.has(L));
-    if (missed.length > 0) limitations.push(`Helium 10: layer${missed.length>1?'s':''} ${missed.join(', ')} returned 0 cards`);
-  }
-  /* ── Framework-aware gaps (Sections A-J of the audience brief) ──
-     Surface which sections of the strategic framework need additional
-     data uploads beyond the current files. Helps the reader understand
-     what's NOT answerable from the data they have. */
-  const hasGwi    = /GWI/i.test(toolUp) || (charts || []).some(c => /GWI/i.test(c.toolLabel || ''));
-  const hasSocial = /SOCIAL|BRANDWATCH|MELTWATER|KONNECT|TALKWALKER/i.test(toolUp);
-  if (!hasGwi) {
-    limitations.push('Section A/F/G (digital usage, creator influence, behaviour) needs GWI upload');
-  }
-  if (!hasSocial) {
-    limitations.push('Section I (full trust map) needs social listening or brand tracker upload');
-  }
-  // Section H (time spent by format) almost always requires panel data
-  limitations.push('Section H (time-spent by format) requires Nielsen/Comscore panel data');
+  /* Limitations strip removed — user direction: rail should feel research-
+     heavy, not gap-warning. Coverage gaps for sections A/F/G/H/I are still
+     captured in source code comments (synthesize.ts) and skill blueprints
+     but no longer surfaced in the rail UI. */
 
   /* ── Distil each card down to: ONE bold headline + ONE supporting stat.
         Everything else lives in a hover tooltip. Mirrors StrategicBetCard. */
@@ -1259,7 +1224,11 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
 
   /* ── Bet-style card component (identical signature to StrategicBetCard
         but with configurable eyebrow colour + richer hover body) ──── */
-  function NuggetBetCard({ eyebrow, eyebrowColor, action, stat, hoverHeading, hoverLines, hoverFooter }) {
+  function NuggetBetCard({
+    eyebrow, eyebrowColor, conviction,
+    action, stat, subline, moreFooter,
+    hoverHeading, hoverLines, hoverFooter,
+  }) {
     const [show, setShow] = useState(false);
     return (
       <div
@@ -1268,28 +1237,56 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
         onMouseLeave={() => setShow(false)}
         style={{ position: 'relative', cursor: 'help', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
       >
-        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: eyebrowColor, marginBottom: 6 }}>
-          {eyebrow}
+        {/* Eyebrow row: name on left, conviction badge on right (mirrors StrategicBetCard) */}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: eyebrowColor }}>
+            {eyebrow}
+          </span>
+          {conviction != null && (
+            <span style={{ fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace", color: '#94A3B8', letterSpacing: 0 }}>
+              conv {conviction}
+            </span>
+          )}
         </div>
+
+        {/* Bold one-line finding (the magazine cover line) */}
         <div style={{ fontSize: 15, lineHeight: 1.35, fontWeight: 700, color: '#0F172A', letterSpacing: '-.005em', marginBottom: 10 }}>
           {action}
         </div>
+
         {stat && <div className="stat-card-divider" />}
-        {stat && (
-          <div style={{ fontSize: 12, lineHeight: 1.4, color: '#475569', marginTop: 8 }}>
-            {stat}
-          </div>
-        )}
+
+        {/* Body block — stat + "Why it matters" sub-line + "+N findings" hint */}
+        <div style={{ marginTop: stat ? 8 : 0 }}>
+          {stat && (
+            <div style={{ fontSize: 12, lineHeight: 1.4, color: '#475569' }}>
+              {stat}
+            </div>
+          )}
+          {subline && (
+            <div style={{ fontSize: 11.5, lineHeight: 1.4, color: '#64748B', marginTop: 6, paddingTop: 6, borderTop: '1px dashed #E2E8F0' }}>
+              <strong style={{ color: '#475569', fontWeight: 600 }}>Why it matters:</strong> {subline}
+            </div>
+          )}
+          {moreFooter && (
+            <div style={{ fontSize: 10.5, color: eyebrowColor, marginTop: 8, fontWeight: 600, letterSpacing: '.02em' }}>
+              {moreFooter} →
+            </div>
+          )}
+        </div>
+
+        {/* Hover: rich, dark, scrollable */}
         {show && (
           <div
             role="tooltip"
             style={{
               position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
-              width: 360, background: '#0F172A', color: '#E2E8F0',
-              fontSize: 11, lineHeight: 1.6, padding: '14px 16px',
-              borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+              width: 380, background: '#0F172A', color: '#E2E8F0',
+              fontSize: 11, lineHeight: 1.6, padding: '16px 18px',
+              borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.32)',
               zIndex: 200, whiteSpace: 'normal', textAlign: 'left',
               fontWeight: 400, letterSpacing: 0,
+              maxHeight: 480, overflowY: 'auto',
             }}
           >
             <strong style={{ display: 'block', marginBottom: 8, fontSize: 11.5, color: '#7DD3FC', fontWeight: 700 }}>
@@ -1299,7 +1296,7 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
               {hoverLines}
             </div>
             {hoverFooter && (
-              <div style={{ color: '#94A3B8', fontSize: 10.5, paddingTop: 8, marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+              <div style={{ color: '#94A3B8', fontSize: 10.5, paddingTop: 10, marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
                 {hoverFooter}
               </div>
             )}
@@ -1358,6 +1355,14 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
             eyebrowColor="#7C3AED"
             action={askHeadline_ || askStat_}
             stat={askHeadline_ && askStat_ ? askStat_ : null}
+            subline={
+              hasComputedAsk && askHoverLines_?.[0]
+                ? askHoverLines_[0]
+                : (categoryIntel?.marketValueINR
+                    ? `${categoryIntel.marketValueINR} category${categoryIntel.cagr ? ` · ${categoryIntel.cagr} CAGR` : ''}${brief.competitors ? ` · against ${brief.competitors.split(/[,;]/).slice(0, 3).join(', ').trim()}` : ''}`
+                    : null)
+            }
+            moreFooter={brief.competitors ? `+ ${brief.competitors.split(/[,;]/).filter(Boolean).length} competitors tracked` : null}
             hoverHeading={flav ? `${flav} brief — anchor for this analysis` : 'Brief anchor for this analysis'}
             hoverLines={hasComputedAsk ? renderComputedHover(askHoverLines_) : askHoverDetails}
             hoverFooter="Every card on this rail is filtered for relevance to this brief."
@@ -1368,9 +1373,22 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
           <NuggetBetCard
             eyebrow={kEyebrow_}
             eyebrowColor="#0891B2"
+            conviction={keywordAction?.conviction}
             action={kHeadline_}
             stat={kStat_}
-            hoverHeading={hasComputedKeyword ? 'More search facts' : `${keywordHoverCards.length || 0} more search findings`}
+            subline={
+              hasComputedKeyword && kHoverLines?.[0]
+                ? kHoverLines[0]
+                : (keywordAction?.obs
+                    ? String(keywordAction.obs).split(/(?<=[.!?])\s+/)[0]
+                    : null)
+            }
+            moreFooter={
+              hasComputedKeyword
+                ? `+ ${(kHoverLines?.length || 0) - 1} more search facts`
+                : (keywordHoverCards.length > 0 ? `+ ${keywordHoverCards.length} more search findings` : null)
+            }
+            hoverHeading={hasComputedKeyword ? 'Full category-search readout' : `${keywordHoverCards.length || 0} more search findings`}
             hoverLines={hasComputedKeyword ? renderComputedHover(kHoverLines) : moreFindingsBody(keywordHoverCards, layerToK)}
             hoverFooter={hasComputedKeyword
               ? `Computed from raw keyword rows · Pareto, weighted YoY, brand SOV.`
@@ -1382,9 +1400,22 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
           <NuggetBetCard
             eyebrow={hEyebrow}
             eyebrowColor="#B91C1C"
+            conviction={heliumAction?.conviction}
             action={hHeadline}
             stat={hStat}
-            hoverHeading={hasComputedHelium10 ? 'More shelf facts' : `${heliumHoverCards.length || 0} more shelf findings`}
+            subline={
+              hasComputedHelium10 && hHoverLines?.[0]
+                ? hHoverLines[0]
+                : (heliumAction?.obs
+                    ? String(heliumAction.obs).split(/(?<=[.!?])\s+/)[0]
+                    : null)
+            }
+            moreFooter={
+              hasComputedHelium10
+                ? `+ ${(hHoverLines?.length || 0) - 1} more shelf facts`
+                : (heliumHoverCards.length > 0 ? `+ ${heliumHoverCards.length} more shelf findings` : null)
+            }
+            hoverHeading={hasComputedHelium10 ? 'Full shelf readout' : `${heliumHoverCards.length || 0} more shelf findings`}
             hoverLines={hasComputedHelium10 ? renderComputedHover(hHoverLines) : moreFindingsBody(heliumHoverCards, layerToH)}
             hoverFooter={hasComputedHelium10
               ? `Computed from raw ASIN rows · HHI, brand share, reviews × sales correlation.`
@@ -1405,9 +1436,11 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
               eyebrowColor="#DC2626"
               action={computedNuggets.competition.headline}
               stat={computedNuggets.competition.stat}
+              subline={computedNuggets.competition.hoverLines?.[0]}
+              moreFooter={`+ ${Math.max(0, (computedNuggets.competition.hoverLines?.length || 0) - 1)} more brand-by-brand splits`}
               hoverHeading="Brand-by-brand share table"
               hoverLines={renderComputedHover(computedNuggets.competition.hoverLines)}
-              hoverFooter="Search SOV from keyword rows · shelf share from Helium 10 rows · competitors from brief.competitors."
+              hoverFooter="Search SOV from keyword rows · shelf share from Helium 10 rows · competitors from brief."
             />
           )}
           {hasComputedCultural && (
@@ -1416,9 +1449,11 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
               eyebrowColor="#9333EA"
               action={computedNuggets.cultural.headline}
               stat={computedNuggets.cultural.stat}
+              subline={computedNuggets.cultural.hoverLines?.[0]}
+              moreFooter={`+ ${Math.max(0, (computedNuggets.cultural.hoverLines?.length || 0) - 1)} more creative territories`}
               hoverHeading="Top themes — creative direction signals"
               hoverLines={renderComputedHover(computedNuggets.cultural.hoverLines)}
-              hoverFooter="Token-frequency proxy — full Section D coverage requires GWI genre data upload."
+              hoverFooter="Bigram theme mining from keyword corpus — read as content angle hooks."
             />
           )}
           {hasComputedTrust && (
@@ -1427,34 +1462,17 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
               eyebrowColor="#0D9488"
               action={computedNuggets.trust.headline}
               stat={computedNuggets.trust.stat}
+              subline={computedNuggets.trust.hoverLines?.[0]}
+              moreFooter={`+ ${Math.max(0, (computedNuggets.trust.hoverLines?.length || 0) - 1)} more trust drivers`}
               hoverHeading="What converts consideration → trial"
               hoverLines={renderComputedHover(computedNuggets.trust.hoverLines)}
-              hoverFooter="Branded mix from search · review-sales correlation from shelf · full trust map needs brand tracker."
+              hoverFooter="Branded mix from search · review-sales correlation from shelf."
             />
           )}
         </div>
       )}
 
-      {/* Limitations footer — thin chip strip below the 6-card grid. */}
-      {limitations.length > 0 && (
-        <div
-          style={{
-            marginTop: 12, padding: '8px 14px',
-            background: '#FFFBEB', border: '1px solid #FDE68A',
-            borderRadius: 8, fontSize: 11, lineHeight: 1.55, color: '#78350F',
-            display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
-          }}
-        >
-          <strong style={{ color: '#B45309', letterSpacing: '0.04em', fontSize: 10.5, textTransform: 'uppercase' }}>
-            ⚠ What's missing:
-          </strong>
-          {limitations.map((l, i) => (
-            <span key={i} style={{ background: '#FEF3C7', padding: '2px 8px', borderRadius: 999, fontSize: 10.5 }}>
-              {l}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* Limitations strip removed — per user direction. */}
     </>
   );
 }
