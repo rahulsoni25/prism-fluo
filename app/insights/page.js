@@ -874,6 +874,11 @@ function MarketPyramidCard({ pyramid, categoryIntel, audienceDescriptor }) {
  */
 function StrategicBetCard({ bet }) {
   const [show, setShow] = useState(false);
+
+  // Parse the full recommendation into CREATIVE / BRAND / MEDIA components
+  // if the McKinsey-discipline structure is present. Returns null otherwise.
+  const recParts = parseRecommendation(bet.fullRec);
+
   return (
     <div
       className="stat-card stat-card--hover"
@@ -881,49 +886,118 @@ function StrategicBetCard({ bet }) {
       onMouseLeave={() => setShow(false)}
       style={{ position: 'relative', cursor: 'help', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
     >
-      <div
-        style={{
-          fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em',
-          textTransform: 'uppercase', color: '#0891B2', marginBottom: 6,
-        }}
-      >
-        {bet.bucketLabel}
+      {/* Eyebrow row: bucket + conviction badge on the right */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#0891B2' }}>
+          {bet.bucketLabel}
+        </span>
+        <span style={{ fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace", color: '#94A3B8', letterSpacing: 0 }}>
+          conv {bet.conviction}
+        </span>
       </div>
-      <div
-        style={{
-          fontSize: 15, lineHeight: 1.35, fontWeight: 700, color: '#0F172A',
-          letterSpacing: '-.005em', marginBottom: 10,
-        }}
-      >
+
+      {/* Bold action sentence */}
+      <div style={{ fontSize: 15, lineHeight: 1.35, fontWeight: 700, color: '#0F172A', letterSpacing: '-.005em', marginBottom: 10 }}>
         {bet.action}
       </div>
+
       <div className="stat-card-divider" />
-      <div style={{ fontSize: 12, lineHeight: 1.4, color: '#475569', marginTop: 8 }}>
-        {bet.stat || bet.title}
+
+      {/* Body: stat + (NEW) obs hook + (NEW) related-bucket hint */}
+      <div style={{ marginTop: 8 }}>
+        <div style={{ fontSize: 12, lineHeight: 1.4, color: '#475569' }}>
+          {bet.stat || bet.title}
+        </div>
+        {bet.obsHook && bet.obsHook !== bet.stat && (
+          <div style={{ fontSize: 11.5, lineHeight: 1.4, color: '#64748B', marginTop: 6, paddingTop: 6, borderTop: '1px dashed #E2E8F0' }}>
+            <strong style={{ color: '#475569', fontWeight: 600 }}>Why it matters:</strong> {bet.obsHook}
+          </div>
+        )}
+        {bet.relatedTotal > 0 && (
+          <div style={{ fontSize: 10.5, color: '#0891B2', marginTop: 8, fontWeight: 600, letterSpacing: '.02em' }}>
+            + {bet.relatedTotal} more finding{bet.relatedTotal === 1 ? '' : 's'} in {bet.bucketLabel.toLowerCase()} bucket →
+          </div>
+        )}
       </div>
-      {show && bet.title && (
+
+      {/* Rich hover panel */}
+      {show && (
         <div
           role="tooltip"
           style={{
             position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
-            width: 320, background: '#0F172A', color: '#E2E8F0',
-            fontSize: 11, lineHeight: 1.6, padding: '14px 16px',
-            borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
+            width: 380, background: '#0F172A', color: '#E2E8F0',
+            fontSize: 11, lineHeight: 1.6, padding: '16px 18px',
+            borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.32)',
             zIndex: 200, whiteSpace: 'normal', textAlign: 'left',
             fontWeight: 400, letterSpacing: 0,
+            maxHeight: 480, overflowY: 'auto',
           }}
         >
+          {/* Section 1: The full play (parsed Creative/Brand/Media if available) */}
           <strong style={{ display: 'block', marginBottom: 8, fontSize: 11.5, color: '#7DD3FC', fontWeight: 700, letterSpacing: 0.04 }}>
-            Why this is the bet
+            The full play
           </strong>
-          <div style={{ color: '#CBD5E1', marginBottom: 8 }}>
-            Drawn from the highest-conviction recommendation in the{' '}
-            <em style={{ color: '#FFFFFF', fontStyle: 'normal' }}>{bet.bucketLabel.toLowerCase()}</em> bucket
-            ({bet.conviction}/100 confidence).
-          </div>
-          <div style={{ color: '#94A3B8', fontSize: 10.5, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+          {recParts ? (
+            <div style={{ marginBottom: 12 }}>
+              {recParts.creative && (
+                <div style={{ marginBottom: 6 }}>
+                  <span style={{ color: '#FDE68A', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase' }}>Creative · </span>
+                  <span style={{ color: '#CBD5E1' }}>{recParts.creative}</span>
+                </div>
+              )}
+              {recParts.brand && (
+                <div style={{ marginBottom: 6 }}>
+                  <span style={{ color: '#FDE68A', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase' }}>Brand · </span>
+                  <span style={{ color: '#CBD5E1' }}>{recParts.brand}</span>
+                </div>
+              )}
+              {recParts.media && (
+                <div>
+                  <span style={{ color: '#FDE68A', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase' }}>Media · </span>
+                  <span style={{ color: '#CBD5E1' }}>{recParts.media}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ color: '#CBD5E1', marginBottom: 12 }}>
+              {bet.fullRec ? (bet.fullRec.length > 280 ? bet.fullRec.slice(0, 278) + '…' : bet.fullRec) : bet.action}
+            </div>
+          )}
+
+          {/* Section 2: Why this matters (full obs hook) */}
+          {bet.obsHook && (
+            <>
+              <strong style={{ display: 'block', marginBottom: 6, fontSize: 10.5, color: '#7DD3FC', fontWeight: 700, letterSpacing: 0.04, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+                Why this matters
+              </strong>
+              <div style={{ color: '#CBD5E1', marginBottom: 12 }}>
+                {bet.obsHook}
+              </div>
+            </>
+          )}
+
+          {/* Section 3: Other findings in the same bucket */}
+          {bet.related && bet.related.length > 0 && (
+            <>
+              <strong style={{ display: 'block', marginBottom: 6, fontSize: 10.5, color: '#7DD3FC', fontWeight: 700, letterSpacing: 0.04, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+                Other {bet.bucketLabel.toLowerCase()} findings ({bet.relatedTotal})
+              </strong>
+              {bet.related.map((r, i) => (
+                <div key={i} style={{ marginBottom: 5, color: '#CBD5E1' }}>
+                  • {r.stat ? (r.stat.length > 130 ? r.stat.slice(0,128) + '…' : r.stat) : (r.title.length > 100 ? r.title.slice(0,98) + '…' : r.title)}
+                  <span style={{ color: '#7DD3FC', fontFamily: "'SF Mono',Menlo,Consolas,monospace", fontSize: 9.5, marginLeft: 6 }}>
+                    conv {r.conviction}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Section 4: Source attribution */}
+          <div style={{ color: '#94A3B8', fontSize: 10.5, paddingTop: 10, marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
             <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Source card:</strong>{' '}
-            {bet.title.length > 70 ? bet.title.slice(0, 68) + '…' : bet.title}
+            {bet.title.length > 80 ? bet.title.slice(0, 78) + '…' : bet.title}
           </div>
         </div>
       )}
@@ -2414,6 +2488,14 @@ function AnalysisDetail({ id }) {
       .filter(c => c.rec && (c.conviction ?? 0) >= 70)
       .sort((a, b) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0));
 
+    // Pull the first sentence of the observation — used as a body sub-line
+    // ("Why this matters") so the card carries 2 distinct data points.
+    const obsHook = (obs) => {
+      if (!obs || typeof obs !== 'string') return null;
+      const first = obs.trim().split(/(?<=[.!?])\s+/)[0] || '';
+      return first.length > 140 ? first.slice(0, 138).trim() + '…' : first;
+    };
+
     const seenBuckets = new Set();
     const bets = [];
     for (const c of ranked) {
@@ -2421,12 +2503,32 @@ function AnalysisDetail({ id }) {
       if (seenBuckets.has(bucket)) continue;
       const action = extractAction(c.rec);
       if (!action) continue;
+      // Related cards in the same bucket (sorted by conviction) — surface in
+      // the hover so the bet card carries the FULL bucket story, not just
+      // its own one-line recommendation.
+      const related = charts
+        .filter(x => x !== c && String(x.bucket || '').toLowerCase() === bucket)
+        .sort((a, b) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0))
+        .slice(0, 4)
+        .map(x => ({
+          title:      String(x.title || '').trim(),
+          stat:       x.stat ? String(x.stat).trim() : null,
+          conviction: Math.round(Number(x.conviction) || 0),
+          layer:      x.layer ?? null,
+          lens:       x.lens  ?? null,
+        }));
       bets.push({
         bucketLabel: BUCKET_BADGES[bucket] ?? bucket.toUpperCase(),
         action:      action.length > 130 ? action.slice(0, 128).trim() + '…' : action,
         stat:        c.stat ? (String(c.stat).length > 90 ? String(c.stat).slice(0, 88) + '…' : String(c.stat)) : null,
         title:       String(c.title || '').trim(),
         conviction:  Math.round(Number(c.conviction) || 0),
+        // Enriched fields (used by StrategicBetCard body + hover):
+        obsHook:     obsHook(c.obs),
+        fullRec:     c.rec ? String(c.rec).trim() : null,
+        related,
+        relatedTotal: charts.filter(x => x !== c && String(x.bucket || '').toLowerCase() === bucket).length,
+        bucketKey:   bucket,
       });
       seenBuckets.add(bucket);
       if (bets.length === 3) break;
