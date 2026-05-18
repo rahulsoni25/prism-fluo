@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { getSession } from '@/lib/auth/server';
 import { hashPassword } from '@/lib/auth/password';
+import { logAdminAction } from '@/lib/auth/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +70,21 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     vals,
   );
   if (rows.length === 0) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+
+  // Fire-and-forget audit — never blocks or fails the response
+  const changedFields: string[] = [];
+  if (typeof body.isAdmin === 'boolean')                changedFields.push(body.isAdmin ? 'promote' : 'demote');
+  if (typeof body.password === 'string' && body.password) changedFields.push('reset_password');
+  if (typeof body.name === 'string' && body.name.trim()) changedFields.push('rename');
+  logAdminAction({
+    actorId:     session.userId,
+    actorEmail:  session.email,
+    action:      `user.${changedFields.join('+') || 'patch'}`,
+    targetId:    rows[0].id,
+    targetEmail: rows[0].email,
+    details:     { fields: changedFields, isAdminNow: rows[0].is_admin },
+  }).catch(() => {});
+
   return NextResponse.json({ user: rows[0] });
 }
 
@@ -83,7 +99,20 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     return NextResponse.json({ error: 'You cannot delete your own account from here.' }, { status: 400 });
   }
 
+  // Capture email before deletion for the audit row
+  const { rows: targetRows } = await db.query('SELECT email FROM users WHERE id = $1', [id]);
+  const targetEmail = targetRows[0]?.email ?? null;
+
   const { rowCount } = await db.query('DELETE FROM users WHERE id = $1', [id]);
   if (!rowCount) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+
+  logAdminAction({
+    actorId:     session.userId,
+    actorEmail:  session.email,
+    action:      'user.delete',
+    targetId:    id,
+    targetEmail,
+  }).catch(() => {});
+
   return NextResponse.json({ ok: true });
 }

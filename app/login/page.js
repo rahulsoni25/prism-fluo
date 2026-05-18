@@ -82,6 +82,12 @@ function LoginInner() {
           <button className="btn btn-primary btn-full" type="submit" disabled={busy}>
             {busy ? 'Signing in…' : 'Sign In →'}
           </button>
+
+          <div style={{ textAlign: 'center', marginTop: 4, fontSize: 12 }}>
+            <a href="/forgot-password" style={{ color: '#6B7280', textDecoration: 'none' }}>
+              Forgot password?
+            </a>
+          </div>
         </form>
 
         <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: '#6B7280' }}>

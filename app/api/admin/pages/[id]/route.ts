@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { getSession } from '@/lib/auth/server';
+import { logAdminAction } from '@/lib/auth/audit';
 
 async function checkAdmin(userId: string): Promise<boolean> {
   try {
@@ -53,6 +54,14 @@ export async function PATCH(
      RETURNING id, name, slug, status, updated_at`,
     [status, id],
   );
+
+  logAdminAction({
+    actorId:     session.userId,
+    actorEmail:  session.email,
+    action:      status === 'published' ? 'page.publish' : 'page.unpublish',
+    targetId:    id,
+    details:     { slug: result.rows[0]?.slug, name: result.rows[0]?.name },
+  }).catch(() => {});
 
   return NextResponse.json({ page: result.rows[0] });
 }

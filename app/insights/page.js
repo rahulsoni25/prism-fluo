@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import GenerateDeckModal from '@/app/components/GenerateDeckModal';
 import Navbar from '@/components/Navbar';
 import Copilot from '@/components/Copilot';
+import ClientBriefContext from '@/components/insights/ClientBriefContext';
 import {
   ChartBar, ChartLine, ChartPie, ChartDoughnut, ChartScatter, ChartHBar,
   ChartArea, ChartCombo, ChartHistogram, ChartRadar,
@@ -1575,125 +1576,8 @@ function ToolsUsedPanel({ charts }) {
   );
 }
 
-/**
- * ClientBriefContext — compact strip rendered inside the top Executive Summary
- * banner between the headline and the AI-written snapshot. Surfaces the
- * client's own framing so readers see Problem → Ask → Solution in order.
- *
- * Hidden when there's no brief (legacy analyses) or when both background and
- * objective are blank.
- */
-function ClientBriefContext({ brief, audienceDescriptor }) {
-  // Lazy LLM-summarised context. Falls back to deterministic extraction
-  // while the request is in flight or on error.
-  const [llmSummary, setLlmSummary] = useState(null);
-  const [llmSource,  setLlmSource]  = useState(null);
-
-  useEffect(() => {
-    if (!brief?.id || !brief?.background) return;
-    let cancelled = false;
-    fetch(`/api/briefs/${brief.id}/context-summary`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (cancelled || !d?.summary) return;
-        setLlmSummary(d.summary);
-        setLlmSource(d.source || 'llm');
-      })
-      .catch(() => { /* keep deterministic fallback */ });
-    return () => { cancelled = true; };
-  }, [brief?.id, brief?.background]);
-
-  if (!brief || (!brief.background && !brief.objective)) return null;
-
-  const audience = audienceDescriptor || [
-    brief.age_ranges, brief.gender !== 'All Genders' ? brief.gender : null, brief.market,
-  ].filter(Boolean).join(' · ');
-
-  // Build a clean 1–3 sentence summary from the brief background. We:
-  //   1. Drop section-label lines like "Brief:", "Context", "DEMO –",
-  //      "Core TG Persona" — short label-only lines that are noise here.
-  //   2. Split on sentence-ending punctuation so we never end mid-word.
-  //   3. Accumulate sentences up to a soft char budget, stopping at the
-  //      last full sentence we can fit.
-  const summarise = (raw) => {
-    if (!raw) return '';
-    const BUDGET = 360;
-    const labelRe = /^(brief\s*[:\-]|context|objective|key\s+questions?|demo\s*[-–]|core\s+tg\s+persona|key\s+frictions|current\s+behaviour|data\s+sources)/i;
-
-    // Flatten line-breaks into spaces. Drop:
-    //   - short label-only lines ("Context", "Objective", "DEMO –", etc.)
-    //   - title lines: short-ish text that doesn't end in sentence punctuation
-    //     (so headings like "Brief: Building Behavioural Understanding…" go)
-    const cleaned = raw
-      .split(/\r?\n/)
-      .map(l => l.trim())
-      .filter(l => {
-        if (!l) return false;
-        if (l.length < 60 && labelRe.test(l)) return false;
-        if (l.length < 90 && !/[.!?:]$/.test(l)) return false;
-        if (labelRe.test(l) && l.length < 110) return false;
-        return true;
-      })
-      .join(' ')
-      .replace(/\s+/g, ' ');
-
-    // Split on . ! ? followed by space or end. Keep sentences with their
-    // terminator by capturing it back.
-    const sentences = cleaned
-      .split(/(?<=[.!?])\s+/)
-      .map(s => s.trim())
-      .filter(s => s.length > 8);
-
-    let out = '';
-    for (const s of sentences) {
-      if (!out) { out = s; if (out.length >= BUDGET) break; continue; }
-      if (out.length + 1 + s.length > BUDGET) break;
-      out += ' ' + s;
-    }
-    return out;
-  };
-
-  // Prefer the server's LLM/extractive summary (already grounded + cleaned).
-  // Use local deterministic summarise() as the immediate-paint fallback.
-  const truncated = llmSummary || summarise(brief.background);
-
-  return (
-    <div style={{
-      marginBottom: 18,
-      padding: '14px 18px',
-      background: '#F8FAFC',
-      border: '1px solid #E2E8F0',
-      borderLeft: '3px solid #2563EB',
-      borderRadius: 10,
-      maxWidth: 1100,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: truncated ? 8 : 0 }}>
-        <span style={{
-          fontSize: 10, fontWeight: 800, letterSpacing: '0.12em',
-          textTransform: 'uppercase', color: '#2563EB',
-        }}>The Ask</span>
-        <span style={{ fontSize: 13.5, color: '#0F172A', lineHeight: 1.55 }}>
-          <strong>{brief.brand}</strong>
-          {brief.objective ? <> is looking at <strong>{brief.objective.toLowerCase()}</strong></> : null}
-          {audience ? <> for <strong>{audience}</strong></> : null}
-          {brief.category ? <> in the <strong>{brief.category}</strong> space</> : null}.
-          {brief.insight_buckets && (
-            <>{' '}Study scope: <span style={{ color: '#475569' }}>{brief.insight_buckets}</span>.</>
-          )}
-        </span>
-      </div>
-      {truncated && (
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{
-            fontSize: 10, fontWeight: 800, letterSpacing: '0.12em',
-            textTransform: 'uppercase', color: '#7C3AED',
-          }}>Context</span>
-          <span style={{ fontSize: 13.5, color: '#334155', lineHeight: 1.55 }}>{truncated}</span>
-        </div>
-      )}
-    </div>
-  );
-}
+// ClientBriefContext is imported from components/insights/ClientBriefContext.js
+// (first slice of the app/insights/page.js split refactor).
 
 /**
  * Executive Summary Panel — displays HEADLINE, OBJECTIVE, OBSERVATIONS, RECOMMENDATIONS
@@ -2997,12 +2881,9 @@ function AnalysisDetail({ id }) {
         </div>
       )}
 
-      {/* ── Executive Summary (Footer) — SMART Framework ──
-          Moved from top to bottom so users see the full chart-driven
-          narrative first, then a recap of objective / key findings / actions. */}
-      <div className="insights-body" style={{ paddingTop: 0 }}>
-        <ExecutiveSummaryPanel analysisId={id} />
-      </div>
+      {/* Footer ExecutiveSummaryPanel removed — it duplicated the top
+          Executive Summary banner. The top banner now carries headline,
+          THE ASK, CONTEXT and the AI snapshot in proper reading order. */}
 
       {/* Floating PRISM Copilot — grounded in this analysis. Wrapped so
           the print stylesheet can hide it cleanly during PDF export. */}
