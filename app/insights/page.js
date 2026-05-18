@@ -11,6 +11,8 @@ import SlaStrip from '@/components/insights/SlaStrip';
 import ToolsUsedPanel from '@/components/insights/ToolsUsedPanel';
 import SourceFilesPanel from '@/components/insights/SourceFilesPanel';
 import BriefContextStrip from '@/components/insights/BriefContextStrip';
+import StrategicBetCard from '@/components/insights/StrategicBetCard';
+import { fmtTs, timeAgo, parseRecommendation } from '@/lib/insights/helpers';
 import {
   BUCKET_META, BUCKET_TABS,
   SOURCE_BADGE_MAP, DOMAIN_TO_BUCKET,
@@ -24,13 +26,7 @@ import {
 } from '@/components/charts/AppChart';
 import { ID, HM_DATA, SCATTER_COLORS, SCATTER_LABELS, PLATFORMS_DATA } from '@/lib/data';
 
-/* ─── helpers ─── */
-function fmtTs(ts) {
-  if (!ts) return '—';
-  return new Date(ts).toLocaleString(undefined, {
-    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-  });
-}
+/* fmtTs, timeAgo, parseRecommendation moved to lib/insights/helpers.js */
 
 /**
  * Derive a human-readable report title from the analysis record.
@@ -87,36 +83,7 @@ function deriveDisplayTitle(analysis) {
  * Returns null if no clear structure is found (caller falls back to one
  * paragraph render).
  */
-function parseRecommendation(rec) {
-  if (!rec || typeof rec !== 'string') return null;
-  const text = rec.replace(/\s+/g, ' ').trim();
-
-  // Pattern 1: explicit "CREATIVE: ... BRAND: ... MEDIA: ..." labels
-  // Pattern 2: bullet-style "• Creative: ... • Brand: ... • Media: ..."
-  // Pattern 3: bold-style "**Creative:** ... **Brand:** ..."
-  const labels = ['creative', 'brand', 'media'];
-  const re = /(?:^|[\s•\-*]+|\*\*)\s*(creative|brand|media)\s*[:—-]\s*/gi;
-  const splits = [];
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    splits.push({ label: m[1].toLowerCase(), start: m.index, contentStart: m.index + m[0].length });
-  }
-  if (splits.length < 2) return null; // need at least 2 labels to consider it structured
-
-  const out = {};
-  for (let i = 0; i < splits.length; i++) {
-    const end = i + 1 < splits.length ? splits[i + 1].start : text.length;
-    const content = text.slice(splits[i].contentStart, end)
-      .replace(/[*•\-]+\s*$/, '')
-      .trim();
-    if (content) out[splits[i].label] = content;
-  }
-
-  // Require at least 2 of the 3 to be populated for it to be a real structured rec
-  const filled = labels.filter(k => out[k]).length;
-  if (filled < 2) return null;
-  return out;
-}
+// parseRecommendation moved to lib/insights/helpers.js
 
 /**
  * Collapse whitespace and (when an A/B pair shares a common prefix) shorten
@@ -765,147 +732,6 @@ function MarketPyramidCard({ pyramid, categoryIntel, audienceDescriptor }) {
   );
 }
 
-/**
- * StrategicBetCard — single "bet" in the Executive Summary strip.
- *
- * Replaces the per-percentage-point audience-gap card with a single
- * imperative action distilled from the analysis itself: the top
- * verb-driven sentence from a high-conviction insight card, plus the
- * supporting stat that justifies it. Reads like a strategist briefing
- * a CMO, not like a deck-built stat counter.
- */
-function StrategicBetCard({ bet }) {
-  const [show, setShow] = useState(false);
-
-  // Parse the full recommendation into CREATIVE / BRAND / MEDIA components
-  // if the McKinsey-discipline structure is present. Returns null otherwise.
-  const recParts = parseRecommendation(bet.fullRec);
-
-  return (
-    <div
-      className="stat-card stat-card--hover"
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-      style={{ position: 'relative', cursor: 'help', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
-    >
-      {/* Eyebrow row: bucket + conviction badge on the right */}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
-        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#0891B2' }}>
-          {bet.bucketLabel}
-        </span>
-        <span style={{ fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace", color: '#94A3B8', letterSpacing: 0 }}>
-          conv {bet.conviction}
-        </span>
-      </div>
-
-      {/* Bold action sentence */}
-      <div style={{ fontSize: 15, lineHeight: 1.35, fontWeight: 700, color: '#0F172A', letterSpacing: '-.005em', marginBottom: 10 }}>
-        {bet.action}
-      </div>
-
-      <div className="stat-card-divider" />
-
-      {/* Body: stat + (NEW) obs hook + (NEW) related-bucket hint */}
-      <div style={{ marginTop: 8 }}>
-        <div style={{ fontSize: 12, lineHeight: 1.4, color: '#475569' }}>
-          {bet.stat || bet.title}
-        </div>
-        {bet.obsHook && bet.obsHook !== bet.stat && (
-          <div style={{ fontSize: 11.5, lineHeight: 1.4, color: '#64748B', marginTop: 6, paddingTop: 6, borderTop: '1px dashed #E2E8F0' }}>
-            <strong style={{ color: '#475569', fontWeight: 600 }}>Why it matters:</strong> {bet.obsHook}
-          </div>
-        )}
-        {bet.relatedTotal > 0 && (
-          <div style={{ fontSize: 10.5, color: '#0891B2', marginTop: 8, fontWeight: 600, letterSpacing: '.02em' }}>
-            + {bet.relatedTotal} more finding{bet.relatedTotal === 1 ? '' : 's'} in {bet.bucketLabel.toLowerCase()} bucket →
-          </div>
-        )}
-      </div>
-
-      {/* Rich hover panel */}
-      {show && (
-        <div
-          role="tooltip"
-          style={{
-            position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
-            width: 380, background: '#0F172A', color: '#E2E8F0',
-            fontSize: 11, lineHeight: 1.6, padding: '16px 18px',
-            borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.32)',
-            zIndex: 200, whiteSpace: 'normal', textAlign: 'left',
-            fontWeight: 400, letterSpacing: 0,
-            maxHeight: 480, overflowY: 'auto',
-          }}
-        >
-          {/* Section 1: The full play (parsed Creative/Brand/Media if available) */}
-          <strong style={{ display: 'block', marginBottom: 8, fontSize: 11.5, color: '#7DD3FC', fontWeight: 700, letterSpacing: 0.04 }}>
-            The full play
-          </strong>
-          {recParts ? (
-            <div style={{ marginBottom: 12 }}>
-              {recParts.creative && (
-                <div style={{ marginBottom: 6 }}>
-                  <span style={{ color: '#FDE68A', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase' }}>Creative · </span>
-                  <span style={{ color: '#CBD5E1' }}>{recParts.creative}</span>
-                </div>
-              )}
-              {recParts.brand && (
-                <div style={{ marginBottom: 6 }}>
-                  <span style={{ color: '#FDE68A', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase' }}>Brand · </span>
-                  <span style={{ color: '#CBD5E1' }}>{recParts.brand}</span>
-                </div>
-              )}
-              {recParts.media && (
-                <div>
-                  <span style={{ color: '#FDE68A', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase' }}>Media · </span>
-                  <span style={{ color: '#CBD5E1' }}>{recParts.media}</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ color: '#CBD5E1', marginBottom: 12 }}>
-              {bet.fullRec ? (bet.fullRec.length > 280 ? bet.fullRec.slice(0, 278) + '…' : bet.fullRec) : bet.action}
-            </div>
-          )}
-
-          {/* Section 2: Why this matters (full obs hook) */}
-          {bet.obsHook && (
-            <>
-              <strong style={{ display: 'block', marginBottom: 6, fontSize: 10.5, color: '#7DD3FC', fontWeight: 700, letterSpacing: 0.04, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
-                Why this matters
-              </strong>
-              <div style={{ color: '#CBD5E1', marginBottom: 12 }}>
-                {bet.obsHook}
-              </div>
-            </>
-          )}
-
-          {/* Section 3: Other findings in the same bucket */}
-          {bet.related && bet.related.length > 0 && (
-            <>
-              <strong style={{ display: 'block', marginBottom: 6, fontSize: 10.5, color: '#7DD3FC', fontWeight: 700, letterSpacing: 0.04, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
-                Other {bet.bucketLabel.toLowerCase()} findings ({bet.relatedTotal})
-              </strong>
-              {bet.related.map((r, i) => (
-                <div key={i} style={{ marginBottom: 5, color: '#CBD5E1' }}>
-                  • {r.stat ? (r.stat.length > 130 ? r.stat.slice(0,128) + '…' : r.stat) : (r.title.length > 100 ? r.title.slice(0,98) + '…' : r.title)}
-                  <span style={{ color: '#7DD3FC', fontFamily: "'SF Mono',Menlo,Consolas,monospace", fontSize: 9.5, marginLeft: 6 }}>
-                    conv {r.conviction}
-                  </span>
-                </div>
-              ))}
-            </>
-          )}
-
-          {/* Section 4: Source attribution */}
-          <div style={{ color: '#94A3B8', fontSize: 10.5, paddingTop: 10, marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.10)' }}>
-            <strong style={{ color: '#CBD5E1', fontWeight: 600 }}>Source card:</strong>{' '}
-            {bet.title.length > 80 ? bet.title.slice(0, 78) + '…' : bet.title}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ─────────────────────────────────────────────────────────────────────
  * NuggetsRail — Insight Nuggets v2.
@@ -1391,12 +1217,7 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
 
 // SourceFilesPanel moved to components/insights/SourceFilesPanel.js
 
-function timeAgo(ts) {
-  const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
+// timeAgo moved to lib/insights/helpers.js
 
 // BUCKET_META, BUCKET_TABS, FLOAT_PHASE moved to lib/insights/buckets.js
 
