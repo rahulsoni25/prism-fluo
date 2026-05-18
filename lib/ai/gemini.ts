@@ -2138,22 +2138,24 @@ Return ONLY a valid JSON object with these four fields. No markdown, no extra te
 /* ─────────────────────────────────────────────────────────────────────
  * generateStrategicRead — ONE-paragraph narrative synthesis.
  *
- * Replaces the old executive-summary "OBSERVATIONS" list with a true
- * STRATEGIC READ: 3-4 sentences that name the audience moment, state the
- * single biggest opportunity from the data, identify the central tension,
- * and end with a posture. This is the only place on the page that gets
- * the connective tissue — everything else (Nuggets, Strategic Bets, etc.)
- * is scannable chunks.
+ * Hardened against repetition in three ways:
  *
- * Inputs (grounded in computed truth, not card text):
- *   - brief             — { brand, category, objective, competitors, ... }
- *   - nuggets           — results_json.nuggets (computed by synthesize.ts)
- *   - audienceDescriptor— derived from brief demographics
- *   - categoryIntel     — { marketValueINR, cagr, ... }
- *   - fallbackTopCards  — used when nuggets is absent (older analyses)
+ *   (1) OPENER STYLE SEED — per call we pick one of 4 opener archetypes
+ *       (SCENE / NUMBER / TENSION / STANCE) so two analyses with similar
+ *       briefs don't produce identically-shaped paragraphs. The choice is
+ *       deterministic from a hash of (brand + objective) so the SAME brief
+ *       reruns produce the SAME paragraph (caching-friendly) but different
+ *       briefs get different shapes.
  *
- * Returns: plain-text paragraph. Empty string on any failure (caller decides
- * whether to hide the block).
+ *   (2) PHRASE BLOCKLIST — the prompt explicitly bans observed-recurring
+ *       template phrases ("focused entry window", "wide-open territory",
+ *       "single tension", etc) on top of the STORYTELLING_DISCIPLINE
+ *       banned-word list.
+ *
+ *   (3) DETERMINISTIC FALLBACK — when Gemini fails or returns empty, we
+ *       build a paragraph from the nuggets numbers using sentence
+ *       templates that VARY by brief flavour + brand position. Never
+ *       returns an empty string when any data is present.
  * ───────────────────────────────────────────────────────────────────── */
 export async function generateStrategicRead(opts: {
   brief?: any;
@@ -2162,9 +2164,6 @@ export async function generateStrategicRead(opts: {
   categoryIntel?: any;
   fallbackTopCards?: any[];
 }): Promise<string> {
-  const genAI = await getGenAI();
-  if (!genAI) return '';
-
   const brief = opts.brief || {};
   const nuggets = opts.nuggets || {};
 
@@ -2185,9 +2184,6 @@ export async function generateStrategicRead(opts: {
   if (nuggets.competition?.headline) dataLines.push(`Competition: ${nuggets.competition.headline}`);
   if (nuggets.cultural?.headline)    dataLines.push(`Cultural: ${nuggets.cultural.headline}`);
   if (nuggets.trust?.headline)       dataLines.push(`Trust: ${nuggets.trust.headline}`);
-
-  // Backstop: when no nuggets are present, pull the top conviction findings
-  // from the analysis cards (older analyses pre-dating synthesize.ts).
   if (dataLines.length === 0 && Array.isArray(opts.fallbackTopCards)) {
     opts.fallbackTopCards.slice(0, 5).forEach(c => {
       if (c?.title || c?.stat) dataLines.push(`${c.bucket ? c.bucket.toUpperCase() : 'Finding'}: ${c.title || c.stat}`);
@@ -2196,7 +2192,35 @@ export async function generateStrategicRead(opts: {
 
   if (dataLines.length === 0) return '';
 
-  const prompt = `You are a senior brand strategist writing the STRATEGIC READ paragraph for the brief team.
+  /* ── (1) Pick opener style deterministically from brief identity.
+        Same brand+objective → same style → same Gemini output for caching.
+        Different brands → different styles → visibly different paragraphs. */
+  const styleSeed   = simpleHash(`${brief.brand || ''}|${brief.objective || ''}|${brief.category || ''}`);
+  const OPENERS = [
+    { id: 'SCENE',   instruction: 'Open with a concrete scene/moment from the audience\'s real life — a kitchen, a shelf, a phone screen, a daily ritual. Land the brand name within the first 12 words.' },
+    { id: 'NUMBER',  instruction: 'Open with the single most arresting number from the data, woven into a sentence that names the brand within the first 12 words.' },
+    { id: 'TENSION', instruction: 'Open by stating the central tension as a paradox or two-sided clause ("X but Y"). Name the brand and the tension in the same sentence.' },
+    { id: 'STANCE',  instruction: 'Open with a strategic stance verb ("Lead with…", "Hold the…", "Bet on…") + brand name. The first sentence is the recommendation.' },
+  ];
+  const opener = OPENERS[styleSeed % OPENERS.length];
+
+  const genAI = await getGenAI();
+
+  /* ── (2) Phrase blocklist — observed recurring template phrases that
+        leak across analyses. These are banned ON TOP OF the storytelling
+        discipline. ── */
+  const phraseBlocklist = [
+    'focused entry window', 'wide-open territory', 'wide-open generic',
+    'single tension', 'central tension', 'biggest tension',
+    'capture market share', 'unlock growth', 'strategic posture',
+    'lean into', 'double down', 'go big on', 'win the category',
+    'data tells a clear story', 'data tells a focused story',
+    'in this category', 'in this space', 'in this space,',
+    'sharp, narrow attack', 'ripe for', 'opportunity to',
+  ];
+
+  if (genAI) {
+    const prompt = `You are a senior brand strategist writing the STRATEGIC READ paragraph for the brief team.
 
 BRIEF: ${briefBlock}
 
@@ -2205,37 +2229,171 @@ ${dataLines.join('\n')}
 
 ${STORYTELLING_DISCIPLINE}
 
-Write ONE paragraph (3-4 sentences) that:
+━━ OPENER STYLE FOR THIS PARAGRAPH ━━
+Style: ${opener.id}
+Instruction: ${opener.instruction}
 
-1. Opens with the BRAND name and the brief moment. NAME the audience or the market posture in this sentence.
-2. States the SINGLE biggest thing the data shows about the category opportunity — cite at least one specific number from the data above.
-3. Identifies the SINGLE biggest tension the brand must resolve next — cite a specific data point.
-4. Ends with the strategic posture: where to lean (value, innovation, distribution, premium, regional, partnership, etc.).
+━━ STRUCTURE (3-4 sentences total) ━━
+S1. The opener (above).
+S2. The biggest opportunity the data reveals — cite at least ONE specific number from the WHAT THE DATA SHOWS block.
+S3. The biggest unresolved tension — cite a different specific number.
+S4. The strategic stance — what to bet on (value / innovation / distribution / premium / regional / partnership / sampling / demo-led). ONE concrete posture, not a list.
 
-RULES:
-- Plain English, short sentences, active voice.
-- Specific numbers ONLY from the data above — NEVER invent figures.
-- ONE flowing paragraph. NO bullets. NO headers. NO sub-points. NO line breaks.
+━━ HARD ANTI-REPETITION RULES (BANNED PHRASES) ━━
+You may NOT use ANY of the following phrases (they appear too often across analyses):
+${phraseBlocklist.map(p => `  • "${p}"`).join('\n')}
+Also banned (from storytelling discipline): leverage, ecosystem, synergy, robust, tailspin, momentum, holistic, paradigm.
+
+━━ HARD RULES ━━
+- ONE flowing paragraph. NO bullets, NO headers, NO line breaks, NO labels.
 - 90-130 words.
+- Specific numbers ONLY from the WHAT THE DATA SHOWS block — NEVER invent figures.
+- Mention the brand name at least twice (first sentence + somewhere in S3 or S4).
+- Avoid starting two consecutive sentences with the same word.
 
-Return ONLY the paragraph text. No labels, no quotation marks.`;
+Return ONLY the paragraph text. No quotation marks, no markdown, no preamble.`;
 
-  try {
-    const result = await callGeminiWithRetry(genAI, prompt);
-    const raw = result?.response?.text?.()?.trim() ?? '';
-    // Strip any rogue markdown/quote wrappers
-    const cleaned = raw
-      .replace(/^```(?:\w+)?\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .replace(/^["'""]/, '')
-      .replace(/["'""]$/, '')
-      .trim();
-    return cleaned;
-  } catch (err) {
-    console.error('[Gemini] generateStrategicRead failed:', (err as Error).message);
-    return '';
+    try {
+      const result = await callGeminiWithRetry(genAI, prompt);
+      const raw = result?.response?.text?.()?.trim() ?? '';
+      const cleaned = raw
+        .replace(/^```(?:\w+)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .replace(/^["'""]/, '')
+        .replace(/["'""]$/, '')
+        .trim();
+      if (cleaned) {
+        // Post-process: if any blocklist phrase slipped through, rewrite it.
+        // We don't re-call Gemini — just inline replace with shorter neutral
+        // alternatives. This is a safety net, not a primary rewriter.
+        let safe = cleaned;
+        for (const phrase of phraseBlocklist) {
+          const re = new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          safe = safe.replace(re, REPHRASE_MAP[phrase] || phrase.split(' ')[0]);
+        }
+        return safe;
+      }
+    } catch (err) {
+      console.error('[Gemini] generateStrategicRead failed:', (err as Error).message);
+    }
   }
+
+  // ── (3) DETERMINISTIC FALLBACK ────────────────────────────────
+  // Gemini failed or empty. Build a real paragraph from the nuggets data
+  // using sentence templates that VARY by brief flavour + brand position.
+  return synthesizeReadFallback({ brief, nuggets, audienceDescriptor: opts.audienceDescriptor, opener, styleSeed });
 }
+
+/* Tiny string hash → unsigned 32-bit. Used to deterministically pick an
+   opener style from the brand+objective tuple. Same brief → same style. */
+function simpleHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+/* Phrase replacement map used as a post-process safety net when a banned
+   phrase slips through Gemini despite the prompt. Neutral, shorter terms. */
+const REPHRASE_MAP: Record<string, string> = {
+  'focused entry window': 'an opening',
+  'wide-open territory':  'unclaimed ground',
+  'wide-open generic':    'unclaimed generic',
+  'single tension':       'the gap',
+  'central tension':      'the gap',
+  'biggest tension':      'the gap',
+  'capture market share': 'win share',
+  'unlock growth':        'grow',
+  'strategic posture':    'stance',
+  'lean into':            'press on',
+  'double down':          'press harder on',
+  'go big on':            'put weight behind',
+  'win the category':     'lead this category',
+  'data tells a clear story':   'the data is clear',
+  'data tells a focused story': 'the data is clear',
+  'in this category':     '',
+  'in this space':        '',
+  'in this space,':       '',
+  'sharp, narrow attack': 'concentrated attack',
+  'ripe for':             'open to',
+  'opportunity to':       'chance to',
+};
+
+/* Deterministic paragraph builder — used when Gemini fails. Constructs
+   3-4 sentences from the nuggets data, parameterised by:
+     - brief flavour (LAUNCH / DEFEND / GROW)
+     - brand-on-leaderboard position (leader / challenger / not present)
+     - selected opener style
+   Output is NEVER empty when any nuggets data is provided. */
+function synthesizeReadFallback(args: {
+  brief: any;
+  nuggets: any;
+  audienceDescriptor?: string | null;
+  opener: { id: string; instruction: string };
+  styleSeed: number;
+}): string {
+  const { brief, nuggets, opener, styleSeed } = args;
+  const brand = brief.brand || 'The brand';
+  const category = brief.category ? brief.category.toLowerCase() : 'this category';
+  const obj = brief.objective || '';
+
+  // Detect flavour
+  const tObj = `${obj} ${brand}`.toLowerCase();
+  const flavour = /\blaunch|new\s+sku|enter|whitespace\b/.test(tObj) ? 'LAUNCH'
+                : /\bdefend|protect|threat|leader|hold\b/.test(tObj) ? 'DEFEND'
+                : /\bgrow|expand|share|adjacenc/.test(tObj)         ? 'GROW'
+                : null;
+
+  // Extract numbers from nuggets
+  const kw = nuggets.keyword;
+  const h10 = nuggets.helium10;
+  const comp = nuggets.competition;
+  const trust = nuggets.trust;
+  const cult = nuggets.cultural;
+
+  // ── Sentence 1: opener — varies by style ────────────────────
+  const stancePicks = ['value', 'demo-led content', 'retailer placement', 'sampling', 'regional language reach', 'pack-size innovation'];
+  const stance = stancePicks[styleSeed % stancePicks.length];
+
+  const s1Map: Record<string, string> = {
+    SCENE:   `Picture the daily basket: ${category} bought on price, recognised on shelf — ${brand} is showing up at exactly the right moment.`,
+    NUMBER:  kw?.headline
+      ? `${stripEndPunc(kw.headline)} — and this is the window ${brand} steps into.`
+      : `${brand} sits at the right edge of ${category}.`,
+    TENSION: comp?.headline
+      ? `${stripEndPunc(comp.headline)} — yet ${brand}'s story is still being told.`
+      : `${brand} works in a ${category} where price talks louder than the brand name.`,
+    STANCE:  `Bet on ${stance} for ${brand} — that's the shape ${category} is asking for right now.`,
+  };
+
+  // ── Sentence 2: biggest opportunity (from search or shelf) ──
+  let s2 = '';
+  if (kw?.headline)            s2 = kw.headline;
+  else if (h10?.headline)      s2 = h10.headline;
+  else if (cult?.headline)     s2 = cult.headline;
+
+  // ── Sentence 3: tension (from trust or competition) ─────────
+  let s3 = '';
+  if (trust?.headline)         s3 = `The catch: ${lc(stripEndPunc(trust.headline))}.`;
+  else if (comp?.headline)     s3 = `The catch: ${lc(stripEndPunc(comp.headline))}.`;
+  else if (h10?.headline)      s3 = `The catch: ${lc(stripEndPunc(h10.headline))}.`;
+
+  // ── Sentence 4: strategic stance ────────────────────────────
+  const s4Map: Record<string, string> = {
+    LAUNCH: `For ${brand} the move is clear — enter through ${stance}, not through brand-recall investment.`,
+    DEFEND: `For ${brand} the move is to defend by reinforcing ${stance} — quietly close ranks before the challenger does.`,
+    GROW:   `For ${brand} the move is to expand via ${stance} — adjacent demand is the easier next mile.`,
+    null:   `For ${brand} the bet is ${stance} — sharper than scale, faster than awareness.`,
+  };
+  const s4 = s4Map[flavour as keyof typeof s4Map] || s4Map['null' as keyof typeof s4Map];
+
+  const sentences = [s1Map[opener.id] || s1Map.NUMBER, s2, s3, s4].filter(s => s && s.trim().length > 8);
+  return sentences.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function stripEndPunc(s: string): string { return String(s || '').replace(/[.!?]+\s*$/, ''); }
+function lc(s: string): string { return s ? s.charAt(0).toLowerCase() + s.slice(1) : s; }
 
 // ── Fallback helpers (used when Gemini 2.5 is unavailable) ────
 
