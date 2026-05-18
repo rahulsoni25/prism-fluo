@@ -37,32 +37,47 @@ function ProcessingInner() {
   const searchParams = useSearchParams();
   const briefId = searchParams.get('id');
 
-  const [brief, setBrief] = useState(null);
-  const [widths, setWidths] = useState(PLATFORMS_DATA.map(p => p.pct));
-  const [bucketPcts, setBucketPcts] = useState([45, 28, 60, 15, 20, 18, 22, 12, 25]);
+  const [brief,        setBrief]       = useState(null);
+  const [widths,       setWidths]      = useState(PLATFORMS_DATA.map(p => p.pct));
+  const [bucketPcts,   setBucketPcts]  = useState([45, 28, 60, 15, 20, 18, 22, 12, 25]);
   const [expandedCard, setExpandedCard] = useState(null);
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed,      setElapsed]     = useState(0);
+
+  // Per-platform animation speeds (% per tick) and caps
+  const BAR_SPEED = [0.25, 0.30, 0.35, 0.18, 0.55, 0.28, 0.60, 0.32];
+  const BAR_CAP   = [88,   82,   72,   92,   55,   85,   45,   78  ];
+  const BUCKET_CAP = [88, 75, 82, 70, 68, 72, 78, 65, 80];
+  const TOTAL_MS  = 8 * 60 * 60 * 1000; // 8 hours default
 
   useEffect(() => {
     if (!briefId) return;
     fetch(`/api/briefs/${briefId}`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => { if (!d.error) setBrief(d); })
+      .then(d => {
+        if (d.error) return;
+        setBrief(d);
+        // Seed bars proportional to real elapsed time so a user returning
+        // after 4 hours sees ~50% progress, not a freshly-reset 0%.
+        if (d.created_at) {
+          const createdMs = new Date(d.created_at).getTime();
+          const totalMs   = d.sla_due_at
+            ? new Date(d.sla_due_at).getTime() - createdMs
+            : TOTAL_MS;
+          const ratio = Math.min((Date.now() - createdMs) / totalMs, 0.98);
+          setWidths(BAR_CAP.map(cap => Math.max(2, Math.round(ratio * cap))));
+          setBucketPcts(BUCKET_CAP.map(cap => Math.max(2, Math.round(ratio * cap))));
+        }
+      })
       .catch(err => console.warn('[processing] Could not load brief:', err.message));
   }, [briefId]);
 
-  // Per-platform animation speeds (% per tick) and caps — staggered so bars
-  // move at different rates, giving a genuine "live fetching" feel.
-  const BAR_SPEED = [0.25, 0.30, 0.35, 0.18, 0.55, 0.28, 0.60, 0.32];
-  const BAR_CAP   = [88,   82,   72,   92,   55,   85,   45,   78  ];
-
-  // Animate progress bars
+  // Animate bars forward from wherever they were seeded
   useEffect(() => {
     const tb = setInterval(() => {
       setWidths(prev => prev.map((w, i) => w < BAR_CAP[i] ? Math.min(w + BAR_SPEED[i], BAR_CAP[i]) : w));
     }, 400);
     const tBucket = setInterval(() => {
-      setBucketPcts(prev => prev.map(p => Math.min(p + Math.random() * 0.5 + 0.1, 90)));
+      setBucketPcts(prev => prev.map((p, i) => p < BUCKET_CAP[i] ? Math.min(p + Math.random() * 0.5 + 0.1, BUCKET_CAP[i]) : p));
     }, 600);
     const te = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => { clearInterval(tb); clearInterval(tBucket); clearInterval(te); };
