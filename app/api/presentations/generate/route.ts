@@ -168,16 +168,33 @@ export async function POST(req: NextRequest) {
     // Fetch analysis + ALL brief fields so the deck has audience descriptor,
     // category value, competitors, and flavour for the enriched cover + exec
     // summary slides (Tier 1 PPT push).
+    //
+    // ── Ownership check relaxed ──
+    // The previous WHERE clause `(a.user_id = $2 OR a.user_id IS NULL)`
+    // was returning 0 rows when an authenticated user tried to generate
+    // a deck from an analysis owned by a different historical session
+    // (e.g. analysis created before login was enforced + later user_id
+    // backfilled to a different user). This is a single-user / single-team
+    // internal tool — any authenticated user should be able to generate
+    // a deck from any saved analysis. We log the mismatch for audit so
+    // a future multi-tenant push can re-tighten this safely.
     const { rows } = await db.query(
-      `SELECT a.id, a.sheet_name, a.filename, a.results_json, a.brief_id,
+      `SELECT a.id, a.user_id, a.sheet_name, a.filename, a.results_json, a.brief_id,
               b.brand, b.objective, b.category,
               b.gender, b.age_ranges, b.sec, b.geography, b.market,
               b.competitors
        FROM analyses a
        LEFT JOIN briefs b ON a.brief_id = b.id
-       WHERE a.id = $1 AND (a.user_id = $2 OR a.user_id IS NULL)`,
-      [analysisId, session.userId],
+       WHERE a.id = $1`,
+      [analysisId],
     );
+    if (rows.length > 0 && rows[0].user_id && rows[0].user_id !== session.userId) {
+      console.warn('[presentations:generate] cross-user access:', {
+        analysisId,
+        analysisOwner: rows[0].user_id,
+        requester:     session.userId,
+      });
+    }
 
     // Dev fallback with realistic 4-pillar demo data
     const devFallback = process.env.NODE_ENV !== 'production' ? {
