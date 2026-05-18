@@ -43,7 +43,18 @@ export default function Copilot({ analysisId, analysisTitle }) {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body.error || `HTTP ${res.status}`);
+        // Translate raw error codes into friendly messages. The server returns
+        // codes like CONFIG_ERROR / NOT_FOUND / VALIDATION_ERROR — exposing
+        // those verbatim looks broken to users.
+        const code = body.error || `HTTP ${res.status}`;
+        const friendly = ({
+          CONFIG_ERROR:     "Copilot is temporarily unavailable — the AI service isn't configured. The team has been notified.",
+          NOT_FOUND:        "This analysis isn't available right now. Try refreshing the page.",
+          VALIDATION_ERROR: body.message || 'Please rephrase your question.',
+          EMPTY_RESPONSE:   "The AI couldn't generate an answer. Try a different question.",
+          AI_ERROR:         "The AI service had a hiccup. Try again in a moment.",
+        })[code];
+        setError(friendly || body.message || code);
       } else {
         setHistory((h) => [...h, { role: 'assistant', content: body.answer || '(empty)' }]);
       }
