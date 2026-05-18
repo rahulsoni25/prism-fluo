@@ -1,9 +1,50 @@
 /** @type {import('next').NextConfig} */
+
+// ── Security headers ─────────────────────────────────────────────────────
+// Applied to every response via headers() below. Rationale:
+//   HSTS                  → force HTTPS for 2y, prevents protocol downgrade
+//   X-Frame-Options       → block clickjacking; this app is never iframed
+//   X-Content-Type-Options→ stop MIME-type sniffing (defence in depth)
+//   Referrer-Policy       → only send the origin on cross-origin nav (no
+//                            leaking analysis IDs to outside referrers)
+//   Permissions-Policy    → opt out of all the browser features we don't use
+//   COOP / CORP           → strong cross-origin isolation, prevents
+//                            Spectre-style leaks + popup-based attacks
+//   X-DNS-Prefetch-Control→ allow DNS prefetch (perf, no security cost)
+//
+// CSP is intentionally NOT enforced at this layer. We rely on Next.js's
+// per-route inline-style usage + Chart.js dynamic SVG — a strict CSP here
+// would break the UI. CSP can be added later via middleware nonces.
+const SECURITY_HEADERS = [
+  { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+  { key: 'X-Frame-Options',           value: 'DENY' },
+  { key: 'X-Content-Type-Options',    value: 'nosniff' },
+  { key: 'Referrer-Policy',           value: 'strict-origin-when-cross-origin' },
+  { key: 'X-DNS-Prefetch-Control',    value: 'on' },
+  { key: 'Permissions-Policy',        value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()' },
+  { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin' },
+  { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
+];
+
 const nextConfig = {
   // Emit a self-contained server bundle into .next/standalone.
   // The Dockerfile copies only that folder + .next/static + public
   // into the final image — no node_modules needed at runtime (~50 MB image).
   output: 'standalone',
+
+  async headers() {
+    return [
+      // Apply security headers to every path
+      { source: '/:path*', headers: SECURITY_HEADERS },
+      // Stricter caching directive on API routes (no caching of session data)
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, max-age=0, must-revalidate' },
+        ],
+      },
+    ];
+  },
 
   typescript: {
     // ExcelJS types are incompatible with the newer @types/node bundled in

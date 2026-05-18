@@ -39,7 +39,21 @@ export interface SessionPayload {
 }
 
 function getSecret(): Uint8Array {
-  const s = process.env.AUTH_SECRET || 'dev-only-insecure-secret-set-AUTH_SECRET-in-production';
+  const s = process.env.AUTH_SECRET;
+  if (!s || s.length < 32) {
+    // HARD FAIL in production. The fallback below is intentionally a known
+    // public string — anyone with read access to this repo would be able to
+    // forge session cookies if the fallback ever reached production.
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production') {
+      throw new Error('AUTH_SECRET env var is required in production (and must be at least 32 characters). Set it on Vercel → Settings → Environment Variables.');
+    }
+    // Soft-warn in dev so it can't be missed. The dev fallback is intentionally
+    // marked as such — never reuse it for anything.
+    if (typeof console !== 'undefined') {
+      console.warn('[auth] AUTH_SECRET missing or < 32 chars — using INSECURE dev fallback. DO NOT deploy without setting AUTH_SECRET.');
+    }
+    return ENCODER.encode('dev-only-insecure-secret-set-AUTH_SECRET-in-production');
+  }
   return ENCODER.encode(s);
 }
 

@@ -161,6 +161,18 @@ const STATEMENTS = [
 ];
 
 export async function GET(req: NextRequest) {
+  // Token-gate this endpoint. Without MIGRATE_TOKEN env var set, the route
+  // is disabled entirely — even an empty default would be a public DDL
+  // surface. With the token set, the caller must pass ?token=<value>.
+  const expectedToken = process.env.MIGRATE_TOKEN;
+  if (!expectedToken) {
+    return NextResponse.json({ error: 'Migration endpoint disabled (MIGRATE_TOKEN not set)' }, { status: 403 });
+  }
+  const providedToken = req.nextUrl.searchParams.get('token');
+  if (!providedToken || providedToken !== expectedToken) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
   const rawUrl = process.env.DATABASE_URL;
   if (!rawUrl) {
     return NextResponse.json({ error: 'DATABASE_URL not set' }, { status: 500 });
