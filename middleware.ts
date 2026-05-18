@@ -19,6 +19,7 @@ import { verifySession, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
 const PUBLIC_PATHS = [
   '/login',
+  '/signup',
 ];
 const PUBLIC_API_PREFIXES = [
   '/api/auth/',

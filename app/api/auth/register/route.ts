@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { sendVerificationEmail } from '@/lib/email';
+import { hashPassword } from '@/lib/auth/password';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -15,13 +16,16 @@ export const dynamic = 'force-dynamic';
 async function ensureTable() {
   await db.query(`
     CREATE TABLE IF NOT EXISTS verification_tokens (
-      token      TEXT PRIMARY KEY,
-      email      TEXT NOT NULL,
-      name       TEXT,
-      expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      token         TEXT PRIMARY KEY,
+      email         TEXT NOT NULL,
+      name          TEXT,
+      password_hash TEXT,
+      expires_at    TIMESTAMP WITH TIME ZONE NOT NULL,
+      created_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  await db.query(`ALTER TABLE verification_tokens ADD COLUMN IF NOT EXISTS password_hash TEXT`);
+  await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`);
 }
 
 export async function POST(req: NextRequest) {
@@ -52,13 +56,16 @@ export async function POST(req: NextRequest) {
     // Remove any stale pending token for this email
     await db.query('DELETE FROM verification_tokens WHERE email = $1', [normalEmail]);
 
+    // Hash the password BEFORE persisting — the plaintext never touches the DB
+    const passwordHash = await hashPassword(password);
+
     // Generate a 32-byte hex token (64 chars) — unguessable
     const token     = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 h
 
     await db.query(
-      'INSERT INTO verification_tokens (token, email, name, expires_at) VALUES ($1, $2, $3, $4)',
-      [token, normalEmail, fullName, expiresAt],
+      'INSERT INTO verification_tokens (token, email, name, password_hash, expires_at) VALUES ($1, $2, $3, $4, $5)',
+      [token, normalEmail, fullName, passwordHash, expiresAt],
     );
 
     // Build verify URL relative to the incoming request host

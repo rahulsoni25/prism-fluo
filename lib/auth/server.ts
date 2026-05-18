@@ -60,27 +60,30 @@ export async function upsertUser(input: {
   name?:    string | null;
   image?:   string | null;
   provider: 'demo' | 'google' | 'linkedin';
-  providerId?: string | null;
+  providerId?:   string | null;
+  passwordHash?: string | null;
 }): Promise<{ id: string; email: string; name: string | null; image: string | null }> {
   try {
     // Use getPool().query() — throws real errors instead of silently returning empty rows
     const { rows } = await getPool().query(
-      `INSERT INTO users (email, name, image, provider, provider_id, last_login)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+      `INSERT INTO users (email, name, image, provider, provider_id, password_hash, last_login)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
        ON CONFLICT (email)
        DO UPDATE SET
-         name        = COALESCE(EXCLUDED.name,  users.name),
-         image       = COALESCE(EXCLUDED.image, users.image),
-         provider    = EXCLUDED.provider,
-         provider_id = COALESCE(EXCLUDED.provider_id, users.provider_id),
-         last_login  = NOW()
+         name          = COALESCE(EXCLUDED.name,  users.name),
+         image         = COALESCE(EXCLUDED.image, users.image),
+         provider      = EXCLUDED.provider,
+         provider_id   = COALESCE(EXCLUDED.provider_id, users.provider_id),
+         password_hash = COALESCE(EXCLUDED.password_hash, users.password_hash),
+         last_login    = NOW()
        RETURNING id, email, name, image`,
       [
         input.email.toLowerCase().trim(),
-        input.name        ?? null,
-        input.image       ?? null,
+        input.name         ?? null,
+        input.image        ?? null,
         input.provider,
-        input.providerId  ?? null,
+        input.providerId   ?? null,
+        input.passwordHash ?? null,
       ],
     );
     if (rows && rows.length > 0) return rows[0];

@@ -60,46 +60,9 @@ function LoginInner() {
         </div>
         <p className="login-tagline">Agency Intelligence Platform — insights powered by live data</p>
 
-        {/* OAuth buttons (rendered conditionally — fall back to disabled state with
-            an explanatory tooltip when env vars aren't set on the server). */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-          <a
-            href="/api/auth/oauth/google"
-            onClick={(e) => { if (!providers.google) { e.preventDefault(); setError('Google sign-in is disabled — set AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET on Railway.'); } }}
-            className="btn"
-            style={{
-              background: '#fff', color: '#111827', border: '1.5px solid #E5E7EB',
-              fontWeight: 600, justifyContent: 'center', gap: 10,
-              opacity: providers.google ? 1 : 0.55, cursor: providers.google ? 'pointer' : 'not-allowed',
-              textDecoration: 'none',
-            }}
-          >
-            <span style={{ fontSize: 16 }}>🇬</span>
-            Continue with Google
-            {!providers.google && <span style={{ fontSize: 10, color: '#6B7280', marginLeft: 6 }}>(not configured)</span>}
-          </a>
-          <a
-            href="/api/auth/oauth/linkedin"
-            onClick={(e) => { if (!providers.linkedin) { e.preventDefault(); setError('LinkedIn sign-in is disabled — set AUTH_LINKEDIN_ID and AUTH_LINKEDIN_SECRET on Railway.'); } }}
-            className="btn"
-            style={{
-              background: '#0A66C2', color: '#fff', border: 'none',
-              fontWeight: 600, justifyContent: 'center', gap: 10,
-              opacity: providers.linkedin ? 1 : 0.55, cursor: providers.linkedin ? 'pointer' : 'not-allowed',
-              textDecoration: 'none',
-            }}
-          >
-            <span style={{ fontSize: 14 }}>in</span>
-            Continue with LinkedIn
-            {!providers.linkedin && <span style={{ fontSize: 10, opacity: 0.85, marginLeft: 6 }}>(not configured)</span>}
-          </a>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0', color: '#9CA3AF', fontSize: 11 }}>
-          <div style={{ flex: 1, height: 1, background: '#E5E7EB' }} />
-          <span>or sign in with email</span>
-          <div style={{ flex: 1, height: 1, background: '#E5E7EB' }} />
-        </div>
+        {/* OAuth buttons temporarily hidden — Google redirect URI not yet
+            registered for all environments. Re-enable by restoring the block
+            from git history once Google Cloud Console is updated. */}
 
         <form onSubmit={handleEmailLogin}>
           <div className="form-group">

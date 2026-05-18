@@ -22,21 +22,32 @@ export async function GET(req: NextRequest) {
 
   try {
     const { rows } = await db.query(
-      'SELECT email, name, expires_at FROM verification_tokens WHERE token = $1',
+      'SELECT email, name, password_hash, expires_at FROM verification_tokens WHERE token = $1',
       [token],
     );
 
     if (rows.length === 0) return redirectError(req, 'invalid_token');
 
-    const { email, name, expires_at } = rows[0];
+    const { email, name, password_hash, expires_at } = rows[0];
 
     if (new Date(expires_at) < new Date()) {
       await db.query('DELETE FROM verification_tokens WHERE token = $1', [token]);
       return redirectError(req, 'expired_token');
     }
 
-    // Create (or update) the user row
-    const user = await upsertUser({ email, name, provider: 'demo' });
+    // Create (or update) the user row — carry the hashed password across
+    const user = await upsertUser({ email, name, provider: 'demo', passwordHash: password_hash });
+
+    // Bootstrap: if this is the only user in the system, promote them to admin
+    // so the admin panel is reachable by *someone*. Idempotent — no-op on retry.
+    try {
+      const { rows: countRows } = await db.query('SELECT COUNT(*)::int AS n FROM users');
+      if (countRows[0]?.n === 1) {
+        await db.query('UPDATE users SET is_admin = true WHERE id = $1', [user.id]);
+      }
+    } catch (e) {
+      console.warn('[verify] admin bootstrap check failed:', (e as Error).message);
+    }
 
     // Consume the token — one-time use
     await db.query('DELETE FROM verification_tokens WHERE token = $1', [token]);
