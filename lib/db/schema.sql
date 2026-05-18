@@ -49,6 +49,19 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_id);
 
+-- ── Email Verification Tokens ───────────────────────────────
+-- One-time tokens sent during sign-up. Deleted on use or expiry.
+
+CREATE TABLE IF NOT EXISTS verification_tokens (
+    token      TEXT PRIMARY KEY,
+    email      TEXT NOT NULL,
+    name       TEXT,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_vtokens_email   ON verification_tokens(email);
+CREATE INDEX IF NOT EXISTS idx_vtokens_expires ON verification_tokens(expires_at);
+
 -- ── Core Upload Registry ─────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS uploads (

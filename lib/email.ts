@@ -152,6 +152,78 @@ export async function sendBriefCreatedEmail(
   }
 }
 
+// ── Email Verification ───────────────────────────────────────────────────────
+
+export async function sendVerificationEmail(
+  user: { name: string; email: string },
+  verifyUrl: string,
+): Promise<void> {
+  const transport = await getTransporter();
+  if (!transport) {
+    // No SMTP configured — log the link so devs can test locally
+    console.log(`[Email] Verification link for ${user.email}: ${verifyUrl}`);
+    return;
+  }
+
+  const smtpUser = process.env.SMTP_USER!;
+  const firstName = user.name.split(' ')[0];
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:'Inter',Arial,sans-serif;background:#F1F5F9;margin:0;padding:24px 12px">
+<div style="max-width:560px;margin:0 auto">
+
+  <div style="background:linear-gradient(135deg,#0F172A 0%,#1E1B4B 60%,#1E3A8A 100%);border-radius:16px 16px 0 0;padding:36px;text-align:center">
+    <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#2563EB,#7C3AED);display:inline-flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#fff;margin-bottom:16px">P</div>
+    <div style="color:#fff;font-size:22px;font-weight:800;margin-bottom:6px">Verify your email</div>
+    <div style="color:#94A3B8;font-size:13px">One click to activate your PRISM account</div>
+  </div>
+
+  <div style="background:#fff;padding:32px;border-left:1px solid #E2E8F0;border-right:1px solid #E2E8F0">
+    <p style="font-size:15px;color:#0F172A;margin:0 0 10px;font-weight:700">Hi ${firstName},</p>
+    <p style="font-size:14px;color:#475569;line-height:1.7;margin:0 0 28px">
+      Thanks for signing up to <strong>PRISM Intelligence</strong>. Click the button below to verify your email address and activate your account.
+    </p>
+
+    <div style="text-align:center;margin:28px 0">
+      <a href="${verifyUrl}"
+         style="background:linear-gradient(135deg,#2563EB,#7C3AED);color:#fff;padding:14px 36px;border-radius:12px;font-size:15px;font-weight:700;text-decoration:none;display:inline-block;letter-spacing:0.02em">
+        Verify Email &amp; Sign In →
+      </a>
+    </div>
+
+    <p style="font-size:12px;color:#94A3B8;text-align:center;margin:24px 0 0">
+      This link expires in <strong>24 hours</strong>. If you didn't create an account, you can safely ignore this email.
+    </p>
+
+    <div style="margin-top:20px;padding:12px 16px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0">
+      <div style="font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Or copy this link</div>
+      <div style="font-size:11px;color:#2563EB;word-break:break-all">${verifyUrl}</div>
+    </div>
+  </div>
+
+  <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:0 0 16px 16px;padding:16px 32px;text-align:center">
+    <div style="font-size:11px;color:#94A3B8">PRISM Intelligence · Agency Insights Platform</div>
+  </div>
+</div>
+</body></html>`;
+
+  try {
+    await transport.sendMail({
+      from:    FROM_LABEL(smtpUser),
+      to:      user.email,
+      subject: `Verify your PRISM account`,
+      html,
+    });
+    console.log('[Email] Verification email sent to', user.email);
+  } catch (err) {
+    console.error('[Email] sendVerificationEmail failed:', (err as Error).message);
+    // Still log the URL so devs can test even if SMTP is misconfigured
+    console.log(`[Email] Verify URL: ${verifyUrl}`);
+  }
+}
+
 // ── Brief Active (data uploaded) ─────────────────────────────────────────────
 
 export async function sendBriefActiveEmail(

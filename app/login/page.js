@@ -1,13 +1,21 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
-export default function Login() {
+const ERROR_MESSAGES = {
+  invalid_token: 'That verification link is invalid or has already been used.',
+  expired_token: 'That verification link has expired. Please sign up again.',
+  server_error:  'Something went wrong. Please try again.',
+};
+
+function LoginInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email,    setEmail]    = useState('sarah@wunderman.com');
   const [password, setPassword] = useState('demo1234');
   const [name,     setName]     = useState('');
-  const [error,    setError]    = useState(null);
+  const [error,    setError]    = useState(() => ERROR_MESSAGES[searchParams.get('error')] ?? null);
   const [busy,     setBusy]     = useState(false);
   const [providers, setProviders] = useState({ google: false, linkedin: false });
 
@@ -137,5 +145,13 @@ export default function Login() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Login() {
+  return (
+    <Suspense fallback={<div className="screen screen-login" />}>
+      <LoginInner />
+    </Suspense>
   );
 }
