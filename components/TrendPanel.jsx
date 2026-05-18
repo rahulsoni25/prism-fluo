@@ -418,8 +418,7 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
     if (defaultKeyword) { setInput(defaultKeyword); fetchTrends(defaultKeyword); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-fetch insights when trends data arrives
-  useEffect(() => { if (trendsData) fetchInsights(trendsData); }, [trendsData, fetchInsights]);
+  // Insights are fetched on-demand when the user clicks the tab, not automatically
 
   function handleSearch(e) {
     e?.preventDefault();
@@ -547,7 +546,10 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
               <button
                 key={tab.id}
                 className={`filter-btn ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  if (tab.id === 'insights' && trendsData && !insights && !loadingI) fetchInsights(trendsData);
+                }}
               >
                 {tab.label}
               </button>
@@ -634,16 +636,26 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
                   </div>
                 )}
                 {errorI && (
-                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA',
-                    borderRadius: 10, padding: '12px 14px', fontSize: 12, color: '#991B1B',
-                    display: 'flex', alignItems: 'center', gap: 8 }}>
-                    ⚠ {errorI}
-                    <button className="btn btn-outline btn-sm"
-                      style={{ marginLeft: 'auto' }}
-                      onClick={() => fetchInsights(trendsData)}>
-                      Retry
-                    </button>
-                  </div>
+                  errorI.toLowerCase().includes('api_key') || errorI.toLowerCase().includes('not set') || errorI.toLowerCase().includes('not configured') ? (
+                    <div style={{ textAlign: 'center', padding: '28px 16px' }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>🔑</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 6 }}>AI Insights not configured</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>
+                        Add <code style={{ background: '#F1F5F9', padding: '1px 5px', borderRadius: 4 }}>OPENROUTER_API_KEY</code> to your environment variables to enable AI-powered trend analysis.
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ background: '#FEF2F2', border: '1px solid #FECACA',
+                      borderRadius: 10, padding: '12px 14px', fontSize: 12, color: '#991B1B',
+                      display: 'flex', alignItems: 'center', gap: 8 }}>
+                      ⚠ {errorI}
+                      <button className="btn btn-outline btn-sm"
+                        style={{ marginLeft: 'auto' }}
+                        onClick={() => fetchInsights(trendsData)}>
+                        Retry
+                      </button>
+                    </div>
+                  )
                 )}
                 {insights && !loadingI && (
                   <>
