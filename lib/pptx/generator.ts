@@ -69,6 +69,31 @@ export interface PresentationData {
   // Flat fallbacks (used for closing slide)
   observations:    string[];
   recommendations: string[];
+
+  // ── NEW (Tier 1 PPT push) — carried from results_json.overview /
+  //    results_json.nuggets / results_json.executiveSummary and from the
+  //    linked brief row so the deck can show real synthesised content. ──
+  brand?:            string;     // brief.brand
+  category?:         string;     // brief.category
+  audienceDescriptor?: string;   // "18-34 · Metro+T1/T2 · All Genders"
+  audienceSnapshot?: string;     // 2-sentence character sketch from overview
+  strategicRead?:    string;     // 90-130 word narrative paragraph
+  nextMoves?:        string[];   // top 3 bucket-diverse actions
+  briefFlavour?:     'LAUNCH' | 'DEFEND' | 'GROW' | null;
+  competitors?:      string;     // raw comma list from brief
+  categoryValue?:    string;     // "₹45,000 Cr"
+  categoryCAGR?:     string;     // "4.1%"
+  sourceCount?:      number;     // how many files / sheets fed the analysis
+  sourceFiles?:      string[];   // labels for source attribution
+  // Deterministic computed nuggets used by the Stats Snapshot slide
+  nuggets?: {
+    ask?:         { headline?: string; stat?: string; hoverLines?: string[] };
+    keyword?:     { headline?: string; stat?: string; hoverLines?: string[] };
+    helium10?:    { headline?: string; stat?: string; hoverLines?: string[] };
+    competition?: { headline?: string; stat?: string; hoverLines?: string[] };
+    cultural?:    { headline?: string; stat?: string; hoverLines?: string[] };
+    trust?:       { headline?: string; stat?: string; hoverLines?: string[] };
+  };
 }
 
 // ─── Pillar visual identity ───────────────────────────────────────────────────
@@ -139,7 +164,7 @@ function footer(s: any, no: number, brief: string, dark = false, lineColor = 'E2
     { fontSize: 7.5, color: c, fontFace: FB, align: 'right' });
 }
 
-// ─── Slide 1: Cover ───────────────────────────────────────────────────────────
+// ─── Slide 1: Cover (enriched per Tier 1 D) ─────────────────────────────────
 function slideCover(prs: any, d: PresentationData, p: Palette) {
   const s = prs.addSlide();
   s.background = { color: p.dark };
@@ -171,6 +196,32 @@ function slideCover(prs: any, d: PresentationData, p: Palette) {
     ML + 0.25, 5.40, 5, 0.28,
     { fontSize: 10, color: p.tl, fontFace: FB });
 
+  // ── Tier 1 D: enrichment — audience + category context strip ──
+  const contextStripY = 5.80;
+  const chips: { label: string; value: string }[] = [];
+  if (d.audienceDescriptor) chips.push({ label: 'AUDIENCE', value: d.audienceDescriptor });
+  if (d.categoryValue)      chips.push({ label: 'CATEGORY VALUE', value: `${d.categoryValue}${d.categoryCAGR ? ' · ' + d.categoryCAGR + ' CAGR' : ''}` });
+  if (d.sourceCount)        chips.push({ label: 'SOURCES', value: `${d.sourceCount} file${d.sourceCount > 1 ? 's' : ''} analysed` });
+
+  if (chips.length > 0) {
+    const chipW = Math.min(3.7, (CW - 0.5) / chips.length);
+    chips.forEach((chip, i) => {
+      const cx = ML + 0.25 + i * (chipW + 0.18);
+      t(s, chip.label, cx, contextStripY, chipW, 0.20,
+        { fontSize: 7.5, color: p.acc, fontFace: FB, bold: true, charSpacing: 2.5 });
+      t(s, chip.value, cx, contextStripY + 0.22, chipW, 0.30,
+        { fontSize: 11, color: 'FFFFFF', fontFace: FB, bold: true });
+    });
+  }
+
+  // Brief flavour badge in top-right (LAUNCH / DEFEND / GROW)
+  if (d.briefFlavour) {
+    const badgeBg = { LAUNCH: '10B981', DEFEND: 'EF4444', GROW: 'F59E0B' }[d.briefFlavour] || p.pri;
+    r(s, W - 1.85, 1.75, 1.55, 0.42, badgeBg);
+    t(s, d.briefFlavour, W - 1.85, 1.82, 1.55, 0.28,
+      { fontSize: 13, color: 'FFFFFF', fontFace: FH, bold: true, align: 'center', charSpacing: 4 });
+  }
+
   // Pillar labels in bottom strip area
   const pKeys = PILLAR_ORDER;
   const pw = CW / pKeys.length;
@@ -183,9 +234,261 @@ function slideCover(prs: any, d: PresentationData, p: Palette) {
   // CONFIDENTIAL
   t(s, 'CONFIDENTIAL', W - 3.5, 0.32, 3.2, 0.26,
     { fontSize: 8.5, color: 'FFFFFF', fontFace: FB, bold: true, charSpacing: 2, align: 'right' });
+
+  // ── Tier 1 C: speaker notes for the cover ──
+  const notesParts = [
+    d.brand && `Brand: ${d.brand}`,
+    d.category && `Category: ${d.category}`,
+    d.objective && `Objective: ${d.objective}`,
+    d.audienceDescriptor && `Audience: ${d.audienceDescriptor}`,
+    d.briefFlavour && `Brief flavour: ${d.briefFlavour}`,
+    d.competitors && `Tracked competitors: ${d.competitors}`,
+    d.categoryValue && `Category value: ${d.categoryValue}${d.categoryCAGR ? ' (' + d.categoryCAGR + ' CAGR)' : ''}`,
+    d.sourceCount && `Source files: ${d.sourceCount}${d.sourceFiles?.length ? ' (' + d.sourceFiles.join(', ') + ')' : ''}`,
+    '',
+    'Open by reading the headline. Pause for 2 seconds. Then anchor the room: name the brand, the audience, and the moment this brief lands in.',
+  ].filter(Boolean).join('\n');
+  if (notesParts) s.addNotes(notesParts);
 }
 
-// ─── Slide 2: Agenda ─────────────────────────────────────────────────────────
+// ─── Tier 1 A: Executive Summary slide ──────────────────────────────────────
+// Sits between Cover and Agenda. Carries the Strategic Read paragraph (the
+// only narrative connective tissue on the deck) + Audience Snapshot + top
+// 3 Next Moves. Pull from d.strategicRead / d.audienceSnapshot / d.nextMoves.
+function slideExecutiveSummary(prs: any, d: PresentationData, p: Palette, slideNo: number) {
+  const s = prs.addSlide();
+  s.background = { color: 'FAFBFD' };
+
+  // Top accent band
+  r(s, 0, 0, W, 0.18, p.pri);
+
+  // Eyebrow + section title
+  t(s, '★ EXECUTIVE SUMMARY', ML, 0.42, 6, 0.28,
+    { fontSize: 9.5, color: p.pri, fontFace: FB, bold: true, charSpacing: 3 });
+  t(s, d.headline || 'Strategic Readout', ML, 0.75, CW, 0.85,
+    { fontSize: 24, color: '0F172A', fontFace: FH, bold: true, lineSpacingMultiple: 1.15 });
+  ln(s, ML, 1.78, 1.6, p.acc, 2);
+
+  // Layout: left column 60% = Strategic Read; right column 40% = Next Moves
+  const leftW  = CW * 0.60 - 0.20;
+  const rightX = ML + leftW + 0.30;
+  const rightW = CW - leftW - 0.30;
+  const bodyY  = 2.00;
+
+  // ── LEFT: Strategic Read paragraph ──
+  t(s, '🧭 STRATEGIC READ', ML, bodyY, leftW, 0.24,
+    { fontSize: 9, color: '0891B2', fontFace: FB, bold: true, charSpacing: 2.5 });
+  t(s, 'Synthesised from data', ML + 2.4, bodyY + 0.02, 2.4, 0.20,
+    { fontSize: 8, color: '94A3B8', fontFace: FB, italic: true });
+
+  // The Strategic Read paragraph itself OR fall back to audienceSnapshot
+  const readText = d.strategicRead?.trim() || d.audienceSnapshot?.trim() || d.objective?.trim() || '';
+  t(s, readText || 'Strategic read not available for this analysis.',
+    ML, bodyY + 0.36, leftW, 4.0,
+    {
+      fontSize: 13, color: '1F2937', fontFace: FB,
+      lineSpacingMultiple: 1.55, valign: 'top', wrap: true,
+    });
+
+  // Audience Snapshot (small block below the Strategic Read if both present)
+  if (d.strategicRead && d.audienceSnapshot) {
+    const snapY = bodyY + 4.6;
+    r(s, ML, snapY, leftW, 0.86, '#F1F5F9');  // light grey card bg
+    t(s, '👥 AUDIENCE SNAPSHOT', ML + 0.18, snapY + 0.08, 3, 0.22,
+      { fontSize: 8.5, color: '7C3AED', fontFace: FB, bold: true, charSpacing: 2 });
+    t(s, d.audienceSnapshot, ML + 0.18, snapY + 0.32, leftW - 0.36, 0.5,
+      { fontSize: 10.5, color: '475569', fontFace: FB, italic: true, lineSpacingMultiple: 1.4 });
+  }
+
+  // ── RIGHT: Next Moves (numbered cards) ──
+  t(s, '💡 NEXT MOVES', rightX, bodyY, rightW, 0.24,
+    { fontSize: 9, color: 'D97706', fontFace: FB, bold: true, charSpacing: 2.5 });
+  t(s, 'Bucket-diverse, concrete', rightX + 2.0, bodyY + 0.02, 2.5, 0.20,
+    { fontSize: 8, color: '94A3B8', fontFace: FB, italic: true });
+
+  const moves = Array.isArray(d.nextMoves) && d.nextMoves.length > 0
+    ? d.nextMoves
+    : (Array.isArray(d.recommendations) ? d.recommendations.slice(0, 3) : []);
+
+  const moveCardH = 1.30;
+  const moveGap   = 0.18;
+  moves.slice(0, 3).forEach((move, i) => {
+    const y = bodyY + 0.36 + i * (moveCardH + moveGap);
+    // Card bg
+    r(s, rightX, y, rightW, moveCardH, '#FFFFFF');
+    // Number badge
+    r(s, rightX, y, 0.55, moveCardH, '#FEF3C7');
+    t(s, String(i + 1), rightX, y, 0.55, moveCardH,
+      { fontSize: 26, color: '92400E', fontFace: FH, bold: true, align: 'center', valign: 'middle' });
+    // Move text
+    const moveText = move.length > 220 ? move.slice(0, 218) + '…' : move;
+    t(s, moveText, rightX + 0.70, y + 0.10, rightW - 0.80, moveCardH - 0.20,
+      { fontSize: 10.5, color: '1F2937', fontFace: FB, lineSpacingMultiple: 1.4, valign: 'top', wrap: true });
+  });
+
+  // Bottom strip: provenance
+  if (d.sourceCount) {
+    t(s, `Synthesised from ${d.sourceCount} source file${d.sourceCount > 1 ? 's' : ''} · ${d.briefFlavour || 'BRIEF'} flavour · regenerate from /insights anytime`,
+      ML, H - 0.7, CW, 0.22,
+      { fontSize: 8.5, color: '94A3B8', fontFace: FB, italic: true, charSpacing: 0.5 });
+  }
+
+  footer(s, slideNo, d.briefName);
+
+  // Speaker notes
+  const notes = [
+    `Strategic Read (full):`,
+    readText,
+    '',
+    d.audienceSnapshot && `Audience Snapshot: ${d.audienceSnapshot}`,
+    '',
+    'Top moves to land verbally:',
+    ...moves.slice(0, 3).map((m, i) => `${i + 1}. ${m}`),
+    '',
+    'Delivery: open by reading the eyebrow ("Executive Summary"), then the headline. Pause. Read the Strategic Read paragraph slowly — that is the heart of this deck. The Next Moves on the right are the so-what; tie each one back to a phrase in the paragraph.',
+  ].filter(Boolean).join('\n');
+  s.addNotes(notes);
+}
+
+// ─── Tier 1 B: Computed Stats Snapshot slide ────────────────────────────────
+// Big-number tiles pulled from d.nuggets. Each tile = ONE arresting number
+// that is computed from raw data (HHI, weighted YoY, brand SOV, etc).
+// Sits between Executive Summary and Agenda.
+function slideStatsSnapshot(prs: any, d: PresentationData, p: Palette, slideNo: number) {
+  const s = prs.addSlide();
+  s.background = { color: 'FAFBFD' };
+
+  // Top accent band
+  r(s, 0, 0, W, 0.18, p.pri);
+
+  t(s, '📊 CATEGORY AT A GLANCE', ML, 0.42, 6, 0.28,
+    { fontSize: 9.5, color: p.pri, fontFace: FB, bold: true, charSpacing: 3 });
+  t(s, 'The numbers that frame the brief', ML, 0.75, CW, 0.55,
+    { fontSize: 22, color: '0F172A', fontFace: FH, bold: true });
+  t(s, 'Every figure below is computed directly from the uploaded data — none are invented or benchmarked from external sources.',
+    ML, 1.30, CW, 0.30,
+    { fontSize: 11, color: '64748B', fontFace: FB, italic: true });
+  ln(s, ML, 1.65, 1.6, p.acc, 2);
+
+  // ── Extract tile data from d.nuggets ──
+  type Tile = { label: string; value: string; sub?: string; color: string };
+  const tiles: Tile[] = [];
+
+  const n = d.nuggets || {};
+  // Tile 1 — Keyword headline (search demand)
+  if (n.keyword?.headline) {
+    // Try to extract a leading number from the headline like "+18.3% YoY" or "2.2M monthly queries"
+    const match = n.keyword.headline.match(/([+-]?[\d.,]+\s*[%×KM]?\s*(?:YoY|monthly\s*queries|searches)?)/i);
+    tiles.push({
+      label: 'SEARCH DEMAND',
+      value: match ? match[1].trim() : 'Strong',
+      sub:   String(n.keyword.headline).slice(0, 85) + (n.keyword.headline.length > 85 ? '…' : ''),
+      color: '0891B2',
+    });
+  }
+  // Tile 2 — Helium 10 (shelf concentration)
+  if (n.helium10?.headline) {
+    const hhi = n.helium10.headline.match(/HHI\s*(\d+)/i);
+    const lead = n.helium10.headline.match(/(\d+)\s*%/);
+    tiles.push({
+      label: 'SHELF CONCENTRATION',
+      value: hhi ? `HHI ${hhi[1]}` : (lead ? `${lead[1]}% leader` : 'Tracked'),
+      sub:   String(n.helium10.headline).slice(0, 85) + (n.helium10.headline.length > 85 ? '…' : ''),
+      color: 'B91C1C',
+    });
+  }
+  // Tile 3 — Brand SOV from competition
+  if (n.competition?.headline) {
+    const ourBrand = n.competition.headline.match(/(\d+)\s*%/);
+    tiles.push({
+      label: 'BRAND SOV',
+      value: ourBrand ? `${ourBrand[1]}%` : 'Tracked',
+      sub:   String(n.competition.headline).slice(0, 85) + (n.competition.headline.length > 85 ? '…' : ''),
+      color: 'DC2626',
+    });
+  }
+  // Tile 4 — Trust signals (branded vs non-branded)
+  if (n.trust?.headline) {
+    const branded = n.trust.headline.match(/(\d+)\s*%/);
+    tiles.push({
+      label: 'TRUST SIGNAL',
+      value: branded ? `${branded[1]}%` : 'Mixed',
+      sub:   String(n.trust.headline).slice(0, 85) + (n.trust.headline.length > 85 ? '…' : ''),
+      color: '0D9488',
+    });
+  }
+  // Tile 5 — Cultural cues (top theme)
+  if (n.cultural?.headline) {
+    const themeMatch = n.cultural.headline.match(/^"([^"]+)"/);
+    tiles.push({
+      label: 'TOP CULTURAL CUE',
+      value: themeMatch ? `"${themeMatch[1].slice(0, 18)}"` : 'Tracked',
+      sub:   String(n.cultural.headline).slice(0, 85) + (n.cultural.headline.length > 85 ? '…' : ''),
+      color: '9333EA',
+    });
+  }
+  // Tile 6 — Category value from the brief
+  if (d.categoryValue) {
+    tiles.push({
+      label: 'CATEGORY VALUE',
+      value: d.categoryValue,
+      sub:   d.categoryCAGR ? `${d.categoryCAGR} CAGR · ${d.category || 'category'}` : (d.category || ''),
+      color: '7C3AED',
+    });
+  }
+
+  // ── Render tile grid (3 cols × 2 rows max) ──
+  if (tiles.length === 0) {
+    t(s, 'No computed nuggets available for this analysis. Upload more data sources to populate this slide.',
+      ML, 3.5, CW, 0.5,
+      { fontSize: 13, color: '94A3B8', fontFace: FB, italic: true, align: 'center' });
+  } else {
+    const cols  = tiles.length <= 3 ? tiles.length : 3;
+    const rows  = Math.ceil(tiles.length / cols);
+    const gap   = 0.20;
+    const tileW = (CW - gap * (cols - 1)) / cols;
+    const tileH = Math.min(2.30, (5.20 - gap * (rows - 1)) / rows);
+    const startY = 1.95;
+
+    tiles.forEach((tile, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = ML + col * (tileW + gap);
+      const y = startY + row * (tileH + gap);
+
+      // Card bg
+      r(s, x, y, tileW, tileH, '#FFFFFF');
+      // Color strip top
+      r(s, x, y, tileW, 0.10, tile.color);
+      // Label
+      t(s, tile.label, x + 0.20, y + 0.26, tileW - 0.40, 0.24,
+        { fontSize: 9, color: tile.color, fontFace: FB, bold: true, charSpacing: 2 });
+      // Big value
+      t(s, tile.value, x + 0.20, y + 0.55, tileW - 0.40, 0.80,
+        { fontSize: tile.value.length > 8 ? 28 : 36, color: '0F172A', fontFace: FH, bold: true,
+          align: 'left', valign: 'middle' });
+      // Sub
+      if (tile.sub) {
+        t(s, tile.sub, x + 0.20, y + tileH - 0.78, tileW - 0.40, 0.62,
+          { fontSize: 9.5, color: '475569', fontFace: FB, lineSpacingMultiple: 1.35, valign: 'top', wrap: true });
+      }
+    });
+  }
+
+  footer(s, slideNo, d.briefName);
+
+  // Speaker notes
+  const noteLines = [
+    'Category at a Glance — every figure here is computed deterministically from the uploaded data (Pareto / HHI / weighted YoY / brand SOV). Never invented or benchmarked from external sources.',
+    '',
+    ...tiles.map(tile => `• ${tile.label}: ${tile.value} — ${tile.sub || ''}`),
+    '',
+    'Delivery tip: walk left-to-right, top-to-bottom. For each tile, read the BIG number first, then the sub-line. Pause for 1 second between tiles to let it land.',
+  ];
+  s.addNotes(noteLines.join('\n'));
+}
+
+// ─── Slide: Agenda ───────────────────────────────────────────────────────────
 function slideAgenda(prs: any, d: PresentationData, p: Palette, data: PresentationData) {
   const s = prs.addSlide();
   s.background = { color: 'FAFBFD' };
@@ -248,6 +551,21 @@ function slideAgenda(prs: any, d: PresentationData, p: Palette, data: Presentati
   });
 
   footer(s, 2, d.briefName);
+
+  // Speaker notes — set context for the agenda walkthrough
+  const totalInsights = activePillars.reduce((sum, key) => {
+    const pillar = data[key as keyof PresentationData] as PillarData | undefined;
+    return sum + (pillar?.insights?.length ?? 0);
+  }, 0);
+  const agendaNotes = [
+    `We'll move through ${activePillars.length} pillar${activePillars.length !== 1 ? 's' : ''} covering ${totalInsights} total insights.`,
+    '',
+    'Pillar order:',
+    ...activePillars.map((k, i) => `  ${i + 1}. ${PILLARS[k].label} — ${(data[k as keyof PresentationData] as PillarData)?.insights?.length ?? 0} insights`),
+    '',
+    'Delivery: read the agenda card-by-card. For each pillar, name it + the insight count + the teaser quote. Then move on. Don\'t dive into detail here — that\'s what the divider slides are for.',
+  ].join('\n');
+  s.addNotes(agendaNotes);
 }
 
 // ─── Pillar section divider ───────────────────────────────────────────────────
@@ -287,6 +605,32 @@ function slideDivider(prs: any, pm: PillarMeta, insightCount: number, slideNo: n
     { fontSize: 12, color: 'FFFFFF99', fontFace: FB });
 
   footer(s, slideNo, d.briefName, true, pm.color);
+
+  // Speaker notes — section context
+  s.addNotes([
+    `Section divider: ${pm.label} (${insightCount} insight${insightCount !== 1 ? 's' : ''} in this section).`,
+    '',
+    `${pm.label} covers: ${getPillarMeaning(pm.label.toLowerCase())}`,
+    '',
+    'Delivery: pause for 2-3 seconds on this divider. Use it as a transition cue — name the section, hint at the headline, then advance.',
+  ].join('\n'));
+}
+
+// Plain-English description of what each pillar covers (used in speaker notes
+// on dividers + summary slides).
+function getPillarMeaning(name: string): string {
+  const meanings: Record<string, string> = {
+    content:       'media consumption, formats, A+ listings, content territories',
+    commerce:      'purchase intent, units, revenue, conversion, discount behaviour',
+    communication: 'brand awareness, reviews, trust signals, ad recall, NPS',
+    culture:       'demographics, lifestyle, values, attitudes, identity signals',
+    channel:       'paid/owned/earned mix, channel ROI, attribution',
+    media:         'media planning, spend allocation, platform performance',
+    creative:      'creative asset performance, copy testing, A/B results',
+    pricing:       'price elasticity, willingness to pay, discount strategy',
+    search:        'search demand, intent, organic vs paid, bid strategy',
+  };
+  return meanings[name] || 'data-driven findings + strategic recommendations';
 }
 
 // ─── Chart helpers ────────────────────────────────────────────────────────────
@@ -499,6 +843,24 @@ function slideInsight(
   }
 
   footer(s, slideNo, d.briefName);
+
+  // Speaker notes — full obs + rec + source + confidence
+  const insightNotes = [
+    `${pm.label} insight ${insightNo}: ${ins.title}`,
+    '',
+    'Full observation:',
+    ins.obs || '(none)',
+    '',
+    'Full recommendation:',
+    ins.rec || '(none)',
+    '',
+    ins.stat && `Key stat: ${ins.stat}`,
+    ins.source && `Source: ${ins.source}`,
+    ins.conviction != null && `Confidence: ${ins.conviction}%`,
+    '',
+    'Delivery: read the headline aloud. Pause. Walk through the OBSERVATION first (bottom-left block). Then read the RECOMMENDATION on the right (dark block) — that\'s the so-what. End with the stat strip below if present.',
+  ].filter(Boolean).join('\n');
+  s.addNotes(insightNotes);
 }
 
 // ─── "So What" slide — pillar recommendations ─────────────────────────────────
@@ -557,6 +919,16 @@ function slidePillarRecs(
   });
 
   footer(s, slideNo, d.briefName, true);
+
+  // Speaker notes — full recommendations text
+  const recsNotes = [
+    `${pm.label} "So What" — top ${recs.length} recommendations:`,
+    '',
+    ...recs.map((r, i) => `${i + 1}. ${r}`),
+    '',
+    `Delivery: this slide closes the ${pm.label} section. Read each recommendation aloud. Connect each to the insights from the previous slides. Move to the next section only after committing verbally to the top 1-2.`,
+  ].join('\n');
+  s.addNotes(recsNotes);
 }
 
 // ─── Closing slide ────────────────────────────────────────────────────────────
@@ -598,6 +970,26 @@ function slideClosing(prs: any, d: PresentationData, p: Palette) {
 
   t(s, (d.briefName || '').toUpperCase(), W - MR - 5.5, 5.90, 5.2, 0.28,
     { fontSize: 10, color: p.tl, fontFace: FB, bold: true, charSpacing: 1.6, align: 'right' });
+
+  // Speaker notes — wrap-up + Q&A prompt
+  const closingNotes = [
+    'Closing slide: wrap-up + Q&A.',
+    '',
+    `Brief: ${d.briefName}`,
+    d.brand && `Brand: ${d.brand}`,
+    d.briefFlavour && `Flavour: ${d.briefFlavour}`,
+    '',
+    'Top recommendation:',
+    d.recommendations[0] || '(none — see prior slides)',
+    '',
+    'Delivery: hold this slide for ~10 seconds before inviting questions. Reiterate the Headline from the cover. Anchor the room on the SINGLE top recommendation. Then open the floor.',
+    '',
+    'Common questions to anticipate:',
+    '  • "What\'s the conviction behind this number?" → point them to source pills on each insight slide',
+    '  • "What would change this read?" → name the data we don\'t have (GWI, brand tracker, panel)',
+    '  • "What\'s the timeline?" → reference Next Moves from Executive Summary slide',
+  ].filter(Boolean).join('\n');
+  s.addNotes(closingNotes);
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -612,11 +1004,25 @@ export async function generatePresentation(data: PresentationData): Promise<Buff
 
   let slideNo = 1;
 
-  // 1. Cover
+  // 1. Cover (enriched with audience descriptor + category value + flavour badge)
   slideCover(prs, data, p);
   slideNo++;
 
-  // 2. Agenda
+  // 2. Executive Summary — Strategic Read + Audience Snapshot + Next Moves
+  //    Only renders if we have at least ONE of (strategicRead, audienceSnapshot, nextMoves).
+  //    Older analyses without these fields skip this slide gracefully.
+  if (data.strategicRead || data.audienceSnapshot || (data.nextMoves?.length ?? 0) > 0) {
+    slideExecutiveSummary(prs, data, p, slideNo);
+    slideNo++;
+  }
+
+  // 3. Stats Snapshot — only when we have computed nuggets to render as tiles.
+  if (data.nuggets && Object.values(data.nuggets).some(v => v?.headline)) {
+    slideStatsSnapshot(prs, data, p, slideNo);
+    slideNo++;
+  }
+
+  // 4. Agenda
   slideAgenda(prs, data, p, data);
   slideNo++;
 

@@ -165,10 +165,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    // Fetch analysis (allow NULL user_id for backwards compatibility)
+    // Fetch analysis + ALL brief fields so the deck has audience descriptor,
+    // category value, competitors, and flavour for the enriched cover + exec
+    // summary slides (Tier 1 PPT push).
     const { rows } = await db.query(
-      `SELECT a.id, a.sheet_name, a.results_json, a.brief_id,
-              b.brand, b.objective
+      `SELECT a.id, a.sheet_name, a.filename, a.results_json, a.brief_id,
+              b.brand, b.objective, b.category,
+              b.gender, b.age_ranges, b.sec, b.geography, b.market,
+              b.competitors
        FROM analyses a
        LEFT JOIN briefs b ON a.brief_id = b.id
        WHERE a.id = $1 AND (a.user_id = $2 OR a.user_id IS NULL)`,
@@ -320,14 +324,72 @@ export async function POST(req: NextRequest) {
     const flatObs  = Array.isArray(meta.observations)    ? meta.observations.filter((o: string) => o?.trim())    : [];
     const flatRecs = Array.isArray(meta.recommendations) ? meta.recommendations.filter((r: string) => r?.trim()) : [];
 
+    // ── NEW (Tier 1 PPT push) — pull deterministic content from results_json
+    //    so the deck reflects the same Strategic Read + Nuggets that the
+    //    insights page renders, instead of falling back to Gemini-template
+    //    boilerplate. ───────────────────────────────────────────────────
+    const overview        = (results as any).overview || {};
+    const execSummary     = (results as any).executiveSummary || {};
+    const nuggets         = (results as any).nuggets || {};
+
+    // Audience descriptor — derived from brief demographic fields server-side
+    const audienceDescriptor = [
+      analysis.gender,
+      analysis.age_ranges,
+      analysis.sec && `SEC ${analysis.sec}`,
+      analysis.geography || analysis.market,
+    ].filter(Boolean).join(' · ') || undefined;
+
+    // Brief flavour — pattern-match on objective + brand text
+    const flavourSeed = `${analysis.objective || ''} ${analysis.brand || ''}`.toLowerCase();
+    const briefFlavour: 'LAUNCH' | 'DEFEND' | 'GROW' | null =
+        /\blaunch|new\s+sku|enter|whitespace\b/.test(flavourSeed) ? 'LAUNCH'
+      : /\bdefend|protect|threat|leader|hold\b/.test(flavourSeed) ? 'DEFEND'
+      : /\bgrow|expand|share|adjacenc/.test(flavourSeed)         ? 'GROW'
+      : null;
+
+    // Lookup category value (minimal inline table — matches the client-side
+    // CATEGORY_INTEL in app/insights/page.js, kept here to avoid refactoring
+    // it into a shared lib in this push).
+    const lookupCategory = (cat?: string) => {
+      if (!cat) return { value: undefined, cagr: undefined };
+      const c = cat.toLowerCase();
+      const table: Array<[string, string, string]> = [
+        ['home care',     '₹45,000 Cr',  '4.1%'],
+        ['personal care', '₹1.73L Cr',   '9.1%'],
+        ['food',          '₹86L Cr',     '8.5%'],
+        ['telecom',       '₹4.81L Cr',   '8%'],
+        ['fintech',       '₹4.56L Cr',   '25%'],
+        ['e-commerce',    '₹9.13L Cr',   '21%'],
+        ['auto',          '₹11.6L Cr',   '7%'],
+        ['fashion',       '₹11.3L Cr',   '11%'],
+        ['travel',        '₹7.4L Cr',    '9%'],
+      ];
+      for (const [key, value, cagr] of table) {
+        if (c.includes(key)) return { value, cagr };
+      }
+      return { value: undefined, cagr: undefined };
+    };
+    const { value: categoryValue, cagr: categoryCAGR } = lookupCategory(analysis.category);
+
+    // Source files — for now infer from sheet_name + filename; later we can
+    // join the upload rows linked to this analysis if needed.
+    const sourceFilesList: string[] = [];
+    if (analysis.filename) sourceFilesList.push(analysis.filename);
+    if (analysis.sheet_name && analysis.sheet_name !== analysis.filename) {
+      sourceFilesList.push(analysis.sheet_name);
+    }
+    // Count distinct toolLabels across the charts as a better proxy for "sources"
+    const distinctTools = new Set<string>();
+    charts.forEach(c => { if (c.toolLabel) distinctTools.add(c.toolLabel); });
+    const sourceCount = Math.max(1, distinctTools.size || sourceFilesList.length);
+
     // Assemble full PresentationData — ALL 9 buckets must be present
-    // (generator.ts iterates PILLAR_ORDER which includes the 5 newer buckets;
-    //  missing keys crash with "Cannot read properties of undefined (reading 'insights')")
     const presentationData: PresentationData = {
       templateId,
       briefName:       analysis.brand || analysis.sheet_name || 'Analysis Report',
-      headline:        meta.headline  || analysis.brand || 'Strategic Insights from Analysis',
-      objective:       meta.objective || analysis.objective || 'Data-driven analysis with key findings and recommendations',
+      headline:        overview.headline || meta.headline || execSummary.headline || analysis.brand || 'Strategic Insights from Analysis',
+      objective:       analysis.objective || meta.objective || 'Data-driven analysis with key findings and recommendations',
       date:            new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       // Core 4 pillars
       content:         pillars.content,
@@ -342,6 +404,21 @@ export async function POST(req: NextRequest) {
       search:          pillars.search    ?? { insights: [] },
       observations:    flatObs.length  > 0 ? flatObs  : charts.map(c => c.obs || '').filter(Boolean),
       recommendations: flatRecs.length > 0 ? flatRecs : charts.map(c => c.rec || '').filter(Boolean),
+
+      // ── NEW Tier 1 fields ──────────────────────────────────────────
+      brand:              analysis.brand || undefined,
+      category:           analysis.category || undefined,
+      audienceDescriptor,
+      audienceSnapshot:   overview.audienceSnapshot || undefined,
+      strategicRead:      execSummary.strategicRead || undefined,
+      nextMoves:          Array.isArray(execSummary.actions) ? execSummary.actions : undefined,
+      briefFlavour,
+      competitors:        analysis.competitors || undefined,
+      categoryValue,
+      categoryCAGR,
+      sourceCount,
+      sourceFiles:        sourceFilesList.length > 0 ? sourceFilesList : undefined,
+      nuggets,
     };
 
     console.log('Generating PRISM deck...', {
