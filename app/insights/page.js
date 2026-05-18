@@ -1593,14 +1593,23 @@ function ExecutiveSummaryPanel({ analysisId }) {
 
   if (error || !summary) return null;
 
+  // Support BOTH the new shape ({ keyFindings, actions }) and the legacy
+  // shape ({ observations, recommendations }) so old cached records render.
+  const keyFindings = Array.isArray(summary.keyFindings)
+    ? summary.keyFindings
+    : (Array.isArray(summary.observations) ? summary.observations : []);
+  const actions = Array.isArray(summary.actions)
+    ? summary.actions
+    : (Array.isArray(summary.recommendations) ? summary.recommendations : []);
+
+  if (!summary.headline && keyFindings.length === 0 && actions.length === 0) return null;
+
   return (
     <div style={{ marginTop: 28 }}>
-      {/* Headline Card */}
+      {/* Headline banner — gradient hero. Same as before; this lands well. */}
       <div style={{
         background: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
-        borderRadius: 16,
-        padding: '28px 32px',
-        marginBottom: 20,
+        borderRadius: 16, padding: '28px 32px', marginBottom: 20,
         boxShadow: '0 4px 6px rgba(59, 130, 246, 0.1)',
       }}>
         <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', lineHeight: 1.3 }}>
@@ -1608,69 +1617,41 @@ function ExecutiveSummaryPanel({ analysisId }) {
         </div>
       </div>
 
-      {/* 3-Column Grid for Objective, Observations, Recommendations */}
+      {/* 2-column grid — OBJECTIVE removed (was redundant with breadcrumb +
+          ★ The Ask Nugget + banner). Key Findings now pulls data-derived
+          numbers from the deterministic nuggets payload; Actions are
+          dedup-filtered against the Strategic Bets row above. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
         gap: 20,
       }}>
-        {/* Objective Card */}
-        <div style={{
-          background: '#fff',
-          borderRadius: 14,
-          padding: '24px',
-          boxShadow: 'var(--shadow)',
-          border: '1px solid #E5E7EB',
-        }}>
+        {/* Key Findings */}
+        {keyFindings.length > 0 && (
           <div style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: '#3B82F6',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            marginBottom: 12,
-          }}>
-            🎯 Objective
-          </div>
-          <div style={{ fontSize: 13, lineHeight: 1.7, color: '#374151', fontWeight: 500 }}>
-            {summary.objective}
-          </div>
-        </div>
-
-        {/* Observations Card */}
-        {Array.isArray(summary.observations) && summary.observations.length > 0 && (
-          <div style={{
-            background: '#fff',
-            borderRadius: 14,
-            padding: '24px',
-            boxShadow: 'var(--shadow)',
-            border: '1px solid #E5E7EB',
+            background: '#fff', borderRadius: 14, padding: 24,
+            boxShadow: 'var(--shadow)', border: '1px solid #E5E7EB',
           }}>
             <div style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: '#059669',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: 12,
+              fontSize: 14, fontWeight: 700, color: '#059669',
+              textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14,
+              display: 'flex', alignItems: 'center', gap: 6,
             }}>
               📊 Key Findings
+              <span style={{ fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace", color: '#94A3B8', fontWeight: 600, letterSpacing: 0, textTransform: 'none' }}>
+                · computed from data
+              </span>
             </div>
             <ul style={{ margin: 0, paddingLeft: 0, listStyleType: 'none' }}>
-              {summary.observations.slice(0, 3).map((obs, i) => (
+              {keyFindings.slice(0, 5).map((obs, i) => (
                 <li key={i} style={{
-                  fontSize: 12.5,
-                  lineHeight: 1.6,
-                  color: '#374151',
-                  marginBottom: i < summary.observations.slice(0, 3).length - 1 ? 10 : 0,
-                  paddingLeft: 20,
-                  position: 'relative',
+                  fontSize: 12.5, lineHeight: 1.6, color: '#374151',
+                  marginBottom: i < keyFindings.slice(0, 5).length - 1 ? 12 : 0,
+                  paddingLeft: 22, position: 'relative',
                 }}>
                   <span style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 2,
-                    fontSize: 16,
+                    position: 'absolute', left: 0, top: 2,
+                    fontSize: 14, color: '#10B981', fontWeight: 800,
                   }}>✓</span>
                   {obs}
                 </li>
@@ -1679,40 +1660,32 @@ function ExecutiveSummaryPanel({ analysisId }) {
           </div>
         )}
 
-        {/* Recommendations Card */}
-        {Array.isArray(summary.recommendations) && summary.recommendations.length > 0 && (
+        {/* Actions */}
+        {actions.length > 0 && (
           <div style={{
-            background: '#fff',
-            borderRadius: 14,
-            padding: '24px',
-            boxShadow: 'var(--shadow)',
-            border: '1px solid #E5E7EB',
+            background: '#fff', borderRadius: 14, padding: 24,
+            boxShadow: 'var(--shadow)', border: '1px solid #E5E7EB',
           }}>
             <div style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: '#D97706',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: 12,
+              fontSize: 14, fontWeight: 700, color: '#D97706',
+              textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14,
+              display: 'flex', alignItems: 'center', gap: 6,
             }}>
               💡 Actions
+              <span style={{ fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace", color: '#94A3B8', fontWeight: 600, letterSpacing: 0, textTransform: 'none' }}>
+                · net-new vs. Strategic Bets
+              </span>
             </div>
             <ul style={{ margin: 0, paddingLeft: 0, listStyleType: 'none' }}>
-              {summary.recommendations.slice(0, 3).map((rec, i) => (
+              {actions.slice(0, 4).map((rec, i) => (
                 <li key={i} style={{
-                  fontSize: 12.5,
-                  lineHeight: 1.6,
-                  color: '#374151',
-                  marginBottom: i < summary.recommendations.slice(0, 3).length - 1 ? 10 : 0,
-                  paddingLeft: 20,
-                  position: 'relative',
+                  fontSize: 12.5, lineHeight: 1.6, color: '#374151',
+                  marginBottom: i < actions.slice(0, 4).length - 1 ? 12 : 0,
+                  paddingLeft: 22, position: 'relative',
                 }}>
                   <span style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 2,
-                    fontSize: 16,
+                    position: 'absolute', left: 0, top: 2,
+                    fontSize: 14, color: '#F59E0B', fontWeight: 800,
                   }}>→</span>
                   {rec}
                 </li>
