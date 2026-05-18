@@ -2376,7 +2376,7 @@ function synthesizeReadFallback(args: {
   styleSeed: number;
 }): string {
   const { brief, nuggets, opener, styleSeed } = args;
-  const brand = brief.brand || 'The brand';
+  const brand = brief.brand || 'the brand';
   const category = brief.category ? brief.category.toLowerCase() : 'this category';
   const obj = brief.objective || '';
 
@@ -2387,48 +2387,110 @@ function synthesizeReadFallback(args: {
                 : /\bgrow|expand|share|adjacenc/.test(tObj)         ? 'GROW'
                 : null;
 
-  // Extract numbers from nuggets
-  const kw = nuggets.keyword;
-  const h10 = nuggets.helium10;
-  const comp = nuggets.competition;
-  const trust = nuggets.trust;
-  const cult = nuggets.cultural;
+  // Pull specific number-bearing facts from the nugget hoverLines (richer
+  // than headlines — these have the actual data points like "HHI 2121"
+  // or "+18% YoY") and merge with each nugget's headline.
+  type Fact = { label: string; text: string; hasNumber: boolean };
+  const facts: Fact[] = [];
+  const pushFact = (label: string, text: string | undefined) => {
+    if (!text) return;
+    facts.push({ label, text: text.trim(), hasNumber: /\d/.test(text) });
+  };
+  pushFact('search',      nuggets.keyword?.headline);
+  pushFact('shelf',       nuggets.helium10?.headline);
+  pushFact('competition', nuggets.competition?.headline);
+  pushFact('trust',       nuggets.trust?.headline);
+  pushFact('cultural',    nuggets.cultural?.headline);
+  // Hover lines are richer — pull the most number-dense ones
+  ['keyword','helium10','competition','trust','cultural'].forEach(slot => {
+    const hover = nuggets[slot]?.hoverLines || [];
+    hover.slice(0, 2).forEach((h: string) => pushFact(slot, h));
+  });
 
-  // ── Sentence 1: opener — varies by style ────────────────────
-  const stancePicks = ['value', 'demo-led content', 'retailer placement', 'sampling', 'regional language reach', 'pack-size innovation'];
+  // Prefer number-bearing facts when filling the body sentences.
+  const ranked = [...facts].sort((a, b) => (b.hasNumber ? 1 : 0) - (a.hasNumber ? 1 : 0));
+
+  // Larger stance pool — 12 picks, cycled deterministically so identical
+  // briefs land on the same paragraph (caching-friendly).
+  const stancePicks = [
+    'value', 'demo-led content', 'retailer placement', 'sampling',
+    'regional language reach', 'pack-size innovation', 'service depth',
+    'price-to-volume ratio', 'household-name reach', 'distribution width',
+    'shelf-visibility upgrade', 'creator-led trust',
+  ];
   const stance = stancePicks[styleSeed % stancePicks.length];
 
+  // ── Sentence 1: opener — multiple variants per style ───────
+  const sceneOpeners = [
+    `In the daily basket where ${category} comes home on price first and brand second, ${brand} sits at a sharp turn.`,
+    `On the shelf and on the phone, ${category} shoppers move fast — ${brand} is the brand they could decide on next.`,
+    `The kitchen counter says it all: ${category} is bought on habit, not always on brand. That is where ${brand} steps in.`,
+  ];
+  const numberOpeners = ranked[0]?.text
+    ? [
+        `${stripEndPunc(ranked[0].text)} — that's the window ${brand} steps into.`,
+        `Start with the number: ${lc(stripEndPunc(ranked[0].text))}. That number frames ${brand}'s next move.`,
+      ]
+    : [`${brand} sits at the right edge of ${category}.`];
+  const tensionOpeners = [
+    ranked.find(f => f.label === 'competition')?.text || ranked.find(f => f.label === 'shelf')?.text,
+    ranked.find(f => f.label === 'trust')?.text,
+  ].filter(Boolean).slice(0, 1).map(t =>
+    `${stripEndPunc(t!)} — yet ${brand}'s story is still being told.`
+  ).concat([
+    `Recognition is high, conversion is patchy — ${brand} carries the weight of ${category}'s middle.`,
+  ]);
+  const stanceOpeners = [
+    `Bet on ${stance} for ${brand} — that's the shape ${category} is asking for right now.`,
+    `Lead with ${stance}: ${brand} doesn't need more awareness, it needs more ${stance}.`,
+    `Hold the line on ${stance} — ${brand} grows by sharpening, not by spending wider.`,
+  ];
+
+  const pickFromPool = (pool: string[]) => pool[styleSeed % pool.length];
   const s1Map: Record<string, string> = {
-    SCENE:   `Picture the daily basket: ${category} bought on price, recognised on shelf — ${brand} is showing up at exactly the right moment.`,
-    NUMBER:  kw?.headline
-      ? `${stripEndPunc(kw.headline)} — and this is the window ${brand} steps into.`
-      : `${brand} sits at the right edge of ${category}.`,
-    TENSION: comp?.headline
-      ? `${stripEndPunc(comp.headline)} — yet ${brand}'s story is still being told.`
-      : `${brand} works in a ${category} where price talks louder than the brand name.`,
-    STANCE:  `Bet on ${stance} for ${brand} — that's the shape ${category} is asking for right now.`,
+    SCENE:   pickFromPool(sceneOpeners),
+    NUMBER:  pickFromPool(numberOpeners),
+    TENSION: pickFromPool(tensionOpeners),
+    STANCE:  pickFromPool(stanceOpeners),
   };
 
-  // ── Sentence 2: biggest opportunity (from search or shelf) ──
-  let s2 = '';
-  if (kw?.headline)            s2 = kw.headline;
-  else if (h10?.headline)      s2 = h10.headline;
-  else if (cult?.headline)     s2 = cult.headline;
+  // ── Sentence 2: biggest opportunity — pull from a DIFFERENT
+  //    nugget than S1 used so the paragraph spans sources. ───
+  const used = new Set<string>();
+  const usedFact = ranked[0];
+  if (usedFact) used.add(usedFact.label);
+  const s2Fact = ranked.find(f => !used.has(f.label) && f.hasNumber);
+  if (s2Fact) used.add(s2Fact.label);
+  const s2 = s2Fact ? s2Fact.text : '';
 
-  // ── Sentence 3: tension (from trust or competition) ─────────
-  let s3 = '';
-  if (trust?.headline)         s3 = `The catch: ${lc(stripEndPunc(trust.headline))}.`;
-  else if (comp?.headline)     s3 = `The catch: ${lc(stripEndPunc(comp.headline))}.`;
-  else if (h10?.headline)      s3 = `The catch: ${lc(stripEndPunc(h10.headline))}.`;
+  // ── Sentence 3: tension — DIFFERENT source again ──────────
+  const s3Fact = ranked.find(f => !used.has(f.label) && f.hasNumber);
+  if (s3Fact) used.add(s3Fact.label);
+  const tensionConnectors = ['The catch:', 'The wrinkle:', 'The unresolved bit:', 'Here is the friction:'];
+  const tensionLead = tensionConnectors[styleSeed % tensionConnectors.length];
+  const s3 = s3Fact ? `${tensionLead} ${lc(stripEndPunc(s3Fact.text))}.` : '';
 
-  // ── Sentence 4: strategic stance ────────────────────────────
-  const s4Map: Record<string, string> = {
-    LAUNCH: `For ${brand} the move is clear — enter through ${stance}, not through brand-recall investment.`,
-    DEFEND: `For ${brand} the move is to defend by reinforcing ${stance} — quietly close ranks before the challenger does.`,
-    GROW:   `For ${brand} the move is to expand via ${stance} — adjacent demand is the easier next mile.`,
-    null:   `For ${brand} the bet is ${stance} — sharper than scale, faster than awareness.`,
+  // ── Sentence 4: strategic stance — variant per flavour ────
+  const s4Map: Record<string, string[]> = {
+    LAUNCH: [
+      `For ${brand} the move is clear — enter through ${stance}, not through brand-recall investment.`,
+      `${brand}'s LAUNCH bet is ${stance}, executed sharp before the leaders defend.`,
+    ],
+    DEFEND: [
+      `For ${brand} the move is to defend by reinforcing ${stance} — quietly close ranks before the challenger does.`,
+      `${brand} holds its ground by doubling-down on ${stance}, the lever competitors don't have.`,
+    ],
+    GROW: [
+      `For ${brand} the move is to expand via ${stance} — adjacent demand is the easier next mile.`,
+      `${brand} grows next by ${stance}, not by buying more awareness it already owns.`,
+    ],
+    null: [
+      `For ${brand} the bet is ${stance} — sharper than scale, faster than awareness.`,
+      `${brand}'s shortest path forward is ${stance} — measured, specific, and within reach.`,
+    ],
   };
-  const s4 = s4Map[flavour as keyof typeof s4Map] || s4Map['null' as keyof typeof s4Map];
+  const s4Pool = s4Map[flavour as keyof typeof s4Map] || s4Map['null' as keyof typeof s4Map];
+  const s4 = s4Pool[styleSeed % s4Pool.length];
 
   const sentences = [s1Map[opener.id] || s1Map.NUMBER, s2, s3, s4].filter(s => s && s.trim().length > 8);
   return sentences.join(' ').replace(/\s+/g, ' ').trim();

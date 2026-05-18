@@ -1580,10 +1580,21 @@ function ToolsUsedPanel({ charts }) {
 function ExecutiveSummaryPanel({ analysisId }) {
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState(null);
+  const [regenerating, setRegenerating] = useState(false);
+
+  const load = (regen = false) => {
+    if (!analysisId) return Promise.resolve();
+    setRegenerating(regen);
+    return fetch(`/api/analyses/${analysisId}/summary${regen ? '?regenerate=1' : ''}`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => setSummary(d))
+      .catch(err => setError(err.message))
+      .finally(() => setRegenerating(false));
+  };
 
   useEffect(() => {
-    if (!analysisId) return;
     let cancelled = false;
+    if (!analysisId) return;
     fetch(`/api/analyses/${analysisId}/summary`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then(d => { if (!cancelled) setSummary(d); })
@@ -1607,15 +1618,32 @@ function ExecutiveSummaryPanel({ analysisId }) {
 
   return (
     <div style={{ marginTop: 28 }}>
-      {/* Headline banner — gradient hero. */}
+      {/* Headline banner — gradient hero with a discreet regenerate link */}
       <div style={{
         background: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
         borderRadius: 16, padding: '28px 32px', marginBottom: 20,
         boxShadow: '0 4px 6px rgba(59, 130, 246, 0.1)',
+        position: 'relative',
       }}>
-        <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', lineHeight: 1.3 }}>
+        <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', lineHeight: 1.3, paddingRight: 100 }}>
           {summary.headline}
         </div>
+        <button
+          onClick={() => load(true)}
+          disabled={regenerating}
+          className="no-print"
+          style={{
+            position: 'absolute', top: 14, right: 14,
+            background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)',
+            color: 'rgba(255,255,255,0.92)', fontSize: 10.5, fontWeight: 600,
+            letterSpacing: '0.04em', textTransform: 'uppercase',
+            padding: '4px 10px', borderRadius: 999, cursor: regenerating ? 'wait' : 'pointer',
+            opacity: regenerating ? 0.6 : 1, transition: 'opacity 0.15s',
+          }}
+          title="Regenerate the Strategic Read with the latest synthesis logic"
+        >
+          {regenerating ? '↻ Regenerating…' : '↻ Regenerate'}
+        </button>
       </div>
 
       {/* Strategic Read + Next Moves — the COMPLEMENT to the Nuggets rail.
