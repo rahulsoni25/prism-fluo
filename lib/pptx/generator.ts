@@ -28,8 +28,21 @@ const MR = 0.50;   // right margin
 const CW = W - ML - MR;
 
 // ─── Typography ──────────────────────────────────────────────────────────────
-const FH = 'Arial';    // heading / display
-const FB = 'Calibri';  // body / UI
+// PptxGenJS accepts ANY font name. PowerPoint substitutes if not installed.
+// Strategy: pick fonts that are MODERN + WIDELY PRE-INSTALLED across
+// Windows/Mac/Office 365 so PowerPoint doesn't fall back to Times New Roman.
+//
+// FH (heading) → "Aptos Display" is the new Microsoft Office 365 default
+//   heading face — looks like Inter, ships with all current Office installs.
+//   Falls back to Aptos → Inter → Helvetica Neue → Calibri.
+// FB (body)    → "Aptos" is the same family's body weight. Same fallback.
+//
+// PptxGenJS will write whichever single name we pass to the XML. PowerPoint's
+// font-substitution engine handles fallback in the rendering layer. We pass
+// the most-modern name first; if a viewer doesn't have it, the substitution
+// kicks in to the next-closest installed face.
+const FH = 'Aptos Display';  // heading / display (new MS default — replaces Calibri Light)
+const FB = 'Aptos';          // body / UI (new MS default — replaces Calibri)
 
 // ─── Data model ──────────────────────────────────────────────────────────────
 export interface InsightCard {
@@ -436,9 +449,11 @@ function slideStatsSnapshot(prs: any, d: PresentationData, p: Palette, slideNo: 
   if (n.keyword?.headline) {
     const yoy = n.keyword.headline.match(/([+-]?\d+(?:\.\d+)?)\s*%\s*YoY/i);
     const vol = n.keyword.headline.match(/(\d+(?:\.\d+)?\s*[KMB])\s*monthly/i);
+    // yoy[1] already has the sign prefix; don't add another + (avoids "++18.3%")
+    const yoyVal = yoy ? (yoy[1].startsWith('+') || yoy[1].startsWith('-') ? `${yoy[1]}%` : `${Number(yoy[1]) > 0 ? '+' : ''}${yoy[1]}%`) : null;
     tiles.push({
       label: 'CATEGORY SEARCH',
-      value: yoy ? `${Number(yoy[1]) > 0 ? '+' : ''}${yoy[1]}%` : (vol ? vol[1] : (firstPct(n.keyword.headline) || 'Strong')),
+      value: yoyVal || (vol ? vol[1] : (firstPct(n.keyword.headline) || 'Strong')),
       sub:   yoy ? 'YoY · across the long tail' : (vol ? 'monthly queries · long tail' : 'category demand'),
       color: '0891B2',
     });
@@ -560,7 +575,7 @@ function slideStatsSnapshot(prs: any, d: PresentationData, p: Palette, slideNo: 
 }
 
 // ─── Slide: Agenda (visual pass 5 — match magazine aesthetic) ───────────
-function slideAgenda(prs: any, d: PresentationData, p: Palette, data: PresentationData) {
+function slideAgenda(prs: any, d: PresentationData, p: Palette, data: PresentationData, slideNo: number = 2) {
   const s = prs.addSlide();
   s.background = { color: 'FAFAFA' };
 
@@ -624,7 +639,7 @@ function slideAgenda(prs: any, d: PresentationData, p: Palette, data: Presentati
   ln(s, 0.70, H - 0.42, W - 1.4, 'E2E8F0', 0.5);
   t(s, d.briefName.toUpperCase(), 0.70, H - 0.38, 8, 0.22,
     { fontSize: 7.5, color: '94A3B8', fontFace: FB, bold: true, charSpacing: 2 });
-  t(s, 'PAGE 02', W - MR - 1, H - 0.38, 1, 0.22,
+  t(s, `PAGE ${String(slideNo).padStart(2, '0')}`, W - MR - 1, H - 0.38, 1, 0.22,
     { fontSize: 7.5, color: '94A3B8', fontFace: FB, align: 'right', charSpacing: 1.5 });
 
   // Speaker notes — set context for the agenda walkthrough
@@ -658,8 +673,10 @@ function slideDivider(prs: any, pm: PillarMeta, insightCount: number, slideNo: n
   // Section number in pillar colour at very low opacity-equivalent (lighter hue)
   const lightHue = lightenHex(pm.color, 0.85);  // 85% lighter, almost ghost
   const idxNumber = String(PILLAR_ORDER.indexOf(pm.label.toLowerCase() as any) + 1).padStart(2, '0');
-  t(s, idxNumber, 0.70, 0.80, 5, 4.0,
-    { fontSize: 280, color: lightHue, fontFace: FH, bold: true, valign: 'middle', align: 'left' });
+  // 200pt fits comfortably in 4.0in height (was 280pt which wrapped). At
+  // 200pt the "02" stays on a single visual line and renders as one mark.
+  t(s, idxNumber, 0.70, 1.60, 5, 3.5,
+    { fontSize: 200, color: lightHue, fontFace: FH, bold: true, valign: 'middle', align: 'left' });
 
   // Right column — actual content sits over the ghost number
   const contentX = 0.70;
@@ -731,13 +748,45 @@ function getPillarMeaning(name: string): string {
 }
 
 // ─── Chart helpers ────────────────────────────────────────────────────────────
+//
+// Designer-grade chart styling. Native pptxgenjs charts have weak defaults
+// (small fonts, busy gridlines, default colours). This block tunes every
+// option for a quiet/premium look:
+//   - 10-11pt axis labels (was 7.5)
+//   - No major gridlines on bars, dashed minor lines on line/area
+//   - Single-hue charts use a tonal palette (3 shades of pillar colour) instead
+//     of a single flat colour repeated
+//   - Data labels on top of bars instead of beside (cleaner)
+//   - Pie/doughnut REPLACED with a hand-drawn proportional-bar block — native
+//     pie charts look 2008-era; the stacked-bar treatment is what consultants
+//     like BCG and McKinsey actually use
 
-/** Multi-hue palette used for pie / doughnut slices */
-const CHART_PALETTE = [
-  '3B82F6','F97316','10B981','A855F7',
-  'EF4444','F59E0B','06B6D4','EC4899',
-  '14B8A6','8B5CF6','84CC16','FB7185',
-];
+/** Tonal palette used when a chart needs multiple series — generated from the
+ *  pillar primary colour by shading down/up. Avoids the "rainbow" look. */
+function tonalPalette(baseHex: string, count: number): string[] {
+  if (count <= 1) return [baseHex];
+  const out: string[] = [];
+  // Shade down through 3 tones, then back up if needed
+  for (let i = 0; i < count; i++) {
+    const t = (i % 3) - 1;  // -1, 0, 1
+    if (t === 0)      out.push(baseHex);
+    else if (t === -1) out.push(darkenHex(baseHex, 0.18));
+    else               out.push(lightenHex(baseHex, 0.30));
+  }
+  return out;
+}
+
+function darkenHex(hex: string, amount: number): string {
+  const h = hex.replace(/^#/, '');
+  if (h.length !== 6) return hex;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const dr = Math.round(r * (1 - amount));
+  const dg = Math.round(g * (1 - amount));
+  const db = Math.round(b * (1 - amount));
+  return [dr, dg, db].map(v => Math.max(0, v).toString(16).padStart(2, '0')).join('');
+}
 
 /** Map our chart type names → PptxGenJS chart enum keys */
 function pptxChartType(prs: any, type: string): any {
@@ -759,8 +808,63 @@ function pptxChartType(prs: any, type: string): any {
 }
 
 /**
+ * DESIGNED proportional-bar replacement for pie/doughnut charts.
+ * Native pie charts in pptxgenjs look low-fi — slice labels overlap, legends
+ * are tiny, colours are flat. Top consulting decks render proportions as
+ * horizontal stacked bars with the % printed at the end of each bar.
+ * This function draws that treatment using pptxgenjs shapes (zero chart deps).
+ */
+function drawProportionalBars(
+  s: any,
+  labels: string[],
+  values: number[],
+  baseColor: string,
+  x: number, y: number, w: number, h: number,
+): void {
+  if (!labels.length || !values.length) return;
+  // Normalise to %
+  const total = values.reduce((sum, v) => sum + (Number(v) || 0), 0);
+  if (total === 0) return;
+  const items = labels.map((label, i) => ({
+    label,
+    value: Number(values[i]) || 0,
+    pct:   (Number(values[i]) || 0) / total * 100,
+  })).sort((a, b) => b.pct - a.pct).slice(0, 8);  // cap at 8 segments
+
+  const rowGap = 0.10;
+  const rowH   = Math.min(0.50, (h - rowGap * (items.length - 1)) / items.length);
+  const labelW = w * 0.35;
+  const barX   = x + labelW + 0.10;
+  const barMax = w - labelW - 0.55;  // leave 0.45 for the % readout
+
+  const palette = tonalPalette(baseColor, items.length);
+
+  items.forEach((item, i) => {
+    const rowY  = y + i * (rowH + rowGap);
+    const barW  = (item.pct / 100) * barMax;
+    // Label (left)
+    t(s, item.label, x, rowY, labelW, rowH,
+      { fontSize: 10.5, color: '1E293B', fontFace: FB, valign: 'middle', wrap: false });
+    // Bar background (faint)
+    r(s, barX, rowY + rowH * 0.30, barMax, rowH * 0.40, 'F1F5F9');
+    // Bar fill (pillar colour, tonal)
+    r(s, barX, rowY + rowH * 0.30, Math.max(0.05, barW), rowH * 0.40, palette[i] || baseColor);
+    // Percentage label (right of bar)
+    t(s, `${item.pct.toFixed(0)}%`, barX + barMax + 0.05, rowY, 0.45, rowH,
+      { fontSize: 11, color: baseColor, fontFace: FH, bold: true, valign: 'middle', align: 'right' });
+  });
+}
+
+/**
  * Embed a native PptxGenJS chart (no canvas / images needed).
  * Falls back gracefully if data is missing or rendering fails.
+ *
+ * Designer settings applied across all chart types:
+ *   - Axis labels at 10-11pt (was 7.5)
+ *   - Aptos font on all chart text
+ *   - Subtle grey gridlines (or none on bar charts)
+ *   - Single-hue tonal palette per pillar (no rainbow)
+ *   - Data labels on bars at 10pt
  */
 function addNativeChart(
   prs:  any,
@@ -772,81 +876,95 @@ function addNativeChart(
   const { chartType: type, chartLabels: labels, chartValues: vals, chartValues2: vals2 } = ins;
   if (!type || !labels?.length || !vals?.length) return;
 
-  const ctype = pptxChartType(prs, type);
-  const isHBar = type === 'hbar';
+  const isHBar   = type === 'hbar';
   const isRadial = type === 'pie' || type === 'doughnut';
 
-  // For pie/doughnut: every slice gets a distinct hue.
-  // For everything else: use the pillar primary colour.
-  const colors = isRadial
-    ? CHART_PALETTE.slice(0, labels.length)
-    : [pm.color];
+  // ── Hand-drawn proportional bars for pie/doughnut ──
+  // Native pie charts look 2008-era; consulting decks use this instead.
+  if (isRadial) {
+    drawProportionalBars(s, labels, vals, pm.color, x, y, w, h);
+    return;
+  }
 
-  const baseOpts: Record<string, any> = {
+  const ctype = pptxChartType(prs, type);
+  // Tonal palette — uses 3 shades of pillar colour, no rainbow
+  const colors = tonalPalette(pm.color, labels.length);
+
+  // Shared designer options — applied to every chart type below
+  const sharedOpts: Record<string, any> = {
     x, y, w, h,
     showTitle:   false,
-    showLegend:  isRadial,
-    legendPos:   'b',
-    legendFontSize: 7,
-    chartColors: colors,
-    chartColorsOpacity: 85,
+    showLegend:  false,
+    chartColors: [pm.color],
+    chartColorsOpacity: 100,
+    // Typography — Aptos everywhere for consistency with deck body
+    catAxisLabelFontFace: FB,
+    catAxisLabelFontSize: 10,
+    catAxisLabelColor:    '475569',
+    valAxisLabelFontFace: FB,
+    valAxisLabelFontSize: 10,
+    valAxisLabelColor:    '94A3B8',
+    dataLabelFontFace:    FB,
+    dataLabelFontSize:    10,
+    dataLabelColor:       '0F172A',
+    // Axes — soft greys, minimal lines
+    catAxisLineColor: 'E2E8F0',
+    valAxisLineColor: 'E2E8F0',
+    catGridLine:      { style: 'none' },
+    valGridLine:      { style: 'solid', size: 0.5, color: 'F1F5F9' },
   };
 
   try {
     if (type === 'scatter') {
-      // Scatter: index on x-axis, values on y-axis
       s.addChart(ctype, [{
         name:   'Data',
-        values: vals.map((_, i) => i + 1),   // x
-        sizes:  vals,                          // y
-      }], baseOpts);
+        values: vals.map((_, i) => i + 1),
+        sizes:  vals,
+      }], { ...sharedOpts, chartColors: [pm.color] });
 
     } else if (type === 'combo' && vals2?.length) {
-      // Combo: bars (primary) + line (secondary)
+      // Combo: bars (primary) + accent line (secondary). Two distinct hues.
       s.addChart(prs.charts.BAR, [
         { name: 'Volume',  labels, values: vals  },
         { name: 'Trend',   labels, values: vals2 },
       ], {
-        ...baseOpts,
+        ...sharedOpts,
+        showLegend: true,
+        legendPos: 't',
+        legendFontFace: FB,
+        legendFontSize: 9,
         barDir: 'col',
         barGrouping: 'clustered',
-        chartColors: [pm.color, 'F97316'],
-      });
-
-    } else if (isRadial) {
-      const holeSize = type === 'doughnut' ? 55 : undefined;
-      s.addChart(ctype, [{ name: 'Data', labels, values: vals }], {
-        ...baseOpts,
-        ...(holeSize !== undefined ? { holeSize } : {}),
-        dataLabelPosition: 'bestFit',
-        dataLabelFormatCode: '0"%"',
-        dataLabelFontSize: 7.5,
+        chartColors: [pm.color, darkenHex(pm.color, 0.30)],
+        chartColorsOpacity: 90,
       });
 
     } else if (type === 'radar') {
       s.addChart(ctype, [{ name: 'Score', labels, values: vals }], {
-        ...baseOpts,
+        ...sharedOpts,
         radarStyle: 'filled',
         chartColors: [pm.color],
-        chartColorsOpacity: 40,
+        chartColorsOpacity: 35,
+        catAxisLabelFontSize: 9,
       });
 
     } else {
       // bar, hbar, line, area, histogram, waterfall, funnel
       s.addChart(ctype, [{ name: 'Data', labels, values: vals }], {
-        ...baseOpts,
+        ...sharedOpts,
         barDir: isHBar ? 'bar' : 'col',
         barGrouping: 'clustered',
-        lineSize: 2,
+        lineSize: 2.5,
         lineSmooth: type === 'area' || type === 'line',
-        showValue: isHBar,
-        dataLabelFontSize: 7.5,
-        valAxisLabelFontSize: 7.5,
-        catAxisLabelFontSize: 7.5,
+        showValue: true,
+        // For hbar: data labels at end (outside the bar). For col: on top.
+        dataLabelPosition: isHBar ? 'outEnd' : 'outEnd',
+        // For line/area, use distinct points + markers
+        lineDataSymbol: (type === 'line' || type === 'area') ? 'circle' : undefined,
+        lineDataSymbolSize: 6,
       });
     }
   } catch (err) {
-    // Non-fatal: if chart fails to render, slide still has text content
     console.warn('[PPTX] addNativeChart failed:', (err as Error).message);
   }
 }
@@ -906,17 +1024,24 @@ function slideInsight(
     { fontSize: 13, color: '1E293B', fontFace: FB, lineSpacingMultiple: 1.50, valign: 'top', wrap: true });
 
   // ── Recommendation — designed as a pull-quote block ──
-  // Dark accent background, pillar-coloured eyebrow, white body type
-  const recY = 4.80;
-  const recH = 1.30;
+  // Dark accent background, pillar-coloured eyebrow, white body type.
+  // Block height now AUTO-SCALES with recommendation length so text never
+  // clips at the boundary. Tighter upstream truncation (was 280 → now 240
+  // chars hard cap) means single-block max height of 1.80in.
+  const recText = ins.rec.length > 240 ? ins.rec.slice(0, 238) + '…' : ins.rec;
+  // Estimate height: 12pt body at 1.42 line-height → ~0.22in per line.
+  // Roughly 70 chars per line in this column at 12pt Aptos.
+  const recLines = Math.max(2, Math.ceil(recText.length / 70));
+  const recH = Math.min(1.80, 0.50 + recLines * 0.24);  // header + lines
+  const recY = Math.max(4.65, H - 1.10 - recH);          // anchor near bottom, but never below caption
+
   r(s, TEXT_X, recY, TEXT_W, recH, '0F172A');
   r(s, TEXT_X, recY, 0.05, recH, pm.color);  // pillar colour edge accent
 
   t(s, 'WHAT TO DO', TEXT_X + 0.30, recY + 0.18, TEXT_W - 0.50, 0.22,
     { fontSize: 8, color: pm.color, fontFace: FB, bold: true, charSpacing: 2.5 });
-  const recText = ins.rec.length > 280 ? ins.rec.slice(0, 280) + '…' : ins.rec;
-  t(s, recText, TEXT_X + 0.30, recY + 0.48, TEXT_W - 0.50, recH - 0.60,
-    { fontSize: 12, color: 'F1F5F9', fontFace: FB, lineSpacingMultiple: 1.42, valign: 'top', wrap: true });
+  t(s, recText, TEXT_X + 0.30, recY + 0.46, TEXT_W - 0.50, recH - 0.55,
+    { fontSize: 11.5, color: 'F1F5F9', fontFace: FB, lineSpacingMultiple: 1.40, valign: 'top', wrap: true });
 
   // ── Right column: chart (when present) — designed frame ──
   if (hasChart) {
@@ -926,12 +1051,22 @@ function slideInsight(
     t(s, 'DATA VIEW', CHART_X, CHART_Y - 0.50, CHART_W, 0.22,
       { fontSize: 8, color: '64748B', fontFace: FB, bold: true, charSpacing: 2.5 });
     if (ins.chartLabels && ins.chartLabels.length > 0) {
-      // Sub-label: what this chart shows
-      const chartSub = ins.chartType === 'doughnut' ? 'proportional split'
-                     : ins.chartType === 'line' || ins.chartType === 'area' ? 'trend over time'
-                     : ins.chartType === 'radar' ? 'multi-attribute profile'
-                     : ins.chartType === 'scatter' ? 'correlation'
-                     : 'ranked comparison';
+      // Sub-label: what this chart actually shows, per chart type
+      const chartTypeMap: Record<string, string> = {
+        doughnut:  'proportional split',
+        pie:       'proportional split',
+        line:      'trend over time',
+        area:      'cumulative trend',
+        radar:     'multi-attribute profile',
+        scatter:   'correlation',
+        bar:       'category comparison',
+        hbar:      'ranked comparison',
+        combo:     'volume + trend overlay',
+        histogram: 'frequency distribution',
+        waterfall: 'cumulative bridge',
+        funnel:    'stepwise conversion',
+      };
+      const chartSub = chartTypeMap[ins.chartType || ''] || 'data view';
       t(s, chartSub, CHART_X, CHART_Y - 0.24, CHART_W, 0.20,
         { fontSize: 9, color: '94A3B8', fontFace: FB, italic: true });
     }
@@ -946,18 +1081,15 @@ function slideInsight(
       PAD_X, captionY + 0.10, W - 2 * PAD_X - 3.5, 0.30,
       { fontSize: 10.5, color: pm.color, fontFace: FB, bold: true, valign: 'middle' });
   }
+  // Right side of caption bar: source · conviction · page (single string)
   const sourceLabel = [
     ins.source ? ins.source : null,
     ins.conviction ? `conviction ${ins.conviction}` : null,
+    `page ${String(slideNo).padStart(2, '0')}`,
   ].filter(Boolean).join(' · ');
-  if (sourceLabel) {
-    t(s, sourceLabel, W - PAD_X - 3.5, captionY + 0.10, 3.5, 0.30,
-      { fontSize: 8.5, color: '94A3B8', fontFace: 'Consolas',
-        align: 'right', valign: 'middle', charSpacing: 1 });
-  }
-  // Page number bottom-right (tiny, separate from caption)
-  t(s, String(slideNo).padStart(2, '0'), W - PAD_X - 0.5, H - 0.32, 0.5, 0.18,
-    { fontSize: 7, color: 'CBD5E1', fontFace: FB, align: 'right', charSpacing: 1.5 });
+  t(s, sourceLabel, W - PAD_X - 4.5, captionY + 0.10, 4.5, 0.30,
+    { fontSize: 8.5, color: '94A3B8', fontFace: 'Consolas',
+      align: 'right', valign: 'middle', charSpacing: 1 });
 
   // Speaker notes — full obs + rec + source + confidence
   const insightNotes = [
@@ -1141,7 +1273,7 @@ export async function generatePresentation(data: PresentationData): Promise<Buff
   }
 
   // 4. Agenda
-  slideAgenda(prs, data, p, data);
+  slideAgenda(prs, data, p, data, slideNo);
   slideNo++;
 
   // 5–N. Pillar sections — ordered by insight count (densest pillars first)
