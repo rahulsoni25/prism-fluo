@@ -68,6 +68,11 @@
 - [ ] **Social-listening path local repro** — never tested
 
 ### Medium priority
+- [ ] **PPT Visual polish — 3 small defects keeping Visual dimension at 7/10** (added 2026-05-18):
+  - [ ] Slide 2 (Exec Summary): Next Moves numbers "01/02/03" stack vertically — `0` on one line, digit on next. Fix in `slideExecutiveSummary` — drop fontSize from 30pt or widen the counter box from 0.75in.
+  - [ ] Slide 13 (Proportional bars): `%` wraps to new line after each percentage ("35\n%" instead of "35%"). Fix in `drawProportionalBars` — widen the % readout box from 0.45in to 0.65in.
+  - [ ] Slide 3 (Stats Snapshot): "fabric condition" wraps awkwardly in Cultural Cue tile because of 16-char truncation. Increase to 22 chars OR pick a different theme from hoverLines.
+- [ ] **PPT Methodology slide** — add a slide between Stats Snapshot and Agenda that defines what `conviction` means, what 8-Layer / 9-Layer / 3-Lens are, and how the numbers were computed. Currently the deck shows conviction badges without defining them.
 - [ ] **8-Layer Keyword L4 (Competition × Cost quadrant)** — frequently returns 0 cards; reinforce prompt
 - [ ] **Bigram cultural cues stopwords** — still occasionally surfaces fragments (verify on next live upload)
 - [ ] **PRISM Fluo Helium10 Blueprint merge** — full reference doc at `references/helium10_blueprint.md`, user paused this thread
