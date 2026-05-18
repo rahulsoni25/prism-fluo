@@ -27,11 +27,19 @@ export async function GET(
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
+  // Relaxed ownership check to match presentation/PDF export routes
+  // (single-user tool, historical analyses have varied user_ids).
+  // Cross-user access logged for audit only.
   const { rows } = await db.query(
-    'SELECT id, sheet_name, filename, results_json, created_at FROM analyses WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)',
-    [id, session.userId],
+    'SELECT id, user_id, sheet_name, filename, results_json, created_at FROM analyses WHERE id = $1',
+    [id],
   );
   if (rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (rows[0].user_id && rows[0].user_id !== session.userId) {
+    console.warn('[analyses/export:GET] cross-user access:', {
+      analysisId: id, owner: rows[0].user_id, requester: session.userId,
+    });
+  }
 
   const analysis = rows[0];
   const results  = analysis.results_json || {};

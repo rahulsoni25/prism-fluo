@@ -40,14 +40,17 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Fetch the analysis data ────────────────────────────────────────
+    // Relaxed ownership to match presentation/PDF/Excel export routes
+    // (single-user tool, historical analyses have varied user_ids).
+    // Cross-user access logged for audit only.
     const { rows: analyses } = await db.query(
       `SELECT
-        a.id, a.filename, a.sheet_name, a.results_json,
+        a.id, a.user_id, a.filename, a.sheet_name, a.results_json,
         b.brand, b.category, b.objective
        FROM analyses a
        LEFT JOIN briefs b ON a.brief_id = b.id
-       WHERE a.id = $1 AND (a.user_id = $2 OR a.user_id IS NULL)`,
-      [analysisId, session.userId]
+       WHERE a.id = $1`,
+      [analysisId]
     );
 
     if (analyses.length === 0) {
@@ -55,6 +58,11 @@ export async function POST(req: NextRequest) {
         { error: 'NOT_FOUND', message: 'Analysis not found' },
         { status: 404 }
       );
+    }
+    if (analyses[0].user_id && analyses[0].user_id !== session.userId) {
+      console.warn('[copilot:POST] cross-user access:', {
+        analysisId, owner: analyses[0].user_id, requester: session.userId,
+      });
     }
 
     const analysis = analyses[0];

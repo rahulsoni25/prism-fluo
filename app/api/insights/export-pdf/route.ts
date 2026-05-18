@@ -28,22 +28,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'analysisId required' }, { status: 400 });
     }
 
-    // Fetch analysis with ownership check
+    // Fetch analysis. Ownership check relaxed to match the presentation
+    // generate route (single-user tool, historical analyses have varied
+    // user_ids). Cross-user access logged for audit only.
     const { rows } = await db.query(
       `SELECT
-        a.id, a.sheet_name, a.results_json, a.brief_id,
+        a.id, a.user_id, a.sheet_name, a.results_json, a.brief_id,
         b.brand, b.objective
       FROM analyses a
       LEFT JOIN briefs b ON a.brief_id = b.id
-      WHERE a.id = $1 AND (a.user_id = $2 OR a.user_id IS NULL)`,
-      [analysisId, session.userId],
+      WHERE a.id = $1`,
+      [analysisId],
     );
 
     if (rows.length === 0) {
       return NextResponse.json(
-        { error: 'Analysis not found or not owned by user' },
+        { error: 'Analysis not found' },
         { status: 404 }
       );
+    }
+    if (rows[0].user_id && rows[0].user_id !== session.userId) {
+      console.warn('[export-pdf:POST] cross-user access:', {
+        analysisId, owner: rows[0].user_id, requester: session.userId,
+      });
     }
 
     const analysis = rows[0];
@@ -100,22 +107,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'id parameter required' }, { status: 400 });
     }
 
-    // Fetch analysis with ownership check
+    // Fetch analysis. Same relaxed ownership pattern as POST above.
     const { rows } = await db.query(
       `SELECT
-        a.id, a.sheet_name, a.results_json, a.brief_id,
+        a.id, a.user_id, a.sheet_name, a.results_json, a.brief_id,
         b.brand, b.objective
       FROM analyses a
       LEFT JOIN briefs b ON a.brief_id = b.id
-      WHERE a.id = $1 AND (a.user_id = $2 OR a.user_id IS NULL)`,
-      [analysisId, session.userId],
+      WHERE a.id = $1`,
+      [analysisId],
     );
 
     if (rows.length === 0) {
       return NextResponse.json(
-        { error: 'Analysis not found or not owned by user' },
+        { error: 'Analysis not found' },
         { status: 404 }
       );
+    }
+    if (rows[0].user_id && rows[0].user_id !== session.userId) {
+      console.warn('[export-pdf:GET] cross-user access:', {
+        analysisId, owner: rows[0].user_id, requester: session.userId,
+      });
     }
 
     const analysis = rows[0];
