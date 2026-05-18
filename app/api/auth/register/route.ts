@@ -9,6 +9,7 @@ import { db } from '@/lib/db/client';
 import { sendVerificationEmail } from '@/lib/email';
 import { hashPassword } from '@/lib/auth/password';
 import { isAllowedEmail, WORK_EMAIL_ERROR } from '@/lib/auth/email-policy';
+import { checkRateLimit, clientIp, rateLimitResponse } from '@/lib/auth/rate-limit';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,12 @@ async function ensureTable() {
 }
 
 export async function POST(req: NextRequest) {
+  // Throttle signups per IP to stop bulk account creation. 5 / hour is high
+  // enough for a small office sharing one IP, low enough to cap any abuser.
+  const ip = clientIp(req);
+  const rl = checkRateLimit(`signup:ip:${ip}`, { max: 5, windowMs: 60 * 60_000 });
+  if (!rl.ok) return rateLimitResponse(rl.retryAfterSec, rl.message);
+
   try {
     const { name, agency, email, password } = await req.json();
 

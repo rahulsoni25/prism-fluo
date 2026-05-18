@@ -203,13 +203,24 @@ export default function BriefCard({
 
           {tags.length > 0 && (
             <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:10 }}>
-              {tags.map((tag, i) => (
+              {tags.slice(0, 4).map((tag, i) => (
                 <span key={i} style={{
                   background:'#F1F5F9', color:'#475569',
                   padding:'3px 9px', borderRadius:20,
                   fontSize:10, fontWeight:600,
+                  whiteSpace: 'nowrap',
                 }}>{tag}</span>
               ))}
+              {tags.length > 4 && (
+                <span style={{
+                  background:'#EEF2FF', color:'#4338CA',
+                  padding:'3px 9px', borderRadius:20,
+                  fontSize:10, fontWeight:700,
+                  whiteSpace: 'nowrap',
+                }} title={tags.slice(4).join(', ')}>
+                  +{tags.length - 4}
+                </span>
+              )}
             </div>
           )}
         </div>

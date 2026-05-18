@@ -157,15 +157,29 @@ export default function Dashboard() {
           />
 
           <div className="filter-bar">
-            {FILTERS.map(f => (
-              <button
-                key={f}
-                className={`filter-btn ${filter === f ? 'active' : ''}`}
-                onClick={() => setFilter(f)}
-              >
-                {f}
-              </button>
-            ))}
+            {FILTERS.map(f => {
+              const count = f === 'All Briefs'
+                ? briefs.length
+                : briefs.filter(b => b.status === FILTER_TO_STATUS[f]).length;
+              return (
+                <button
+                  key={f}
+                  className={`filter-btn ${filter === f ? 'active' : ''}`}
+                  onClick={() => setFilter(f)}
+                >
+                  {f}
+                  {count > 0 && (
+                    <span style={{
+                      marginLeft: 6,
+                      background: filter === f ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.06)',
+                      color: 'inherit',
+                      fontSize: 10, fontWeight: 700,
+                      padding: '1px 7px', borderRadius: 10,
+                    }}>{count}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           <div className="briefs-grid">

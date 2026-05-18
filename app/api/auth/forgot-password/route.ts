@@ -13,6 +13,7 @@ import crypto from 'crypto';
 import { db } from '@/lib/db/client';
 import { sendPasswordResetEmail } from '@/lib/email';
 import { isAllowedEmail, WORK_EMAIL_ERROR } from '@/lib/auth/email-policy';
+import { checkRateLimit, clientIp, rateLimitResponse } from '@/lib/auth/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,13 @@ async function ensureTable() {
 const GENERIC_RESPONSE = { ok: true, message: "If an account exists for that email, we've sent a reset link." };
 
 export async function POST(req: NextRequest) {
+  // Forgot-password is a high-spam vector (attackers triggering reset emails
+  // to enumerate accounts). 3 attempts per hour per IP is plenty for a real
+  // user who lost their password.
+  const ip = clientIp(req);
+  const rl = checkRateLimit(`forgot:ip:${ip}`, { max: 3, windowMs: 60 * 60_000 });
+  if (!rl.ok) return rateLimitResponse(rl.retryAfterSec, rl.message);
+
   let body: any;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 

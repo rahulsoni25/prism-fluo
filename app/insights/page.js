@@ -5,6 +5,12 @@ import GenerateDeckModal from '@/app/components/GenerateDeckModal';
 import Navbar from '@/components/Navbar';
 import Copilot from '@/components/Copilot';
 import ClientBriefContext from '@/components/insights/ClientBriefContext';
+import ConfidenceBadge from '@/components/insights/ConfidenceBadge';
+import {
+  BUCKET_META, BUCKET_TABS,
+  SOURCE_BADGE_MAP, DOMAIN_TO_BUCKET,
+  assignChartsToBuckets, FLOAT_PHASE,
+} from '@/lib/insights/buckets';
 import {
   ChartBar, ChartLine, ChartPie, ChartDoughnut, ChartScatter, ChartHBar,
   ChartArea, ChartCombo, ChartHistogram, ChartRadar,
@@ -1579,160 +1585,6 @@ function ToolsUsedPanel({ charts }) {
 // ClientBriefContext is imported from components/insights/ClientBriefContext.js
 // (first slice of the app/insights/page.js split refactor).
 
-/**
- * Executive Summary Panel — displays HEADLINE, OBJECTIVE, OBSERVATIONS, RECOMMENDATIONS
- * in SMART format with modern card design. Loads its own data via /api/analyses/[id]/summary.
- */
-function ExecutiveSummaryPanel({ analysisId }) {
-  const [summary, setSummary] = useState(null);
-  const [error, setError] = useState(null);
-  const [regenerating, setRegenerating] = useState(false);
-
-  const load = (regen = false) => {
-    if (!analysisId) return Promise.resolve();
-    setRegenerating(regen);
-    return fetch(`/api/analyses/${analysisId}/summary${regen ? '?regenerate=1' : ''}`)
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => setSummary(d))
-      .catch(err => setError(err.message))
-      .finally(() => setRegenerating(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!analysisId) return;
-    fetch(`/api/analyses/${analysisId}/summary`)
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => { if (!cancelled) setSummary(d); })
-      .catch(err => { if (!cancelled) setError(err.message); });
-    return () => { cancelled = true; };
-  }, [analysisId]);
-
-  if (error || !summary) return null;
-
-  // Support 3 shapes: NEW { strategicRead, actions } · INTERMEDIATE
-  // { keyFindings, actions } · LEGACY { observations, recommendations }.
-  const strategicRead =
-       typeof summary.strategicRead === 'string' ? summary.strategicRead.trim()
-     : (Array.isArray(summary.keyFindings)  ? summary.keyFindings.join(' ').trim()
-     : (Array.isArray(summary.observations) ? summary.observations.join(' ').trim() : ''));
-  const actions = Array.isArray(summary.actions)
-    ? summary.actions
-    : (Array.isArray(summary.recommendations) ? summary.recommendations : []);
-
-  if (!summary.headline && !strategicRead && actions.length === 0) return null;
-
-  return (
-    <div style={{ marginTop: 28 }}>
-      {/* Headline banner — gradient hero with a discreet regenerate link */}
-      <div style={{
-        background: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
-        borderRadius: 16, padding: '28px 32px', marginBottom: 20,
-        boxShadow: '0 4px 6px rgba(59, 130, 246, 0.1)',
-        position: 'relative',
-      }}>
-        <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', lineHeight: 1.3, paddingRight: 100 }}>
-          {summary.headline}
-        </div>
-        <button
-          onClick={() => load(true)}
-          disabled={regenerating}
-          className="no-print"
-          style={{
-            position: 'absolute', top: 14, right: 14,
-            background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)',
-            color: 'rgba(255,255,255,0.92)', fontSize: 10.5, fontWeight: 600,
-            letterSpacing: '0.04em', textTransform: 'uppercase',
-            padding: '4px 10px', borderRadius: 999, cursor: regenerating ? 'wait' : 'pointer',
-            opacity: regenerating ? 0.6 : 1, transition: 'opacity 0.15s',
-          }}
-          title="Regenerate the Strategic Read with the latest synthesis logic"
-        >
-          {regenerating ? '↻ Regenerating…' : '↻ Regenerate'}
-        </button>
-      </div>
-
-      {/* Strategic Read + Next Moves — the COMPLEMENT to the Nuggets rail.
-          The Read is the ONE place on the page that connects all the rail
-          headlines into a coherent narrative. Next Moves are deduped against
-          the Strategic Bets row above so we never echo them.
-
-          On wide screens: 2-col side-by-side. On narrower: stacks. */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)',
-        gap: 20,
-      }}>
-        {/* Strategic Read — narrative paragraph */}
-        {strategicRead && (
-          <div style={{
-            background: '#fff', borderRadius: 14, padding: '24px 26px',
-            boxShadow: 'var(--shadow)', border: '1px solid #E5E7EB',
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{
-              fontSize: 14, fontWeight: 700, color: '#0891B2',
-              textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              🧭 Strategic Read
-              <span style={{ fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace", color: '#94A3B8', fontWeight: 600, letterSpacing: 0, textTransform: 'none' }}>
-                · synthesised from data
-              </span>
-            </div>
-            <p style={{
-              margin: 0, fontSize: 14, lineHeight: 1.7, color: '#1F2937',
-              letterSpacing: 0,
-            }}>
-              {strategicRead}
-            </p>
-          </div>
-        )}
-
-        {/* Next Moves — concrete actions */}
-        {actions.length > 0 && (
-          <div style={{
-            background: '#fff', borderRadius: 14, padding: '24px 26px',
-            boxShadow: 'var(--shadow)', border: '1px solid #E5E7EB',
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{
-              fontSize: 14, fontWeight: 700, color: '#D97706',
-              textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              💡 Next Moves
-              <span style={{ fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace", color: '#94A3B8', fontWeight: 600, letterSpacing: 0, textTransform: 'none' }}>
-                · concrete + time-bound
-              </span>
-            </div>
-            <ol style={{ margin: 0, paddingLeft: 0, listStyleType: 'none', counterReset: 'move' }}>
-              {actions.slice(0, 4).map((rec, i) => (
-                <li key={i} style={{
-                  fontSize: 12.5, lineHeight: 1.55, color: '#374151',
-                  marginBottom: i < actions.slice(0, 4).length - 1 ? 14 : 0,
-                  paddingLeft: 28, position: 'relative',
-                  counterIncrement: 'move',
-                }}>
-                  <span style={{
-                    position: 'absolute', left: 0, top: -1,
-                    width: 20, height: 20, borderRadius: 6,
-                    background: '#FEF3C7', color: '#92400E',
-                    fontSize: 10.5, fontWeight: 800,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {i + 1}
-                  </span>
-                  {rec}
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /**
  * Source-files panel — accordion pattern.
@@ -1840,42 +1692,7 @@ function timeAgo(ts) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-const BUCKET_META = {
-  content:       { label: '📝 Content Insights',       cls: 'content' },
-  commerce:      { label: '🛒 Commerce Insights',      cls: 'commerce' },
-  communication: { label: '📢 Communication Insights', cls: 'communication' },
-  culture:       { label: '🌍 Culture Insights',        cls: 'culture' },
-  channel:       { label: '📡 Channel Insights',       cls: 'channel' },
-  media:         { label: '🎬 Media Insights',          cls: 'media' },
-  creative:      { label: '🎨 Creative Insights',      cls: 'creative' },
-  pricing:       { label: '💰 Pricing Insights',       cls: 'pricing' },
-  search:        { label: '🔍 Search Insights',        cls: 'search' },
-};
-
-const BUCKET_TABS = [
-  { key: 'content',       label: '📝 Content' },
-  { key: 'commerce',      label: '🛒 Commerce' },
-  { key: 'communication', label: '📢 Communication' },
-  { key: 'culture',       label: '🌍 Culture' },
-  { key: 'channel',       label: '📡 Channel' },
-  { key: 'media',         label: '🎬 Media' },
-  { key: 'creative',      label: '🎨 Creative' },
-  { key: 'pricing',       label: '💰 Pricing' },
-  { key: 'search',        label: '🔍 Search' },
-];
-
-/* ─── Scroll-triggered card reveal ──────────────────────────────────────────
- * Three layers of motion (mirrors the prototype):
- *   1. Card fades + translates in (fadeInUp) when it enters the viewport
- *   2. Card gently floats forever after (float-card CSS, defined in globals.css)
- *   3. Chart.js draw animations play on mount (bars grow, doughnuts spin, etc.)
- *
- * On tab switch the key prop changes → component remounts → animations replay.
- * ─────────────────────────────────────────────────────────────────────────── */
-
-// Float phase offsets must match .insight-card:nth-child delays in globals.css.
-// Using two separate delay values keeps fadeInUp stagger independent of float phase.
-const FLOAT_PHASE = [0.4, 0.9, 1.4, 1.9, 0.7, 1.2, 1.7, 1.0];
+// BUCKET_META, BUCKET_TABS, FLOAT_PHASE moved to lib/insights/buckets.js
 
 function AnimatedCard({ index, bucketCls, children }) {
   const ref    = useRef(null);
@@ -2201,43 +2018,7 @@ function chartHasContent(data) {
   return ds.data.some(v => Number(v) > 0);
 }
 
-/* ─── Confidence badge with hover tooltip ─── */
-function ConfidenceBadge({ confidence }) {
-  const [show, setShow] = useState(false);
-  return (
-    <span
-      className="ic-confidence"
-      style={{ position: 'relative', cursor: 'default' }}
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
-      ● {confidence}% confidence
-      {show && (
-        <span style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
-          width: 272, background: '#0F172A', color: '#E2E8F0',
-          fontSize: 11, lineHeight: 1.6, padding: '12px 14px',
-          borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
-          zIndex: 200, whiteSpace: 'normal', textAlign: 'left',
-          fontWeight: 400, letterSpacing: 0,
-        }}>
-          <strong style={{ display: 'block', marginBottom: 6, fontSize: 11.5, color: '#7DD3FC', fontWeight: 700 }}>
-            PRISM Confidence Score
-          </strong>
-          Calculated from three weighted factors:
-          <ul style={{ margin: '6px 0 8px 14px', padding: 0, listStyle: 'disc', color: '#CBD5E1', fontSize: 10.5 }}>
-            <li>Data source quality — sample size, recency &amp; coverage</li>
-            <li>Signal strength — statistical significance &amp; effect size</li>
-            <li>Cross-source corroboration — independent sources in agreement</li>
-          </ul>
-          <span style={{ opacity: 0.65, fontSize: 10.5 }}>
-            90–100% high conviction · 80–89% moderate · 70–79% emerging
-          </span>
-        </span>
-      )}
-    </span>
-  );
-}
+// ConfidenceBadge moved to components/insights/ConfidenceBadge.js
 
 /* ─── Add a "Category Avg" comparison bar to single-series bar/hbar charts ───
  * Gives every bar chart a built-in comparison baseline so the chart reads
@@ -2305,60 +2086,7 @@ function ApiChartRenderer({ chart }) {
 }
 
 /* Maps tool domain → human-readable source badge */
-const SOURCE_BADGE_MAP = {
-  // handler.ts tool keys
-  gwi:                'GWI',
-  'gwi household':    'GWI HOUSEHOLD',
-  'gwi_household':    'GWI HOUSEHOLD',
-  keywords:           'GOOGLE KEYWORDS',
-  helium10:           'HELIUM10',
-  trends:             'GOOGLE TRENDS',
-  konnect:            'KONNECT INSIGHTS',
-  // inference.ts domain labels
-  'consumer insights':        'GWI',
-  'search & seo':             'GOOGLE KEYWORDS',
-  'sales & revenue':          'SALES DATA',
-  'marketing & performance':  'MARKETING DATA',
-  'social media intelligence':'SOCIAL DATA',
-  'content performance':      'CONTENT DATA',
-  'data intelligence':        'PRISM ANALYSIS',
-  'pdf data':                 'PDF REPORT',
-  'pdf_extract':              'PDF REPORT',
-  prism:                      'PRISM ANALYSIS',
-  'prism analysis':           'PRISM ANALYSIS',
-  'user & product analytics': 'PRODUCT DATA',
-  'multi-source':             'MULTI-SOURCE',
-};
-
-/* Maps tool domain → primary PRISM bucket (fallback when chart.bucket is absent) */
-const DOMAIN_TO_BUCKET = {
-  gwi:                        'culture',
-  keywords:                   'commerce',
-  helium10:                   'commerce',
-  trends:                     'culture',
-  konnect:                    'communication',
-  'consumer insights':        'culture',
-  'search & seo':             'commerce',
-  'sales & revenue':          'commerce',
-  'marketing & performance':  'communication',
-  'social media intelligence':'communication',
-  'content performance':      'content',
-  'data intelligence':        'content',
-};
-
-/* Distribute charts using their pre-assigned chart.bucket field.
-   Falls back to primaryBucket for any chart that has no bucket tag. */
-function assignChartsToBuckets(charts, primaryBucket) {
-  const result = {
-    content: [], commerce: [], communication: [], culture: [],
-    channel: [], media: [], creative: [], pricing: [], search: [],
-  };
-  charts.forEach(c => {
-    const b = c.bucket && result[c.bucket] !== undefined ? c.bucket : primaryBucket;
-    result[b].push(c);
-  });
-  return result;
-}
+// SOURCE_BADGE_MAP, DOMAIN_TO_BUCKET, assignChartsToBuckets moved to lib/insights/buckets.js
 
 function AnalysisDetail({ id }) {
   const router = useRouter();

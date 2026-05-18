@@ -21,12 +21,20 @@ import { signSession, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/
 import { upsertUser } from '@/lib/auth/server';
 import { verifyPassword } from '@/lib/auth/password';
 import { isAllowedEmail, WORK_EMAIL_ERROR } from '@/lib/auth/email-policy';
+import { checkRateLimit, clientIp, rateLimitResponse } from '@/lib/auth/rate-limit';
 import { db } from '@/lib/db/client';
 
 const DEMO_EMAIL_DOMAINS = ['wunderman.com', 'fluo.ai', 'prism.ai', 'demo.prism.ai', 'localhost', 'dummy.ai'];
 const DEMO_HARDCODED = new Set(['sarah@wunderman.com']);
 
 export async function POST(req: NextRequest) {
+  // Rate-limit by IP — 5 attempts per 5 minutes per IP. Generous enough for
+  // legitimate fat-finger retries, tight enough to throttle a credential
+  // stuffing attempt to ~1k/hour from one IP.
+  const ip = clientIp(req);
+  const rl = checkRateLimit(`login:ip:${ip}`, { max: 5, windowMs: 5 * 60_000 });
+  if (!rl.ok) return rateLimitResponse(rl.retryAfterSec, rl.message);
+
   let body: any;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
@@ -40,6 +48,11 @@ export async function POST(req: NextRequest) {
   if (!isAllowedEmail(email)) {
     return NextResponse.json({ error: WORK_EMAIL_ERROR }, { status: 403 });
   }
+
+  // Second rate-limit dimension: per-email so a distributed attempt against
+  // one account from many IPs is also throttled. 10 / 15 min.
+  const rlEmail = checkRateLimit(`login:email:${email}`, { max: 10, windowMs: 15 * 60_000 });
+  if (!rlEmail.ok) return rateLimitResponse(rlEmail.retryAfterSec, rlEmail.message);
 
   // Look up the user. If they signed up the normal way, they'll have a
   // password_hash and we MUST verify it before issuing a session.
