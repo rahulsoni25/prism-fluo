@@ -185,6 +185,46 @@ textarea {resize:vertical;min-height:80px}
 /* Pulsing dot inside status badges */
 @keyframes badge-pulse {0%,100%{opacity:1}50%{opacity:.55}}
 @keyframes dot-activate {0%{transform:scale(.6);opacity:0}60%{transform:scale(1.4)}100%{transform:scale(1);opacity:1}}
+
+/* Shimmer sweep — fetching progress bars */
+@keyframes shimmer-sweep {
+  0%   { background-position: -250% center; }
+  100% { background-position: 250% center; }
+}
+@keyframes scan-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+.plat-card.fetching .progress-fill {
+  background: linear-gradient(90deg, #2563EB 0%, #818CF8 35%, #60A5FA 50%, #818CF8 65%, #2563EB 100%);
+  background-size: 250% 100%;
+  animation: shimmer-sweep 2.2s linear infinite;
+  transition: none;
+}
+/* Mining shimmer for bucket bars — overlay a translucent white sweep */
+@keyframes bucket-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+.bucket-prog-card .progress-fill {
+  position: relative;
+  overflow: visible;
+  transition: none;
+}
+.bucket-prog-card .progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent);
+  animation: bucket-shimmer 2.4s ease-in-out infinite;
+}
+/* Scanning ring on fetching badge */
+.s-fetching {
+  position: relative;
+  animation: badge-pulse 1.6s ease-in-out infinite;
+}
+
 .bucket-progress-grid {display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
 .bucket-prog-card {background:#F8FAFC;border-radius:12px;padding:16px;text-align:center}
 .bpc-icon {font-size:22px;margin-bottom:8px}

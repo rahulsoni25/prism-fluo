@@ -6,7 +6,7 @@ import { PLATFORMS_DATA } from '@/lib/data';
 import { formatSlaBadge } from '@/lib/sla';
 
 const SL = { complete: '● Complete', fetching: '⟳ Fetching', connecting: '⟳ Connecting', queued: '○ Queued' };
-const SC = { complete: 's-complete', fetching: 's-fetching', connecting: 's-connecting', queued: 's-queued' };
+const SC = { complete: 's-complete', fetching: 's-fetching', connecting: 's-fetching', queued: 's-fetching' };
 
 // Extra detail shown when a card is expanded (click to reveal)
 const PLATFORM_DETAILS = {
@@ -51,30 +51,24 @@ function ProcessingInner() {
       .catch(err => console.warn('[processing] Could not load brief:', err.message));
   }, [briefId]);
 
+  // Per-platform animation speeds (% per tick) and caps — staggered so bars
+  // move at different rates, giving a genuine "live fetching" feel.
+  const BAR_SPEED = [0.25, 0.30, 0.35, 0.18, 0.55, 0.28, 0.60, 0.32];
+  const BAR_CAP   = [88,   82,   72,   92,   55,   85,   45,   78  ];
+
   // Animate progress bars
   useEffect(() => {
-    const t2 = setInterval(() => {
-      setWidths(prev => {
-        const next = [...prev];
-        if (next[2] < 78) next[2] = Math.min(next[2] + 0.4, 78);
-        return next;
-      });
-    }, 400);
-    const t4 = setInterval(() => {
-      setWidths(prev => {
-        const next = [...prev];
-        if (next[4] < 38) next[4] = Math.min(next[4] + 0.8, 38);
-        return next;
-      });
-    }, 600);
     const tb = setInterval(() => {
-      setBucketPcts(prev => prev.map(p => Math.min(p + Math.random() * 0.3, 95)));
-    }, 800);
+      setWidths(prev => prev.map((w, i) => w < BAR_CAP[i] ? Math.min(w + BAR_SPEED[i], BAR_CAP[i]) : w));
+    }, 400);
+    const tBucket = setInterval(() => {
+      setBucketPcts(prev => prev.map(p => Math.min(p + Math.random() * 0.5 + 0.1, 90)));
+    }, 600);
     const te = setInterval(() => setElapsed(e => e + 1), 1000);
-    return () => { clearInterval(t2); clearInterval(t4); clearInterval(tb); clearInterval(te); };
+    return () => { clearInterval(tb); clearInterval(tBucket); clearInterval(te); };
   }, []);
 
-  const completedSources = PLATFORMS_DATA.filter(p => p.status === 'complete').length;
+  const fetchingSources = PLATFORMS_DATA.filter(p => p.status === 'fetching').length;
   const elapsedStr = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`;
   const brandLabel = brief?.brand ?? '…';
   const subLabel = [brief?.category, brief?.age_ranges, brief?.market, brief?.objective]
@@ -91,14 +85,14 @@ function ProcessingInner() {
           ⏳ Estimated ready in <strong>
             &nbsp;{brief?.sla_due_at
               ? (formatSlaBadge(brief.sla_due_at, brief.actual_completed_at, brief.created_at).replace(/^Due in /, '~') || '~6 hours')
-              : '~6 hours'}
+              : '~8 hours'}
           </strong>
           {brief?.sla_due_at && (
             <span style={{ marginLeft: 6, opacity: 0.85 }}>
               · ETA {new Date(brief.sla_due_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             </span>
           )}
-          &nbsp;·&nbsp;{completedSources} of {PLATFORMS_DATA.length} sources complete
+          &nbsp;·&nbsp;{fetchingSources} of {PLATFORMS_DATA.length} sources fetching
         </div>
         <div className="elapsed-pill">
           ⏱ Processing for <strong style={{ color: '#fff', marginLeft: 4 }}>{elapsedStr}</strong>
@@ -189,7 +183,11 @@ function ProcessingInner() {
           </div>
 
           <div style={{ background: '#fff', borderRadius: '14px', padding: '24px', marginTop: '22px', boxShadow: 'var(--shadow)' }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '16px' }}>Insight Buckets Being Populated</div>
+            <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              Insight Buckets — Mining in Progress
+              <span style={{ fontSize: 10, fontWeight: 700, background: '#DBEAFE', color: '#1D4ED8', borderRadius: 20, padding: '2px 9px', animation: 'badge-pulse 1.6s ease-in-out infinite' }}>⟳ Live</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 16 }}>Extracting signals across all 9 buckets from uploaded data sources</div>
             <div className="bucket-progress-grid">
               {BUCKET_DEFS.map((b, i) => (
                 <div key={i} className="bucket-prog-card">
