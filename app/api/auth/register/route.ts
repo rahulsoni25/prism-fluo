@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   // Throttle signups per IP to stop bulk account creation. 5 / hour is high
   // enough for a small office sharing one IP, low enough to cap any abuser.
   const ip = clientIp(req);
-  const rl = checkRateLimit(`signup:ip:${ip}`, { max: 5, windowMs: 60 * 60_000 });
+  const rl = await checkRateLimit(`signup:ip:${ip}`, { max: 5, windowMs: 60 * 60_000 });
   if (!rl.ok) return rateLimitResponse(rl.retryAfterSec, rl.message);
 
   try {

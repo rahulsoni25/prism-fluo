@@ -176,9 +176,31 @@ function NewBriefInner() {
           
           <div className="brief-layout">
             <div className="form-card">
-              <div className="form-section-title">01 — Brand Information</div>
+              <div className="form-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                01 — Brand Information
+                {brandInput.trim().length >= 2 && category && objective && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, color: '#059669',
+                    background: '#ECFDF5', border: '1px solid #A7F3D0',
+                    padding: '2px 8px', borderRadius: 10,
+                    letterSpacing: '.04em',
+                  }} title="All required fields in this section are filled">
+                    ✓ Complete
+                  </span>
+                )}
+              </div>
               <div className="form-group">
-                <label>Brand Name *</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  Brand Name *
+                  {brandInput.trim().length >= 2 && (
+                    <span style={{ color: '#059669', fontSize: 11, fontWeight: 600 }}>✓</span>
+                  )}
+                  {brandInput.trim().length > 0 && brandInput.trim().length < 2 && (
+                    <span style={{ color: '#D97706', fontSize: 11, fontWeight: 500 }}>
+                      Keep typing…
+                    </span>
+                  )}
+                </label>
                 <div className="ac-wrap">
                   <input 
                     type="text" 
@@ -336,7 +358,19 @@ function NewBriefInner() {
               </div>
 
               <div className="form-group">
-                <label>Brief / Background (optional)</label>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Brief / Background (optional)</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600,
+                    color: background.length >= 120 ? '#059669'
+                         : background.length >= 40  ? '#D97706'
+                         : '#94A3B8',
+                  }}>
+                    {background.length === 0
+                      ? 'A few sentences help the AI ground its insights'
+                      : `${background.length} chars${background.length >= 120 ? ' · great context' : background.length >= 40 ? ' · keep going' : ' · add a bit more'}`}
+                  </span>
+                </label>
                 <textarea
                   placeholder="Share context about the pitch, product, or communication challenge…"
                   value={background}

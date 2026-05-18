@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   // legitimate fat-finger retries, tight enough to throttle a credential
   // stuffing attempt to ~1k/hour from one IP.
   const ip = clientIp(req);
-  const rl = checkRateLimit(`login:ip:${ip}`, { max: 5, windowMs: 5 * 60_000 });
+  const rl = await checkRateLimit(`login:ip:${ip}`, { max: 5, windowMs: 5 * 60_000 });
   if (!rl.ok) return rateLimitResponse(rl.retryAfterSec, rl.message);
 
   let body: any;
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   // Second rate-limit dimension: per-email so a distributed attempt against
   // one account from many IPs is also throttled. 10 / 15 min.
-  const rlEmail = checkRateLimit(`login:email:${email}`, { max: 10, windowMs: 15 * 60_000 });
+  const rlEmail = await checkRateLimit(`login:email:${email}`, { max: 10, windowMs: 15 * 60_000 });
   if (!rlEmail.ok) return rateLimitResponse(rlEmail.retryAfterSec, rlEmail.message);
 
   // Look up the user. If they signed up the normal way, they'll have a

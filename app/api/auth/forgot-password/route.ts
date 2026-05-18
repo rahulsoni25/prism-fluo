@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   // to enumerate accounts). 3 attempts per hour per IP is plenty for a real
   // user who lost their password.
   const ip = clientIp(req);
-  const rl = checkRateLimit(`forgot:ip:${ip}`, { max: 3, windowMs: 60 * 60_000 });
+  const rl = await checkRateLimit(`forgot:ip:${ip}`, { max: 3, windowMs: 60 * 60_000 });
   if (!rl.ok) return rateLimitResponse(rl.retryAfterSec, rl.message);
 
   let body: any;
