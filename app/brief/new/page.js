@@ -20,6 +20,7 @@ function NewBriefInner() {
   const [showMarketAc, setShowMarketAc] = useState(false);
   const [showCompAc, setShowCompAc] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   const [brandInput, setBrandInput] = useState('');
   const [marketInput, setMarketInput] = useState('India');
@@ -33,8 +34,12 @@ function NewBriefInner() {
   const [selectedGeo, setSelectedGeo] = useState(['Metro Cities', 'Tier 1', 'Tier 2']);
   const [selectedBuckets, setSelectedBuckets] = useState(['📝 Content', '🛒 Commerce', '📢 Communication', '🌍 Culture', '📡 Channel', '🎬 Media', '🎨 Creative', '💰 Pricing', '🔍 Search']);
 
-  const toggleItem = (list, setList, item) =>
+  const markDirty = () => setIsDirty(true);
+
+  const toggleItem = (list, setList, item) => {
+    markDirty();
     setList(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);
+  };
 
   // Prefill from an existing brief when ?from=<id> is present
   useEffect(() => {
@@ -141,6 +146,7 @@ function NewBriefInner() {
                     type="text" 
                     value={brandInput}
                     onChange={(e) => {
+                      markDirty();
                       setBrandInput(e.target.value);
                       searchAPI('brands', e.target.value, setBrands, setShowBrandAc);
                     }}
@@ -160,7 +166,7 @@ function NewBriefInner() {
               <div className="form-row">
                 <div className="form-group">
                   <label>Category *</label>
-                  <select value={category} onChange={e => setCategory(e.target.value)}>
+                  <select value={category} onChange={e => { markDirty(); setCategory(e.target.value); }}>
                     <option value="" disabled>Select category…</option>
                     <option>FMCG — Food &amp; Beverages</option>
                     <option>FMCG — Personal Care</option>
@@ -184,7 +190,7 @@ function NewBriefInner() {
                 </div>
                 <div className="form-group">
                   <label>Pitch Objective *</label>
-                  <select value={objective} onChange={e => setObjective(e.target.value)}>
+                  <select value={objective} onChange={e => { markDirty(); setObjective(e.target.value); }}>
                     <option value="" disabled>Select objective…</option>
                     <option>New Product Launch</option>
                     <option>New Communication / Campaign</option>
@@ -211,7 +217,7 @@ function NewBriefInner() {
               <div className="form-row">
                 <div className="form-group">
                   <label>Gender</label>
-                  <select value={gender} onChange={e => setGender(e.target.value)}>
+                  <select value={gender} onChange={e => { markDirty(); setGender(e.target.value); }}>
                     <option>All Genders</option>
                     <option>Male</option>
                     <option>Female</option>
@@ -221,7 +227,7 @@ function NewBriefInner() {
                 </div>
                 <div className="form-group">
                   <label>SEC / Income Group</label>
-                  <select value={sec} onChange={e => setSec(e.target.value)}>
+                  <select value={sec} onChange={e => { markDirty(); setSec(e.target.value); }}>
                     <option>All SECs</option>
                     <option>SEC A — Premium</option>
                     <option>SEC B — Upper-middle</option>
@@ -239,6 +245,7 @@ function NewBriefInner() {
                     type="text" 
                     value={marketInput}
                     onChange={(e) => {
+                      markDirty();
                       setMarketInput(e.target.value);
                       searchAPI('markets', e.target.value, setMarkets, setShowMarketAc);
                     }}
@@ -273,6 +280,7 @@ function NewBriefInner() {
                     type="text" 
                     value={compInput}
                     onChange={(e) => {
+                      markDirty();
                       setCompInput(e.target.value);
                       searchAPI('brands', e.target.value, setBrands, setShowCompAc);
                     }}
@@ -294,7 +302,7 @@ function NewBriefInner() {
                 <textarea
                   placeholder="Share context about the pitch, product, or communication challenge…"
                   value={background}
-                  onChange={e => setBackground(e.target.value)}
+                  onChange={e => { markDirty(); setBackground(e.target.value); }}
                 />
               </div>
 
@@ -323,24 +331,25 @@ function NewBriefInner() {
 
                 {/* Dynamic source counter */}
                 {(() => {
-                  // Compute which platforms are active based on current form state
+                  // While the form has unsaved changes, hold all platforms at Pending
+                  // to avoid showing "Live" for a brief that hasn't been submitted yet.
                   const active = new Set();
-                  if (brandInput.trim().length >= 2) {
+                  if (!isDirty && brandInput.trim().length >= 2) {
                     active.add('Google Trends');
                     active.add('Google Keyword');
                     active.add('Brandwatch Sentiment');
                   }
-                  if (category) {
+                  if (!isDirty && category) {
                     active.add('Global Web Index (GWI)');
                     active.add('Comscore');
                   }
-                  if (objective) {
+                  if (!isDirty && objective) {
                     active.add('Google Insights Finder');
                   }
-                  if (compInput.trim().length >= 1 || marketInput.trim()) {
+                  if (!isDirty && (compInput.trim().length >= 1 || marketInput.trim())) {
                     active.add('SimilarWeb');
                   }
-                  if (selectedBuckets.some(b => b.includes('Commerce'))) {
+                  if (!isDirty && selectedBuckets.some(b => b.includes('Commerce'))) {
                     active.add('Helium10');
                   }
                   const n = active.size;
