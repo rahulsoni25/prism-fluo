@@ -245,6 +245,11 @@ export default function Dashboard() {
                   footerItems={brief.status !== 'draft' ? footer : undefined}
                   isDraft={brief.status === 'draft'}
                   onDelete={() => handleDelete(brief.id)}
+                  onEdit={
+                    brief.status === 'processing' || brief.status === 'waiting_for_data'
+                      ? () => router.push(`/brief/new?edit=${brief.id}`)
+                      : undefined
+                  }
                 />
               );
             })}

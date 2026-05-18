@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { sendVerificationEmail } from '@/lib/email';
 import { hashPassword } from '@/lib/auth/password';
+import { isAllowedEmail, WORK_EMAIL_ERROR } from '@/lib/auth/email-policy';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,9 @@ export async function POST(req: NextRequest) {
     }
 
     const normalEmail = email.toLowerCase().trim();
+    if (!isAllowedEmail(normalEmail)) {
+      return NextResponse.json({ error: WORK_EMAIL_ERROR }, { status: 400 });
+    }
     const fullName    = agency?.trim() ? `${name.trim()} (${agency.trim()})` : name.trim();
 
     await ensureTable();

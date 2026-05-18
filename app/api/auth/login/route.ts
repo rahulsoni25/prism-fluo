@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { signSession, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth/session';
 import { upsertUser } from '@/lib/auth/server';
 import { verifyPassword } from '@/lib/auth/password';
+import { isAllowedEmail, WORK_EMAIL_ERROR } from '@/lib/auth/email-policy';
 import { db } from '@/lib/db/client';
 
 const DEMO_EMAIL_DOMAINS = ['wunderman.com', 'fluo.ai', 'prism.ai', 'demo.prism.ai', 'localhost', 'dummy.ai'];
@@ -35,6 +36,9 @@ export async function POST(req: NextRequest) {
 
   if (!email || !email.includes('@')) {
     return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
+  }
+  if (!isAllowedEmail(email)) {
+    return NextResponse.json({ error: WORK_EMAIL_ERROR }, { status: 403 });
   }
 
   // Look up the user. If they signed up the normal way, they'll have a

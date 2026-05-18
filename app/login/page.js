@@ -12,8 +12,8 @@ const ERROR_MESSAGES = {
 function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email,    setEmail]    = useState('sarah@wunderman.com');
-  const [password, setPassword] = useState('demo1234');
+  const [email,    setEmail]    = useState('');
+  const [password, setPassword] = useState('');
   const [name,     setName]     = useState('');
   const [error,    setError]    = useState(() => ERROR_MESSAGES[searchParams.get('error')] ?? null);
   const [busy,     setBusy]     = useState(false);
@@ -86,11 +86,6 @@ function LoginInner() {
 
         <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: '#6B7280' }}>
           Don't have an account? <a href="/signup" style={{ color: '#2563EB', fontWeight: 600, textDecoration: 'none' }}>Sign Up</a>
-        </div>
-
-        <div className="demo-hint">
-          🔑 <strong>Demo credentials</strong><br />
-          sarah@wunderman.com &nbsp;/&nbsp; demo1234
         </div>
       </div>
     </div>

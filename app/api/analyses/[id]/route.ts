@@ -28,6 +28,7 @@ export async function GET(
                   'geography',           b.geography,
                   'market',              b.market,
                   'competitors',         b.competitors,
+                  'background',          b.background,
                   'insight_buckets',     b.insight_buckets,
                   'status',              b.status,
                   'created_at',          b.created_at,

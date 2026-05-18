@@ -62,6 +62,7 @@ export default function BriefCard({
   slaText,
   category,
   onDelete,
+  onEdit,
 }) {
   const [hover,    setHover]    = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -128,6 +129,33 @@ export default function BriefCard({
                   {ss.label}
                 </span>
               </div>
+
+              {/* Edit button — only shown when onEdit prop is provided */}
+              {onEdit && (
+                <button
+                  onClick={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEdit();
+                  }}
+                  title="Edit brief"
+                  style={{
+                    width:26, height:26, borderRadius:8,
+                    background:'rgba(255,255,255,.15)',
+                    border:'1px solid rgba(255,255,255,.25)',
+                    color:'rgba(255,255,255,.85)',
+                    fontSize:12, fontWeight:700,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    cursor:'pointer',
+                    transition:'all .15s',
+                    backdropFilter:'blur(4px)',
+                    flexShrink:0,
+                    lineHeight:1,
+                  }}
+                >
+                  ✎
+                </button>
+              )}
 
               {/* Delete button — only shown when onDelete prop is provided */}
               {onDelete && (

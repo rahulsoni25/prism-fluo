@@ -14,6 +14,10 @@ function NewBriefInner() {
   // ?from=<briefId> → pre-fill every field from that brief, then drop the
   // status/SLA so the user submits a fresh one.
   const fromBriefId  = searchParams.get('from');
+  // ?edit=<briefId> → prefill AND save in-place (PATCH). The brief keeps its
+  // status/SLA; only the editable fields change.
+  const editBriefId  = searchParams.get('edit');
+  const isEditMode   = Boolean(editBriefId);
   const [brands, setBrands] = useState([]);
   const [markets, setMarkets] = useState([]);
   const [showBrandAc, setShowBrandAc] = useState(false);
@@ -41,11 +45,12 @@ function NewBriefInner() {
     setList(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);
   };
 
-  // Prefill from an existing brief when ?from=<id> is present
+  // Prefill from an existing brief when ?from=<id> or ?edit=<id> is present
   useEffect(() => {
-    if (!fromBriefId) return;
+    const sourceId = editBriefId || fromBriefId;
+    if (!sourceId) return;
     let cancelled = false;
-    fetch(`/api/briefs/${fromBriefId}`)
+    fetch(`/api/briefs/${sourceId}`)
       .then(r => r.ok ? r.json() : null)
       .then(b => {
         if (cancelled || !b) return;
@@ -72,29 +77,42 @@ function NewBriefInner() {
       })
       .catch(() => { /* best effort — silently ignore */ });
     return () => { cancelled = true; };
-  }, [fromBriefId]);
+  }, [fromBriefId, editBriefId]);
 
   const submitBrief = async (status) => {
     if (!brandInput) return alert('Brand name is required');
     setSubmitting(true);
     try {
+      const payload = {
+        brand: brandInput,
+        category,
+        objective,
+        age_ranges: selectedAges.join(', '),
+        gender,
+        sec,
+        market: marketInput,
+        geography: selectedGeo.join(', '),
+        competitors: compInput,
+        background,
+        insight_buckets: selectedBuckets.join(', '),
+      };
+
+      if (isEditMode) {
+        // Edit existing brief in place — keep its current status, just patch fields.
+        const res = await fetch(`/api/briefs/${editBriefId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('Failed to save');
+        router.push('/dashboard');
+        return;
+      }
+
       const res = await fetch('/api/briefs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          brand: brandInput,
-          category,
-          objective,
-          age_ranges: selectedAges.join(', '),
-          gender,
-          sec,
-          market: marketInput,
-          geography: selectedGeo.join(', '),
-          competitors: compInput,
-          background,
-          insight_buckets: selectedBuckets.join(', '),
-          status,
-        }),
+        body: JSON.stringify({ ...payload, status }),
       });
       if (!res.ok) throw new Error('Failed to submit');
       const created = await res.json();
@@ -131,8 +149,12 @@ function NewBriefInner() {
           <button className="back-btn" onClick={() => router.push('/dashboard')}>← Back to Dashboard</button>
           <div className="page-header">
             <div>
-              <div className="page-title">New Insights Brief</div>
-              <div className="page-sub">Fill the brief below — we'll mine insights from 7 live data platforms within 24 hrs</div>
+              <div className="page-title">{isEditMode ? 'Edit Brief' : 'New Insights Brief'}</div>
+              <div className="page-sub">
+                {isEditMode
+                  ? 'Update brief details below — changes save in place without restarting analysis.'
+                  : "Fill the brief below — we'll mine insights from 7 live data platforms within 24 hrs"}
+              </div>
             </div>
           </div>
           
@@ -316,12 +338,25 @@ function NewBriefInner() {
               </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                <button className="btn btn-outline" style={{ flex: 1 }} disabled={submitting} onClick={() => submitBrief('draft')}>
-                  Save as Draft
-                </button>
-                <button className="btn btn-primary" style={{ flex: 2, justifyContent: 'center' }} disabled={submitting} onClick={() => submitBrief('processing')}>
-                  {submitting ? 'Submitting…' : 'Submit Brief & Start Mining →'}
-                </button>
+                {isEditMode ? (
+                  <>
+                    <button className="btn btn-outline" style={{ flex: 1 }} disabled={submitting} onClick={() => router.push('/dashboard')}>
+                      Cancel
+                    </button>
+                    <button className="btn btn-primary" style={{ flex: 2, justifyContent: 'center' }} disabled={submitting} onClick={() => submitBrief()}>
+                      {submitting ? 'Saving…' : 'Save Changes'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="btn btn-outline" style={{ flex: 1 }} disabled={submitting} onClick={() => submitBrief('draft')}>
+                      Save as Draft
+                    </button>
+                    <button className="btn btn-primary" style={{ flex: 2, justifyContent: 'center' }} disabled={submitting} onClick={() => submitBrief('processing')}>
+                      {submitting ? 'Submitting…' : 'Submit Brief & Start Mining →'}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 

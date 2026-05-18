@@ -1324,8 +1324,10 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
   );
 
   /* ── Decide which cards render. Empty domains are CUT entirely
-        (no placeholder slot) per user direction. ───────────────────── */
-  const showAsk      = !!(askHeadline_ || askStat_);
+        (no placeholder slot) per user direction. The Ask nugget is now
+        replaced by the Executive Summary "THE ASK" block above — keep
+        flag here so a future toggle is one-line. ───────────────────── */
+  const showAsk      = false;
   const showKeywords = !!kHeadline_;
   const showHelium   = !!hHeadline;
   const cardCount    = (showAsk ? 1 : 0) + (showKeywords ? 1 : 0) + (showHelium ? 1 : 0);
@@ -1569,6 +1571,64 @@ function ToolsUsedPanel({ charts }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * ClientBriefContext — compact strip rendered inside the top Executive Summary
+ * banner between the headline and the AI-written snapshot. Surfaces the
+ * client's own framing so readers see Problem → Ask → Solution in order.
+ *
+ * Hidden when there's no brief (legacy analyses) or when both background and
+ * objective are blank.
+ */
+function ClientBriefContext({ brief, audienceDescriptor }) {
+  if (!brief || (!brief.background && !brief.objective)) return null;
+
+  const audience = audienceDescriptor || [
+    brief.age_ranges, brief.gender !== 'All Genders' ? brief.gender : null, brief.market,
+  ].filter(Boolean).join(' · ');
+
+  // Keep background tight so it doesn't compete with the AI snapshot.
+  const MAX = 320;
+  const bg = (brief.background || '').trim();
+  const truncated = bg.length > MAX ? bg.slice(0, MAX).trimEnd() + '…' : bg;
+
+  return (
+    <div style={{
+      marginBottom: 18,
+      padding: '14px 18px',
+      background: '#F8FAFC',
+      border: '1px solid #E2E8F0',
+      borderLeft: '3px solid #2563EB',
+      borderRadius: 10,
+      maxWidth: 1100,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: bg ? 8 : 0 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.12em',
+          textTransform: 'uppercase', color: '#2563EB',
+        }}>The Ask</span>
+        <span style={{ fontSize: 13.5, color: '#0F172A', lineHeight: 1.55 }}>
+          <strong>{brief.brand}</strong>
+          {brief.objective ? <> is looking at <strong>{brief.objective.toLowerCase()}</strong></> : null}
+          {audience ? <> for <strong>{audience}</strong></> : null}
+          {brief.category ? <> in the <strong>{brief.category}</strong> space</> : null}.
+          {brief.insight_buckets && (
+            <>{' '}Study scope: <span style={{ color: '#475569' }}>{brief.insight_buckets}</span>.</>
+          )}
+        </span>
+      </div>
+      {truncated && (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{
+            fontSize: 10, fontWeight: 800, letterSpacing: '0.12em',
+            textTransform: 'uppercase', color: '#7C3AED',
+          }}>Context</span>
+          <span style={{ fontSize: 13.5, color: '#334155', lineHeight: 1.55 }}>{truncated}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -2693,6 +2753,7 @@ function AnalysisDetail({ id }) {
               {overview.headline && (
                 <h2 className="insights-overview-headline">{overview.headline}</h2>
               )}
+              <ClientBriefContext brief={analysis.brief} audienceDescriptor={audienceDescriptor} />
               {overview.audienceSnapshot && (
                 <p className="insights-overview-snapshot">{overview.audienceSnapshot}</p>
               )}
