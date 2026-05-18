@@ -138,6 +138,34 @@ const TEMPLATE_PALETTE: Record<string, Palette> = {
   quick_overview:     { dark:'001B33', mid:'0C4A6E', pri:'0891B2', acc:'38BDF8', tl:'7DD3FC' },
 };
 
+// ─── Per-template content-density config ─────────────────────────────────────
+// The 3 visible templates differ NOT just by palette but by how much content
+// they include. This is what makes them feel different beyond colour:
+//   - Executive Briefing : ~12 slides · 4 pillars max · 2 insights / pillar · no per-pillar So-What
+//   - Client Pitch Deck  : ~25 slides · 6 pillars max · 3 insights / pillar · So-What enabled
+//   - Deep Dive Analysis : ~45 slides · all 9 pillars · 5 insights / pillar · So-What enabled
+// Older / hidden templates default to the Client-Pitch-style config.
+interface TemplateConfig {
+  maxPillars:           number;   // cap number of pillar sections shown
+  maxInsightsPerPillar: number;   // cap insights per pillar section
+  includePillarRecs:    boolean;  // include the per-pillar "So What" summary slide
+  includeStatsSnapshot: boolean;  // include the Computed Stats Snapshot slide
+  includeExecSummary:   boolean;  // include the Executive Summary slide
+}
+const TEMPLATE_CONFIG: Record<string, TemplateConfig> = {
+  executive_briefing: { maxPillars: 4, maxInsightsPerPillar: 2, includePillarRecs: false, includeStatsSnapshot: true, includeExecSummary: true  },
+  client_pitch:       { maxPillars: 6, maxInsightsPerPillar: 3, includePillarRecs: true,  includeStatsSnapshot: true, includeExecSummary: true  },
+  deep_dive:          { maxPillars: 9, maxInsightsPerPillar: 5, includePillarRecs: true,  includeStatsSnapshot: true, includeExecSummary: true  },
+  // Hidden templates use Client-Pitch defaults
+  board_presentation: { maxPillars: 6, maxInsightsPerPillar: 3, includePillarRecs: true,  includeStatsSnapshot: true, includeExecSummary: true  },
+  team_update:        { maxPillars: 6, maxInsightsPerPillar: 3, includePillarRecs: true,  includeStatsSnapshot: true, includeExecSummary: true  },
+  investor_update:    { maxPillars: 6, maxInsightsPerPillar: 3, includePillarRecs: true,  includeStatsSnapshot: true, includeExecSummary: true  },
+  quick_overview:     { maxPillars: 3, maxInsightsPerPillar: 1, includePillarRecs: false, includeStatsSnapshot: true, includeExecSummary: true  },
+};
+function getCfg(tid: string): TemplateConfig {
+  return TEMPLATE_CONFIG[tid] || TEMPLATE_CONFIG.client_pitch;
+}
+
 function getPal(tid: string): Palette {
   return TEMPLATE_PALETTE[tid] ?? TEMPLATE_PALETTE['executive_briefing'];
 }
@@ -1090,6 +1118,10 @@ export async function generatePresentation(data: PresentationData): Promise<Buff
 
   const p = getPal(data.templateId);
 
+  // Per-template content density config (Executive / Pitch / Deep Dive differ
+  // by how many pillars + insights they include, not just palette)
+  const cfg = getCfg(data.templateId);
+
   let slideNo = 1;
 
   // 1. Cover (enriched with audience descriptor + category value + flavour badge)
@@ -1097,15 +1129,13 @@ export async function generatePresentation(data: PresentationData): Promise<Buff
   slideNo++;
 
   // 2. Executive Summary — Strategic Read + Audience Snapshot + Next Moves
-  //    Only renders if we have at least ONE of (strategicRead, audienceSnapshot, nextMoves).
-  //    Older analyses without these fields skip this slide gracefully.
-  if (data.strategicRead || data.audienceSnapshot || (data.nextMoves?.length ?? 0) > 0) {
+  if (cfg.includeExecSummary && (data.strategicRead || data.audienceSnapshot || (data.nextMoves?.length ?? 0) > 0)) {
     slideExecutiveSummary(prs, data, p, slideNo);
     slideNo++;
   }
 
-  // 3. Stats Snapshot — only when we have computed nuggets to render as tiles.
-  if (data.nuggets && Object.values(data.nuggets).some(v => v?.headline)) {
+  // 3. Stats Snapshot — only when we have computed nuggets to render as tiles
+  if (cfg.includeStatsSnapshot && data.nuggets && Object.values(data.nuggets).some(v => v?.headline)) {
     slideStatsSnapshot(prs, data, p, slideNo);
     slideNo++;
   }
@@ -1114,28 +1144,36 @@ export async function generatePresentation(data: PresentationData): Promise<Buff
   slideAgenda(prs, data, p, data);
   slideNo++;
 
-  // 3–N. One section per non-empty pillar
-  for (const key of PILLAR_ORDER) {
-    const pillar = data[key as keyof PresentationData] as PillarData;
-    const insights = pillar?.insights ?? [];
-    if (insights.length === 0) continue;
+  // 5–N. Pillar sections — ordered by insight count (densest pillars first)
+  // so a capped-pillar template like Executive Briefing still shows the
+  // strongest sections, not just the alphabetical first 4.
+  const pillarsRanked = [...PILLAR_ORDER]
+    .map(key => ({
+      key,
+      pm: PILLARS[key],
+      insights: ((data[key as keyof PresentationData] as PillarData)?.insights ?? []),
+    }))
+    .filter(p => p.insights.length > 0)
+    .sort((a, b) => b.insights.length - a.insights.length)
+    .slice(0, cfg.maxPillars);
 
-    const pm = PILLARS[key];
-
+  for (const { pm, insights } of pillarsRanked) {
     // Section divider
     slideDivider(prs, pm, insights.length, slideNo, data);
     slideNo++;
 
-    // One slide per insight (max 4 per pillar to keep deck focused)
-    const capped = insights.slice(0, 4);
+    // One slide per insight (capped per template config)
+    const capped = insights.slice(0, cfg.maxInsightsPerPillar);
     capped.forEach((ins, i) => {
       slideInsight(prs, ins, pm, i + 1, slideNo, data);
       slideNo++;
     });
 
-    // "So What" recommendations slide
-    slidePillarRecs(prs, pm, insights, slideNo, data);
-    slideNo++;
+    // "So What" recommendations slide (only when config enables it)
+    if (cfg.includePillarRecs) {
+      slidePillarRecs(prs, pm, insights, slideNo, data);
+      slideNo++;
+    }
   }
 
   // Last. Closing

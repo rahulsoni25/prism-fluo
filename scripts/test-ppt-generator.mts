@@ -123,12 +123,46 @@ const sample: PresentationData = {
 };
 
 const main = async () => {
-  console.log('Generating sample PPTX deck…');
-  const buf = await generatePresentation(sample);
-  const outPath = `${process.cwd()}/docs/test-deck.pptx`;
-  writeFileSync(outPath, buf);
-  console.log(`✓ Wrote ${buf.length.toLocaleString()} bytes to ${outPath}`);
-  console.log('Open in PowerPoint or Keynote to inspect the visual rebuild.');
+  // Pad the pillars so density differences are visible (Executive caps at 4
+  // pillars × 2 insights, Pitch at 6 × 3, Deep Dive at 9 × 5). Extend the
+  // sample to give each template enough material to actually differ.
+  const filler = (title: string, n: number) => Array.from({ length: n }, (_, i) => ({
+    title: `${title} — variation ${i + 1}`,
+    obs:   `Sample observation ${i + 1} for ${title.toLowerCase()}. Verified from uploaded data; cites a representative number.`,
+    rec:   `Sample recommendation ${i + 1}: act on this with a specific Indian platform and a measurable KPI.`,
+    stat:  `Sample stat ${i + 1} · sourced from the uploaded data`,
+    source: 'SAMPLE',
+    conviction: 80 + (i % 10),
+  }));
+
+  // Padded copy for the smoke test
+  const padded: PresentationData = {
+    ...sample,
+    content:       { insights: [...sample.content.insights,       ...filler('Content insight',       4)] },
+    commerce:      { insights: [...sample.commerce.insights,      ...filler('Commerce insight',      4)] },
+    communication: { insights: [...sample.communication.insights, ...filler('Communication insight', 4)] },
+    culture:       { insights: [...sample.culture.insights,       ...filler('Culture insight',       4)] },
+    channel:       { insights: filler('Channel insight',       4) },
+    media:         { insights: filler('Media insight',         4) },
+    creative:      { insights: filler('Creative insight',      4) },
+    pricing:       { insights: filler('Pricing insight',       4) },
+    search:        { insights: filler('Search insight',        4) },
+  };
+
+  const templates = ['executive_briefing', 'client_pitch', 'deep_dive'];
+  for (const tid of templates) {
+    console.log(`\nGenerating ${tid}…`);
+    const t0 = Date.now();
+    const buf = await generatePresentation({ ...padded, templateId: tid });
+    const outPath = `${process.cwd()}/docs/test-deck-${tid}.pptx`;
+    writeFileSync(outPath, buf);
+    const kb = (buf.length / 1024).toFixed(1);
+    console.log(`✓ ${tid}: ${kb} KB · ${Date.now() - t0}ms · → ${outPath}`);
+  }
+  console.log('\nOpen each .pptx in PowerPoint/Keynote to visually inspect.');
+  console.log('Expect:  executive_briefing  ~10-12 slides (compact)');
+  console.log('         client_pitch        ~20-25 slides (storytelling)');
+  console.log('         deep_dive           ~40-50 slides (every insight)');
 };
 
 main().catch(err => {

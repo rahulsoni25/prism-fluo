@@ -15,6 +15,10 @@ export interface Template {
     audience: string;
   };
   previewText: string;
+  /** Whether this template appears in the UI dropdown. When false, the
+   *  definition stays in the file (so saved presentations still resolve)
+   *  but the template is not offered for new generations. */
+  visible?: boolean;
 }
 
 export interface TemplateSlide {
@@ -24,13 +28,13 @@ export interface TemplateSlide {
 }
 
 export const PRESENTATION_TEMPLATES: Record<string, Template> = {
-  // Template 1: Executive Briefing
+  // Template 1: Executive Briefing — tight, C-suite version
   executive_briefing: {
     id: 'executive_briefing',
     name: 'Executive Briefing',
-    description: 'Concise C-level overview. Perfect for board meetings and executive reports.',
+    description: '10-15 slides. Cover + Executive Summary + Stats Snapshot + top 4 pillars at 2 insights each. For decisions, not deep dives.',
     category: 'Executive',
-    previewText: 'Clean, professional, focused on strategic outcomes',
+    previewText: 'Tight C-suite read · navy + gold · ~12 slides',
     style: {
       tone: 'professional',
       colors: ['#1F2937', '#3B82F6', '#F3F4F6'],
@@ -65,13 +69,13 @@ export const PRESENTATION_TEMPLATES: Record<string, Template> = {
     ],
   },
 
-  // Template 2: Client Pitch Deck
+  // Template 2: Client Pitch Deck — full storytelling
   client_pitch: {
     id: 'client_pitch',
     name: 'Client Pitch Deck',
-    description: 'Sales and marketing focused. Great for presenting to prospects and clients.',
+    description: '20-30 slides. Full storytelling: Cover + Executive Summary + Stats + 6 pillars at 3 insights each + So-What summaries + Closing. Best for new-business + client reviews.',
     category: 'Sales',
-    previewText: 'Engaging, visual, action-oriented',
+    previewText: 'Storytelling arc · navy + orange · ~25 slides',
     style: {
       tone: 'dynamic',
       colors: ['#059669', '#10B981', '#ECFDF5'],
@@ -111,13 +115,13 @@ export const PRESENTATION_TEMPLATES: Record<string, Template> = {
     ],
   },
 
-  // Template 3: Deep Dive Analysis
+  // Template 3: Deep Dive Analysis — maximum detail
   deep_dive: {
     id: 'deep_dive',
     name: 'Deep Dive Analysis',
-    description: 'Detailed exploration. For comprehensive research presentations and reports.',
+    description: '40-50 slides. Every insight. All 9 pillars at up to 5 insights each + full So-What summaries. Best for analyst handovers + internal strategy reviews.',
     category: 'Research',
-    previewText: 'Thorough, data-rich, insightful',
+    previewText: 'Maximum depth · indigo + lilac · ~45 slides',
     style: {
       tone: 'analytical',
       colors: ['#4F46E5', '#6366F1', '#EEF2FF'],
@@ -157,12 +161,13 @@ export const PRESENTATION_TEMPLATES: Record<string, Template> = {
     ],
   },
 
-  // Template 4: Board Presentation
+  // Template 4: Board Presentation (HIDDEN — keep in file for back-compat)
   board_presentation: {
     id: 'board_presentation',
     name: 'Board Presentation',
     description: 'Formal governance style. For board meetings and investor updates.',
     category: 'Governance',
+    visible: false,
     previewText: 'Formal, comprehensive, decision-ready',
     style: {
       tone: 'formal',
@@ -203,12 +208,13 @@ export const PRESENTATION_TEMPLATES: Record<string, Template> = {
     ],
   },
 
-  // Template 5: Internal Team Update
+  // Template 5: Internal Team Update (HIDDEN — keep in file for back-compat)
   team_update: {
     id: 'team_update',
     name: 'Internal Team Update',
     description: 'Casual and collaborative. Perfect for team syncs and internal communications.',
     category: 'Internal',
+    visible: false,
     previewText: 'Friendly, collaborative, discussion-friendly',
     style: {
       tone: 'collaborative',
@@ -244,12 +250,13 @@ export const PRESENTATION_TEMPLATES: Record<string, Template> = {
     ],
   },
 
-  // Template 6: Investor Update
+  // Template 6: Investor Update (HIDDEN — keep in file for back-compat)
   investor_update: {
     id: 'investor_update',
     name: 'Investor Update',
     description: 'Growth and metrics focused. For investors and stakeholder briefings.',
     category: 'Investor',
+    visible: false,
     previewText: 'Growth-focused, metrics-heavy, opportunity-driven',
     style: {
       tone: 'growth-oriented',
@@ -290,12 +297,13 @@ export const PRESENTATION_TEMPLATES: Record<string, Template> = {
     ],
   },
 
-  // Template 7: Quick Overview (1-page summary style)
+  // Template 7: Quick Overview (HIDDEN — keep in file for back-compat)
   quick_overview: {
     id: 'quick_overview',
     name: 'Quick Overview',
     description: 'Snappy single-slide summary. For quick briefs and status updates.',
     category: 'Quick',
+    visible: false,
     previewText: 'Concise, visual, scannable',
     style: {
       tone: 'concise',
@@ -333,12 +341,19 @@ export function listTemplates(): Array<{
   description: string;
   category: string;
   audience: string;
+  previewText?: string;
 }> {
-  return Object.values(PRESENTATION_TEMPLATES).map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description,
-    category: t.category,
-    audience: t.style.audience,
-  }));
+  // Only return templates explicitly visible — hidden ones stay in the
+  // dict so saved presentations still resolve, but the UI doesn't offer
+  // them for new generations.
+  return Object.values(PRESENTATION_TEMPLATES)
+    .filter((t) => t.visible !== false)
+    .map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      category: t.category,
+      audience: t.style.audience,
+      previewText: t.previewText,
+    }));
 }
