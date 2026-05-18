@@ -1593,20 +1593,21 @@ function ExecutiveSummaryPanel({ analysisId }) {
 
   if (error || !summary) return null;
 
-  // Support BOTH the new shape ({ keyFindings, actions }) and the legacy
-  // shape ({ observations, recommendations }) so old cached records render.
-  const keyFindings = Array.isArray(summary.keyFindings)
-    ? summary.keyFindings
-    : (Array.isArray(summary.observations) ? summary.observations : []);
+  // Support 3 shapes: NEW { strategicRead, actions } · INTERMEDIATE
+  // { keyFindings, actions } · LEGACY { observations, recommendations }.
+  const strategicRead =
+       typeof summary.strategicRead === 'string' ? summary.strategicRead.trim()
+     : (Array.isArray(summary.keyFindings)  ? summary.keyFindings.join(' ').trim()
+     : (Array.isArray(summary.observations) ? summary.observations.join(' ').trim() : ''));
   const actions = Array.isArray(summary.actions)
     ? summary.actions
     : (Array.isArray(summary.recommendations) ? summary.recommendations : []);
 
-  if (!summary.headline && keyFindings.length === 0 && actions.length === 0) return null;
+  if (!summary.headline && !strategicRead && actions.length === 0) return null;
 
   return (
     <div style={{ marginTop: 28 }}>
-      {/* Headline banner — gradient hero. Same as before; this lands well. */}
+      {/* Headline banner — gradient hero. */}
       <div style={{
         background: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
         borderRadius: 16, padding: '28px 32px', marginBottom: 20,
@@ -1617,80 +1618,81 @@ function ExecutiveSummaryPanel({ analysisId }) {
         </div>
       </div>
 
-      {/* 2-column grid — OBJECTIVE removed (was redundant with breadcrumb +
-          ★ The Ask Nugget + banner). Key Findings now pulls data-derived
-          numbers from the deterministic nuggets payload; Actions are
-          dedup-filtered against the Strategic Bets row above. */}
+      {/* Strategic Read + Next Moves — the COMPLEMENT to the Nuggets rail.
+          The Read is the ONE place on the page that connects all the rail
+          headlines into a coherent narrative. Next Moves are deduped against
+          the Strategic Bets row above so we never echo them.
+
+          On wide screens: 2-col side-by-side. On narrower: stacks. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+        gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)',
         gap: 20,
       }}>
-        {/* Key Findings */}
-        {keyFindings.length > 0 && (
+        {/* Strategic Read — narrative paragraph */}
+        {strategicRead && (
           <div style={{
-            background: '#fff', borderRadius: 14, padding: 24,
+            background: '#fff', borderRadius: 14, padding: '24px 26px',
             boxShadow: 'var(--shadow)', border: '1px solid #E5E7EB',
+            display: 'flex', flexDirection: 'column',
           }}>
             <div style={{
-              fontSize: 14, fontWeight: 700, color: '#059669',
+              fontSize: 14, fontWeight: 700, color: '#0891B2',
               textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14,
               display: 'flex', alignItems: 'center', gap: 6,
             }}>
-              📊 Key Findings
+              🧭 Strategic Read
               <span style={{ fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace", color: '#94A3B8', fontWeight: 600, letterSpacing: 0, textTransform: 'none' }}>
-                · computed from data
+                · synthesised from data
               </span>
             </div>
-            <ul style={{ margin: 0, paddingLeft: 0, listStyleType: 'none' }}>
-              {keyFindings.slice(0, 5).map((obs, i) => (
-                <li key={i} style={{
-                  fontSize: 12.5, lineHeight: 1.6, color: '#374151',
-                  marginBottom: i < keyFindings.slice(0, 5).length - 1 ? 12 : 0,
-                  paddingLeft: 22, position: 'relative',
-                }}>
-                  <span style={{
-                    position: 'absolute', left: 0, top: 2,
-                    fontSize: 14, color: '#10B981', fontWeight: 800,
-                  }}>✓</span>
-                  {obs}
-                </li>
-              ))}
-            </ul>
+            <p style={{
+              margin: 0, fontSize: 14, lineHeight: 1.7, color: '#1F2937',
+              letterSpacing: 0,
+            }}>
+              {strategicRead}
+            </p>
           </div>
         )}
 
-        {/* Actions */}
+        {/* Next Moves — concrete actions */}
         {actions.length > 0 && (
           <div style={{
-            background: '#fff', borderRadius: 14, padding: 24,
+            background: '#fff', borderRadius: 14, padding: '24px 26px',
             boxShadow: 'var(--shadow)', border: '1px solid #E5E7EB',
+            display: 'flex', flexDirection: 'column',
           }}>
             <div style={{
               fontSize: 14, fontWeight: 700, color: '#D97706',
               textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14,
               display: 'flex', alignItems: 'center', gap: 6,
             }}>
-              💡 Actions
+              💡 Next Moves
               <span style={{ fontSize: 9.5, fontFamily: "'SF Mono',Menlo,Consolas,monospace", color: '#94A3B8', fontWeight: 600, letterSpacing: 0, textTransform: 'none' }}>
-                · net-new vs. Strategic Bets
+                · concrete + time-bound
               </span>
             </div>
-            <ul style={{ margin: 0, paddingLeft: 0, listStyleType: 'none' }}>
+            <ol style={{ margin: 0, paddingLeft: 0, listStyleType: 'none', counterReset: 'move' }}>
               {actions.slice(0, 4).map((rec, i) => (
                 <li key={i} style={{
-                  fontSize: 12.5, lineHeight: 1.6, color: '#374151',
-                  marginBottom: i < actions.slice(0, 4).length - 1 ? 12 : 0,
-                  paddingLeft: 22, position: 'relative',
+                  fontSize: 12.5, lineHeight: 1.55, color: '#374151',
+                  marginBottom: i < actions.slice(0, 4).length - 1 ? 14 : 0,
+                  paddingLeft: 28, position: 'relative',
+                  counterIncrement: 'move',
                 }}>
                   <span style={{
-                    position: 'absolute', left: 0, top: 2,
-                    fontSize: 14, color: '#F59E0B', fontWeight: 800,
-                  }}>→</span>
+                    position: 'absolute', left: 0, top: -1,
+                    width: 20, height: 20, borderRadius: 6,
+                    background: '#FEF3C7', color: '#92400E',
+                    fontSize: 10.5, fontWeight: 800,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {i + 1}
+                  </span>
                   {rec}
                 </li>
               ))}
-            </ul>
+            </ol>
           </div>
         )}
       </div>

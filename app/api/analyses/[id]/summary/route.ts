@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { getSession } from '@/lib/auth/server';
-import { generateExecutiveSummary } from '@/lib/ai/gemini';
+import { generateExecutiveSummary, generateStrategicRead } from '@/lib/ai/gemini';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,9 +23,9 @@ export async function GET(
   if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
   try {
-    // Owner-check the analysis
+    // Owner-check the analysis + pull brief_id so we can synthesise from brief
     const { rows } = await db.query(
-      `SELECT id, results_json, sheet_name, filename
+      `SELECT id, results_json, sheet_name, filename, brief_id
        FROM analyses
        WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)`,
       [id, session.userId],
@@ -36,15 +36,17 @@ export async function GET(
       if (id.startsWith('dummy-') && process.env.NODE_ENV !== 'production') {
         return NextResponse.json({
           headline: 'Nike India: Capturing the Gen Z Fitness Movement',
-          keyFindings: [
-            'Short-form video engagement is 4.2× higher than static imagery for Gen Z consumers.',
-            'DTC conversion rate lags category peers by 7 points despite high brand consideration.',
-            'Tier 2/3 markets show high aspiration but 3× lower conversion due to price-to-value gaps.'
-          ],
+          strategicRead:
+            "Nike India's growth brief lands at a sharp moment: 18–34 fitness-led shoppers spend " +
+            "4.2× more time on short-form video than static creative, yet Nike's DTC conversion " +
+            "lags category peers by 7 points despite high brand consideration. The tension is " +
+            "an aspiration-affordability gap — Tier 2/3 markets convert 3× lower because the " +
+            "₹6,000+ entry price doesn't match local wallet. Lean into accessible-premium SKUs " +
+            "and a vertical-video-first creative system rather than translating global campaigns.",
           actions: [
-            'Shift 70% of social budget to vertical short-form video (Reels/Shorts).',
-            'Launch an "Accessible Premium" SKU line targeting the ₹2,000–₹4,000 price band.',
-            'Hyper-target Bangalore and Mumbai pin code clusters with high purchase intent signals.'
+            'Shift 70% of social budget to vertical short-form video (Reels/Shorts) within Q1.',
+            'Launch an "Accessible Premium" SKU line at ₹2,000–₹4,000 in next 90 days.',
+            'Hyper-target Bangalore and Mumbai pin-codes with high purchase-intent signals before festive.'
           ]
         });
       }
@@ -72,59 +74,70 @@ export async function GET(
     const headline = overview.headline || results.executiveSummary?.headline || '';
 
     if (nuggets && (nuggets.keyword || nuggets.helium10 || nuggets.competition || nuggets.cultural || nuggets.trust)) {
-      // ── KEY FINDINGS: pull the most concrete computed facts ─────
-      // Sources in priority order: Keyword Nugget headline + hoverLines[0],
-      // Helium 10 Nugget headline, Competition headline, Trust headline,
-      // Cultural Cues headline. Up to 5 distinct findings.
-      const keyFindings: string[] = [];
-      if (nuggets.keyword?.headline)     keyFindings.push(nuggets.keyword.headline);
-      if (nuggets.helium10?.headline)    keyFindings.push(nuggets.helium10.headline);
-      if (nuggets.competition?.headline) keyFindings.push(nuggets.competition.headline);
-      if (nuggets.trust?.headline)       keyFindings.push(nuggets.trust.headline);
-      if (nuggets.cultural?.headline)    keyFindings.push(nuggets.cultural.headline);
-      // Top-up with the strongest hoverLines if we have <4 findings
-      const allHover: string[] = [
-        ...(nuggets.keyword?.hoverLines  || []),
-        ...(nuggets.helium10?.hoverLines || []),
-        ...(nuggets.competition?.hoverLines || []),
-      ].filter(l => l && !/needs|requires|read these|section/i.test(l));
-      for (const h of allHover) {
-        if (keyFindings.length >= 5) break;
-        if (!keyFindings.some(f => f.toLowerCase().slice(0, 30) === h.toLowerCase().slice(0, 30))) {
-          keyFindings.push(h);
-        }
+      // ── STRATEGIC READ: ONE-paragraph narrative bridge ───────────
+      // Replaces the old "Key Findings" bullet list (which duplicated the
+      // Nuggets rail headlines word-for-word). The Strategic Read is the
+      // ONLY connective tissue on the page — it names the audience
+      // moment, the opportunity, the tension, and the posture.
+      let brief: any = null;
+      if (analysis.brief_id) {
+        const { rows: briefRows } = await db.query(
+          'SELECT * FROM briefs WHERE id = $1',
+          [analysis.brief_id],
+        );
+        brief = briefRows[0] ?? null;
+      }
+      const audienceDescriptor = brief ? [
+        brief.gender,
+        brief.age_ranges,
+        brief.sec && `SEC ${brief.sec}`,
+        brief.geography || brief.market,
+      ].filter(Boolean).join(' · ') : null;
+
+      // Use cached strategicRead if we've generated it before for this row
+      let strategicRead: string = results.executiveSummary?.strategicRead || '';
+      if (!strategicRead) {
+        strategicRead = await generateStrategicRead({
+          brief,
+          nuggets,
+          audienceDescriptor,
+          fallbackTopCards: [...charts]
+            .sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0))
+            .slice(0, 5),
+        });
       }
 
-      // ── ACTIONS: pull from the highest-conviction recommendations
-      //    in the charts[] array, DEDUPED against any text that already
-      //    appears in keyFindings (so the panel doesn't repeat itself). ──
+      // ── NEXT MOVES (actions): pull from highest-conviction recs,
+      //    deduped against each other AND against the strategicRead
+      //    paragraph so we never echo the narrative. ───────────────
       const seenActionStarts = new Set<string>();
       const actions: string[] = [];
       const ranked = [...charts]
         .filter((c: any) => c.rec && (c.conviction ?? 0) >= 75)
         .sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0));
 
+      const readLower = strategicRead.toLowerCase();
       for (const c of ranked) {
-        if (actions.length >= 4) break;
-        // Extract the first sentence of the rec
-        const sent = String(c.rec).trim().split(/(?<=[.!?])\s+/)[0];
+        if (actions.length >= 3) break;
+        // Prefer a labeled directive (CREATIVE: / BRAND: / MEDIA: per
+        // McKinsey-discipline rec format), else first sentence of rec.
+        const labelMatch = String(c.rec).match(/(?:CREATIVE|MEDIA|BRAND|STRATEGY|CHANNEL|EXPERIENCE)\s*[:—]\s*([^\n]+?[.!?])(?=\s|$)/);
+        let sent = labelMatch?.[1]?.trim() || String(c.rec).trim().split(/(?<=[.!?])\s+/)[0];
         if (!sent || sent.length < 20) continue;
-        // Dedup by leading 25 chars
         const head = sent.toLowerCase().slice(0, 25);
         if (seenActionStarts.has(head)) continue;
-        // Skip if action's leading phrase echoes a finding too closely
-        if (keyFindings.some(f => f.toLowerCase().slice(0, 25) === head)) continue;
+        // Skip if action phrase strongly echoes the strategic-read paragraph
+        if (readLower && sent.length > 30 && readLower.includes(sent.toLowerCase().slice(0, 30))) continue;
         seenActionStarts.add(head);
         actions.push(sent.length > 180 ? sent.slice(0, 178) + '…' : sent);
       }
 
       const summary = {
-        headline:    headline || (keyFindings[0] || 'Strategic readout'),
-        keyFindings: keyFindings.slice(0, 5),
-        actions:     actions.slice(0, 4),
+        headline:      headline || 'Strategic readout',
+        strategicRead,
+        actions,
       };
 
-      // Cache for fast subsequent loads
       await db.query(
         `UPDATE analyses
          SET results_json = jsonb_set(results_json, '{executiveSummary}', $1::jsonb)
@@ -136,33 +149,86 @@ export async function GET(
     }
 
     // ── FALLBACK (legacy analyses with no nuggets payload) ──────────
-    if (results.executiveSummary) {
-      // Map old shape { objective, observations, recommendations } to new
-      // { keyFindings, actions } for the updated panel UI.
+    //  Even without nuggets, we still synthesise a Strategic Read paragraph
+    //  using the top-conviction charts as data context. Then attach
+    //  deduped Next Moves from the same charts.
+    if (results.executiveSummary?.strategicRead) {
       const es = results.executiveSummary;
       return NextResponse.json({
-        headline:    es.headline,
-        keyFindings: Array.isArray(es.observations) ? es.observations : [],
-        actions:     Array.isArray(es.recommendations) ? es.recommendations : [],
+        headline:      es.headline,
+        strategicRead: es.strategicRead,
+        actions:       Array.isArray(es.actions) ? es.actions : (es.recommendations || []),
       });
     }
 
-    const context  = analysis.sheet_name || analysis.filename || 'Data Analysis';
-    const toolLabel = meta.toolLabel || meta.domain || 'Analysis Tool';
-    const llmSummary = await generateExecutiveSummary(charts, [], context, toolLabel);
+    // Fetch brief for legacy path too
+    let legacyBrief: any = null;
+    if (analysis.brief_id) {
+      const { rows: briefRows } = await db.query(
+        'SELECT * FROM briefs WHERE id = $1',
+        [analysis.brief_id],
+      );
+      legacyBrief = briefRows[0] ?? null;
+    }
+    const legacyAudience = legacyBrief ? [
+      legacyBrief.gender,
+      legacyBrief.age_ranges,
+      legacyBrief.sec && `SEC ${legacyBrief.sec}`,
+      legacyBrief.geography || legacyBrief.market,
+    ].filter(Boolean).join(' · ') : null;
+
+    const topCards = [...charts]
+      .sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0))
+      .slice(0, 5);
+
+    const strategicRead = await generateStrategicRead({
+      brief: legacyBrief,
+      nuggets: {},  // none on legacy
+      audienceDescriptor: legacyAudience,
+      fallbackTopCards: topCards,
+    });
+
+    // Build actions from top-conviction recs (deduped)
+    const seenLegacyActionStarts = new Set<string>();
+    const legacyActions: string[] = [];
+    const readLowerL = strategicRead.toLowerCase();
+    for (const c of [...charts].sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0))) {
+      if (legacyActions.length >= 3) break;
+      if (!c.rec || (c.conviction ?? 0) < 70) continue;
+      const labelMatch = String(c.rec).match(/(?:CREATIVE|MEDIA|BRAND|STRATEGY|CHANNEL|EXPERIENCE)\s*[:—]\s*([^\n]+?[.!?])(?=\s|$)/);
+      let sent = labelMatch?.[1]?.trim() || String(c.rec).trim().split(/(?<=[.!?])\s+/)[0];
+      if (!sent || sent.length < 20) continue;
+      const head = sent.toLowerCase().slice(0, 25);
+      if (seenLegacyActionStarts.has(head)) continue;
+      if (readLowerL && sent.length > 30 && readLowerL.includes(sent.toLowerCase().slice(0, 30))) continue;
+      seenLegacyActionStarts.add(head);
+      legacyActions.push(sent.length > 180 ? sent.slice(0, 178) + '…' : sent);
+    }
+
+    // If Gemini failed and we have an old cached summary, lift findings from there
+    let legacyHeadline = headline;
+    if (!legacyHeadline && results.executiveSummary?.headline) legacyHeadline = results.executiveSummary.headline;
+    if (!legacyHeadline) {
+      const context = analysis.sheet_name || analysis.filename || 'Data Analysis';
+      const toolLabel = meta.toolLabel || meta.domain || 'Analysis Tool';
+      const llmSummary = await generateExecutiveSummary(charts, [], context, toolLabel);
+      legacyHeadline = llmSummary.headline;
+    }
+
+    const legacySummary = {
+      headline:      legacyHeadline || 'Strategic readout',
+      strategicRead,
+      actions:       legacyActions,
+    };
 
     await db.query(
       `UPDATE analyses
        SET results_json = jsonb_set(results_json, '{executiveSummary}', $1::jsonb)
        WHERE id = $2`,
-      [JSON.stringify(llmSummary), id],
+      [JSON.stringify(legacySummary), id],
     ).catch((err: any) => console.warn('[analysis:summary] cache update failed:', err.message));
 
-    return NextResponse.json({
-      headline:    llmSummary.headline,
-      keyFindings: llmSummary.observations,
-      actions:     llmSummary.recommendations,
-    });
+    return NextResponse.json(legacySummary);
 
   } catch (err: any) {
     console.error('[analysis:summary] failed:', err.message);

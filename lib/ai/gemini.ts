@@ -2135,6 +2135,108 @@ Return ONLY a valid JSON object with these four fields. No markdown, no extra te
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+ * generateStrategicRead — ONE-paragraph narrative synthesis.
+ *
+ * Replaces the old executive-summary "OBSERVATIONS" list with a true
+ * STRATEGIC READ: 3-4 sentences that name the audience moment, state the
+ * single biggest opportunity from the data, identify the central tension,
+ * and end with a posture. This is the only place on the page that gets
+ * the connective tissue — everything else (Nuggets, Strategic Bets, etc.)
+ * is scannable chunks.
+ *
+ * Inputs (grounded in computed truth, not card text):
+ *   - brief             — { brand, category, objective, competitors, ... }
+ *   - nuggets           — results_json.nuggets (computed by synthesize.ts)
+ *   - audienceDescriptor— derived from brief demographics
+ *   - categoryIntel     — { marketValueINR, cagr, ... }
+ *   - fallbackTopCards  — used when nuggets is absent (older analyses)
+ *
+ * Returns: plain-text paragraph. Empty string on any failure (caller decides
+ * whether to hide the block).
+ * ───────────────────────────────────────────────────────────────────── */
+export async function generateStrategicRead(opts: {
+  brief?: any;
+  nuggets?: any;
+  audienceDescriptor?: string | null;
+  categoryIntel?: any;
+  fallbackTopCards?: any[];
+}): Promise<string> {
+  const genAI = await getGenAI();
+  if (!genAI) return '';
+
+  const brief = opts.brief || {};
+  const nuggets = opts.nuggets || {};
+
+  // ── Build grounding block ──────────────────────────────────────
+  const briefBlock = [
+    brief.brand && `Brand: ${brief.brand}`,
+    brief.category && `Category: ${brief.category}`,
+    brief.objective && `Objective: ${brief.objective}`,
+    opts.audienceDescriptor && `Audience: ${opts.audienceDescriptor}`,
+    (brief.geography || brief.market) && `Market: ${brief.geography || brief.market}`,
+    brief.competitors && `Competitors: ${brief.competitors}`,
+    opts.categoryIntel?.marketValueINR && `Category value: ${opts.categoryIntel.marketValueINR}${opts.categoryIntel.cagr ? ` · ${opts.categoryIntel.cagr} CAGR` : ''}`,
+  ].filter(Boolean).join(' · ') || 'No brief provided';
+
+  const dataLines: string[] = [];
+  if (nuggets.keyword?.headline)     dataLines.push(`Search: ${nuggets.keyword.headline}`);
+  if (nuggets.helium10?.headline)    dataLines.push(`Shelf: ${nuggets.helium10.headline}`);
+  if (nuggets.competition?.headline) dataLines.push(`Competition: ${nuggets.competition.headline}`);
+  if (nuggets.cultural?.headline)    dataLines.push(`Cultural: ${nuggets.cultural.headline}`);
+  if (nuggets.trust?.headline)       dataLines.push(`Trust: ${nuggets.trust.headline}`);
+
+  // Backstop: when no nuggets are present, pull the top conviction findings
+  // from the analysis cards (older analyses pre-dating synthesize.ts).
+  if (dataLines.length === 0 && Array.isArray(opts.fallbackTopCards)) {
+    opts.fallbackTopCards.slice(0, 5).forEach(c => {
+      if (c?.title || c?.stat) dataLines.push(`${c.bucket ? c.bucket.toUpperCase() : 'Finding'}: ${c.title || c.stat}`);
+    });
+  }
+
+  if (dataLines.length === 0) return '';
+
+  const prompt = `You are a senior brand strategist writing the STRATEGIC READ paragraph for the brief team.
+
+BRIEF: ${briefBlock}
+
+WHAT THE DATA SHOWS (computed from raw rows — every number here is verified):
+${dataLines.join('\n')}
+
+${STORYTELLING_DISCIPLINE}
+
+Write ONE paragraph (3-4 sentences) that:
+
+1. Opens with the BRAND name and the brief moment. NAME the audience or the market posture in this sentence.
+2. States the SINGLE biggest thing the data shows about the category opportunity — cite at least one specific number from the data above.
+3. Identifies the SINGLE biggest tension the brand must resolve next — cite a specific data point.
+4. Ends with the strategic posture: where to lean (value, innovation, distribution, premium, regional, partnership, etc.).
+
+RULES:
+- Plain English, short sentences, active voice.
+- Specific numbers ONLY from the data above — NEVER invent figures.
+- ONE flowing paragraph. NO bullets. NO headers. NO sub-points. NO line breaks.
+- 90-130 words.
+
+Return ONLY the paragraph text. No labels, no quotation marks.`;
+
+  try {
+    const result = await callGeminiWithRetry(genAI, prompt);
+    const raw = result?.response?.text?.()?.trim() ?? '';
+    // Strip any rogue markdown/quote wrappers
+    const cleaned = raw
+      .replace(/^```(?:\w+)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .replace(/^["'""]/, '')
+      .replace(/["'""]$/, '')
+      .trim();
+    return cleaned;
+  } catch (err) {
+    console.error('[Gemini] generateStrategicRead failed:', (err as Error).message);
+    return '';
+  }
+}
+
 // ── Fallback helpers (used when Gemini 2.5 is unavailable) ────
 
 export interface ChartSpecInput {
