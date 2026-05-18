@@ -94,6 +94,14 @@ export async function GET(
         brief.geography || brief.market,
       ].filter(Boolean).join(' · ') : null;
 
+      // Build top-fact-per-bucket from ALL uploaded sheets. This is what
+      // feeds the multi-source rule in the strategic-read prompt — without
+      // it, Gemini only sees the keyword+shelf nuggets and ignores GWI,
+      // social listening, PPTX, etc.
+      const allBucketCards = [...charts]
+        .filter((c: any) => c.bucket && (c.title || c.stat))
+        .sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0));
+
       // Use cached strategicRead if we've generated it before for this row
       let strategicRead: string = results.executiveSummary?.strategicRead || '';
       if (!strategicRead) {
@@ -101,32 +109,45 @@ export async function GET(
           brief,
           nuggets,
           audienceDescriptor,
-          fallbackTopCards: [...charts]
-            .sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0))
-            .slice(0, 5),
+          allBucketCards,
+          fallbackTopCards: allBucketCards.slice(0, 5),
         });
       }
 
-      // ── NEXT MOVES (actions): pull from highest-conviction recs,
-      //    deduped against each other AND against the strategicRead
-      //    paragraph so we never echo the narrative. ───────────────
+      // ── NEXT MOVES (actions): BUCKET-DIVERSE selection ──────────
+      // Pull from highest-conviction recs (>=75) but enforce ONE action
+      // per bucket so 3 actions cover 3 different angles (e.g. one media,
+      // one creative, one commerce — not 3 commerce). Also deduped against
+      // each other AND against the strategicRead paragraph.
       const seenActionStarts = new Set<string>();
+      const seenBuckets = new Set<string>();
       const actions: string[] = [];
-      const ranked = [...charts]
-        .filter((c: any) => c.rec && (c.conviction ?? 0) >= 75)
-        .sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0));
+      const ranked = allBucketCards.filter((c: any) => c.rec && (c.conviction ?? 0) >= 75);
 
       const readLower = strategicRead.toLowerCase();
+      // Pass 1: bucket-unique. Pass 2: top up any remaining slots.
       for (const c of ranked) {
         if (actions.length >= 3) break;
-        // Prefer a labeled directive (CREATIVE: / BRAND: / MEDIA: per
-        // McKinsey-discipline rec format), else first sentence of rec.
+        const bucket = String(c.bucket || '').toLowerCase();
+        if (seenBuckets.has(bucket)) continue;
         const labelMatch = String(c.rec).match(/(?:CREATIVE|MEDIA|BRAND|STRATEGY|CHANNEL|EXPERIENCE)\s*[:—]\s*([^\n]+?[.!?])(?=\s|$)/);
         let sent = labelMatch?.[1]?.trim() || String(c.rec).trim().split(/(?<=[.!?])\s+/)[0];
         if (!sent || sent.length < 20) continue;
         const head = sent.toLowerCase().slice(0, 25);
         if (seenActionStarts.has(head)) continue;
-        // Skip if action phrase strongly echoes the strategic-read paragraph
+        if (readLower && sent.length > 30 && readLower.includes(sent.toLowerCase().slice(0, 30))) continue;
+        seenActionStarts.add(head);
+        seenBuckets.add(bucket);
+        actions.push(sent.length > 180 ? sent.slice(0, 178) + '…' : sent);
+      }
+      // Pass 2: top up if we under-filled (small analyses with <3 distinct buckets)
+      for (const c of ranked) {
+        if (actions.length >= 3) break;
+        const labelMatch = String(c.rec).match(/(?:CREATIVE|MEDIA|BRAND|STRATEGY|CHANNEL|EXPERIENCE)\s*[:—]\s*([^\n]+?[.!?])(?=\s|$)/);
+        let sent = labelMatch?.[1]?.trim() || String(c.rec).trim().split(/(?<=[.!?])\s+/)[0];
+        if (!sent || sent.length < 20) continue;
+        const head = sent.toLowerCase().slice(0, 25);
+        if (seenActionStarts.has(head)) continue;
         if (readLower && sent.length > 30 && readLower.includes(sent.toLowerCase().slice(0, 30))) continue;
         seenActionStarts.add(head);
         actions.push(sent.length > 180 ? sent.slice(0, 178) + '…' : sent);
@@ -185,16 +206,37 @@ export async function GET(
       brief: legacyBrief,
       nuggets: {},  // none on legacy
       audienceDescriptor: legacyAudience,
+      allBucketCards: [...charts].sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0)),
       fallbackTopCards: topCards,
     });
 
-    // Build actions from top-conviction recs (deduped)
+    // Build actions from top-conviction recs — bucket-diverse across uploaded sheets
     const seenLegacyActionStarts = new Set<string>();
+    const seenLegacyBuckets = new Set<string>();
     const legacyActions: string[] = [];
     const readLowerL = strategicRead.toLowerCase();
-    for (const c of [...charts].sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0))) {
+    const rankedLegacy = [...charts]
+      .filter((c: any) => c.rec && (c.conviction ?? 0) >= 70)
+      .sort((a: any, b: any) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0));
+
+    // Pass 1 — one per bucket
+    for (const c of rankedLegacy) {
       if (legacyActions.length >= 3) break;
-      if (!c.rec || (c.conviction ?? 0) < 70) continue;
+      const bucket = String(c.bucket || '').toLowerCase();
+      if (seenLegacyBuckets.has(bucket)) continue;
+      const labelMatch = String(c.rec).match(/(?:CREATIVE|MEDIA|BRAND|STRATEGY|CHANNEL|EXPERIENCE)\s*[:—]\s*([^\n]+?[.!?])(?=\s|$)/);
+      let sent = labelMatch?.[1]?.trim() || String(c.rec).trim().split(/(?<=[.!?])\s+/)[0];
+      if (!sent || sent.length < 20) continue;
+      const head = sent.toLowerCase().slice(0, 25);
+      if (seenLegacyActionStarts.has(head)) continue;
+      if (readLowerL && sent.length > 30 && readLowerL.includes(sent.toLowerCase().slice(0, 30))) continue;
+      seenLegacyActionStarts.add(head);
+      seenLegacyBuckets.add(bucket);
+      legacyActions.push(sent.length > 180 ? sent.slice(0, 178) + '…' : sent);
+    }
+    // Pass 2 — top up if under-filled
+    for (const c of rankedLegacy) {
+      if (legacyActions.length >= 3) break;
       const labelMatch = String(c.rec).match(/(?:CREATIVE|MEDIA|BRAND|STRATEGY|CHANNEL|EXPERIENCE)\s*[:—]\s*([^\n]+?[.!?])(?=\s|$)/);
       let sent = labelMatch?.[1]?.trim() || String(c.rec).trim().split(/(?<=[.!?])\s+/)[0];
       if (!sent || sent.length < 20) continue;

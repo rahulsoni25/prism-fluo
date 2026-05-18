@@ -2163,6 +2163,10 @@ export async function generateStrategicRead(opts: {
   audienceDescriptor?: string | null;
   categoryIntel?: any;
   fallbackTopCards?: any[];
+  /** Cards spanning ALL uploaded sheets, across ALL buckets. The synthesis
+   *  must pull from every relevant bucket — not just the keyword/shelf
+   *  slots that nuggets covers. Passed in by the summary route. */
+  allBucketCards?: any[];
 }): Promise<string> {
   const brief = opts.brief || {};
   const nuggets = opts.nuggets || {};
@@ -2178,19 +2182,49 @@ export async function generateStrategicRead(opts: {
     opts.categoryIntel?.marketValueINR && `Category value: ${opts.categoryIntel.marketValueINR}${opts.categoryIntel.cagr ? ` · ${opts.categoryIntel.cagr} CAGR` : ''}`,
   ].filter(Boolean).join(' · ') || 'No brief provided';
 
+  // ── Computed nuggets (deterministic facts) ───────────────────────
   const dataLines: string[] = [];
   if (nuggets.keyword?.headline)     dataLines.push(`Search: ${nuggets.keyword.headline}`);
   if (nuggets.helium10?.headline)    dataLines.push(`Shelf: ${nuggets.helium10.headline}`);
   if (nuggets.competition?.headline) dataLines.push(`Competition: ${nuggets.competition.headline}`);
   if (nuggets.cultural?.headline)    dataLines.push(`Cultural: ${nuggets.cultural.headline}`);
   if (nuggets.trust?.headline)       dataLines.push(`Trust: ${nuggets.trust.headline}`);
-  if (dataLines.length === 0 && Array.isArray(opts.fallbackTopCards)) {
+
+  // ── Bucket-diverse signals from ALL uploaded sheets ──────────
+  // Pull TOP card per bucket so the paragraph reflects every source: GWI
+  // audience signals → 'culture'/'communication' buckets, social listening →
+  // 'communication', Helium10 → 'commerce'/'pricing', keyword → 'search', etc.
+  // This is what closes the "synthesis only saw 2 files" gap.
+  const bucketFacts: string[] = [];
+  if (Array.isArray(opts.allBucketCards) && opts.allBucketCards.length > 0) {
+    const byBucket: Record<string, any[]> = {};
+    opts.allBucketCards.forEach(c => {
+      const b = String(c?.bucket || '').toLowerCase();
+      if (!b) return;
+      if (!byBucket[b]) byBucket[b] = [];
+      byBucket[b].push(c);
+    });
+    // Order buckets so the prompt sees the FULL spectrum, leading with the
+    // ones nuggets DON'T cover (so Gemini has a chance to use them).
+    const BUCKET_ORDER = ['communication', 'culture', 'channel', 'media', 'creative', 'content', 'commerce', 'pricing', 'search'];
+    BUCKET_ORDER.forEach(b => {
+      const cards = byBucket[b];
+      if (cards && cards.length > 0) {
+        const top = cards.sort((a, b) => (Number(b.conviction) || 0) - (Number(a.conviction) || 0))[0];
+        const fact = (top.stat && String(top.stat).trim()) || (top.title && String(top.title).trim());
+        if (fact) bucketFacts.push(`${b.toUpperCase()}: ${fact}${top.toolLabel ? ` [${top.toolLabel}]` : ''}`);
+      }
+    });
+  }
+
+  // Older-analysis backstop (used when neither nuggets nor allBucketCards present)
+  if (dataLines.length === 0 && bucketFacts.length === 0 && Array.isArray(opts.fallbackTopCards)) {
     opts.fallbackTopCards.slice(0, 5).forEach(c => {
       if (c?.title || c?.stat) dataLines.push(`${c.bucket ? c.bucket.toUpperCase() : 'Finding'}: ${c.title || c.stat}`);
     });
   }
 
-  if (dataLines.length === 0) return '';
+  if (dataLines.length === 0 && bucketFacts.length === 0) return '';
 
   /* ── (1) Pick opener style deterministically from brief identity.
         Same brand+objective → same style → same Gemini output for caching.
@@ -2220,12 +2254,17 @@ export async function generateStrategicRead(opts: {
   ];
 
   if (genAI) {
+    const computedBlock = dataLines.length > 0
+      ? `\n━━ COMPUTED DATA POINTS (deterministic — never invent these numbers) ━━\n${dataLines.join('\n')}`
+      : '';
+    const bucketBlock = bucketFacts.length > 0
+      ? `\n━━ SIGNALS ACROSS ALL UPLOADED SHEETS (top fact per bucket) ━━\n${bucketFacts.join('\n')}`
+      : '';
+
     const prompt = `You are a senior brand strategist writing the STRATEGIC READ paragraph for the brief team.
 
 BRIEF: ${briefBlock}
-
-WHAT THE DATA SHOWS (computed from raw rows — every number here is verified):
-${dataLines.join('\n')}
+${computedBlock}${bucketBlock}
 
 ${STORYTELLING_DISCIPLINE}
 
@@ -2235,9 +2274,12 @@ Instruction: ${opener.instruction}
 
 ━━ STRUCTURE (3-4 sentences total) ━━
 S1. The opener (above).
-S2. The biggest opportunity the data reveals — cite at least ONE specific number from the WHAT THE DATA SHOWS block.
-S3. The biggest unresolved tension — cite a different specific number.
+S2. The biggest opportunity the data reveals — cite at least ONE specific number from the blocks above.
+S3. The biggest unresolved tension — cite a different specific number FROM A DIFFERENT BUCKET / sheet than S2.
 S4. The strategic stance — what to bet on (value / innovation / distribution / premium / regional / partnership / sampling / demo-led). ONE concrete posture, not a list.
+
+━━ MULTI-SOURCE RULE ━━
+If you have signals from more than ONE bucket above (e.g. SEARCH + CULTURE, or COMMERCE + COMMUNICATION), the paragraph MUST cite findings from AT LEAST TWO different buckets. Don't lean on one source.
 
 ━━ HARD ANTI-REPETITION RULES (BANNED PHRASES) ━━
 You may NOT use ANY of the following phrases (they appear too often across analyses):
@@ -2247,7 +2289,7 @@ Also banned (from storytelling discipline): leverage, ecosystem, synergy, robust
 ━━ HARD RULES ━━
 - ONE flowing paragraph. NO bullets, NO headers, NO line breaks, NO labels.
 - 90-130 words.
-- Specific numbers ONLY from the WHAT THE DATA SHOWS block — NEVER invent figures.
+- Specific numbers ONLY from the data blocks above — NEVER invent figures.
 - Mention the brand name at least twice (first sentence + somewhere in S3 or S4).
 - Avoid starting two consecutive sentences with the same word.
 
