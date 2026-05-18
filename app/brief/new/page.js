@@ -40,6 +40,22 @@ function NewBriefInner() {
 
   const markDirty = () => setIsDirty(true);
 
+  // Native beforeunload — fires when the user closes the tab / navigates
+  // browser back / reloads while there are unsaved changes.
+  useEffect(() => {
+    if (!isDirty) return;
+    const h = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, [isDirty]);
+
+  // Confirmed cancel — for the Cancel button + back-to-dashboard link in
+  // edit mode. In create mode this is a no-op (no destination).
+  const safeCancel = () => {
+    if (isDirty && !window.confirm('Discard your changes?')) return;
+    router.push('/dashboard');
+  };
+
   const toggleItem = (list, setList, item) => {
     markDirty();
     setList(list.includes(item) ? list.filter(i => i !== item) : [...list, item]);
@@ -146,7 +162,7 @@ function NewBriefInner() {
       <Navbar />
       <div className="main">
         <div className="container">
-          <button className="back-btn" onClick={() => router.push('/dashboard')}>← Back to Dashboard</button>
+          <button className="back-btn" onClick={safeCancel}>← Back to Dashboard</button>
           <div className="page-header">
             <div>
               <div className="page-title">{isEditMode ? 'Edit Brief' : 'New Insights Brief'}</div>
@@ -340,7 +356,7 @@ function NewBriefInner() {
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 {isEditMode ? (
                   <>
-                    <button className="btn btn-outline" style={{ flex: 1 }} disabled={submitting} onClick={() => router.push('/dashboard')}>
+                    <button className="btn btn-outline" style={{ flex: 1 }} disabled={submitting} onClick={safeCancel}>
                       Cancel
                     </button>
                     <button className="btn btn-primary" style={{ flex: 2, justifyContent: 'center' }} disabled={submitting} onClick={() => submitBrief()}>
@@ -349,11 +365,28 @@ function NewBriefInner() {
                   </>
                 ) : (
                   <>
-                    <button className="btn btn-outline" style={{ flex: 1 }} disabled={submitting} onClick={() => submitBrief('draft')}>
-                      Save as Draft
-                    </button>
-                    <button className="btn btn-primary" style={{ flex: 2, justifyContent: 'center' }} disabled={submitting} onClick={() => submitBrief('processing')}>
+                    {/* Primary CTA dominates — Save as Draft is a small text
+                        link, demoted per UX audit. */}
+                    <button
+                      className="btn btn-primary"
+                      style={{ flex: 1, justifyContent: 'center', fontSize: 15, padding: '14px 24px' }}
+                      disabled={submitting}
+                      onClick={() => submitBrief('processing')}
+                    >
                       {submitting ? 'Submitting…' : 'Submit Brief & Start Mining →'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => submitBrief('draft')}
+                      style={{
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        color: '#64748B', fontSize: 13, fontWeight: 600,
+                        textDecoration: 'underline', padding: '0 14px',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      Save as Draft
                     </button>
                   </>
                 )}
@@ -445,8 +478,8 @@ function NewBriefInner() {
               </div>
               <div className="sla-card">
                 <div className="sidebar-title">Delivery SLA</div>
-                <div className="sla-val">24 hrs</div>
-                <div className="sla-sub">You'll be notified when insights are ready</div>
+                <div className="sla-val" style={{ fontSize: 22 }}>Set on upload</div>
+                <div className="sla-sub">SLA is locked in after you upload data files — typically 4–24 hours depending on dataset size.</div>
               </div>
             </div>
           </div>

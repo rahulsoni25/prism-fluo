@@ -6,6 +6,10 @@ import Navbar from '@/components/Navbar';
 import Copilot from '@/components/Copilot';
 import ClientBriefContext from '@/components/insights/ClientBriefContext';
 import ConfidenceBadge from '@/components/insights/ConfidenceBadge';
+import AnimatedCard from '@/components/insights/AnimatedCard';
+import SlaStrip from '@/components/insights/SlaStrip';
+import ToolsUsedPanel from '@/components/insights/ToolsUsedPanel';
+import SourceFilesPanel from '@/components/insights/SourceFilesPanel';
 import {
   BUCKET_META, BUCKET_TABS,
   SOURCE_BADGE_MAP, DOMAIN_TO_BUCKET,
@@ -1486,204 +1490,15 @@ function NuggetsRail({ analysis, charts, sourceBadge, audienceDescriptor, catego
   );
 }
 
-function SlaStrip({ brief }) {
-  const planned = brief.sla_due_at ? new Date(brief.sla_due_at) : null;
-  const actual  = brief.actual_completed_at ? new Date(brief.actual_completed_at) : null;
-  let delta = null;
-  if (planned && actual) {
-    const diffH = (actual.getTime() - planned.getTime()) / 36e5;
-    if (Math.abs(diffH) >= 0.05) {
-      delta = diffH < 0
-        ? `${Math.abs(diffH).toFixed(diffH < -1 ? 0 : 1)}h ahead of plan`
-        : `${diffH.toFixed(diffH > 1 ? 0 : 1)}h behind plan`;
-    } else {
-      delta = 'on time';
-    }
-  }
-  const tone = delta?.includes('ahead') ? '#10B981'
-            : delta?.includes('behind') ? '#F59E0B' : '#A78BFA';
-  return (
-    <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 14, fontSize: 11, color: 'rgba(255,255,255,0.78)' }}>
-      <span>📅 <strong style={{ color: '#fff' }}>Planned:</strong> {fmtTs(planned)}</span>
-      {actual && <span>✅ <strong style={{ color: '#fff' }}>Actual:</strong> {fmtTs(actual)}</span>}
-      {delta && (
-        <span style={{ color: tone, fontWeight: 600 }}>
-          {delta === 'on time' ? '✓ On time' : `↳ ${delta}`}
-        </span>
-      )}
-    </div>
-  );
-}
+// SlaStrip moved to components/insights/SlaStrip.js
 
-/**
- * Tools-used panel — shows the platforms that contributed (or could
- * contribute) to a brief. We use the source labels actually present on
- * the loaded charts to mark each platform "used" vs "available".
- */
-function ToolsUsedPanel({ charts }) {
-  const used = new Set(
-    (charts || [])
-      .map(c => (c.toolLabel || c.source || '').toString().toLowerCase())
-      .filter(Boolean),
-  );
-  const isUsed = (p) => {
-    const n = p.name.toLowerCase();
-    return [...used].some(u =>
-      n.includes(u) || u.includes(n) ||
-      (n.includes('gwi') && u.includes('gwi')) ||
-      (n.includes('helium') && u.includes('helium')) ||
-      (n.includes('keyword') && u.includes('keyword')) ||
-      (n.includes('trends') && u.includes('trend')) ||
-      (n.includes('brandwatch') && u.includes('brandwatch')),
-    );
-  };
-  return (
-    <div style={{
-      marginTop: 28, background: '#fff', borderRadius: 14,
-      padding: '20px 22px', boxShadow: 'var(--shadow)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>🛠 Tools used</div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-            Platforms that contributed (or are available to contribute) to this brief.
-          </div>
-        </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
-        {PLATFORMS_DATA.map(p => {
-          const u = isUsed(p);
-          return (
-            <div key={p.name} style={{
-              padding: '10px 12px',
-              border: `1px solid ${u ? '#A7F3D0' : '#E5E7EB'}`,
-              background: u ? '#ECFDF5' : '#F9FAFB',
-              borderRadius: 10,
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}>
-              <div style={{ fontSize: 18 }}>{p.icon}</div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{p.name}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {p.desc}
-                </div>
-              </div>
-              <span style={{
-                fontSize: 9.5, fontWeight: 700, padding: '3px 7px', borderRadius: 999,
-                background: u ? '#10B981' : '#E5E7EB',
-                color: u ? '#fff' : '#6B7280',
-                whiteSpace: 'nowrap',
-              }}>{u ? 'USED' : 'AVAILABLE'}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+// ToolsUsedPanel moved to components/insights/ToolsUsedPanel.js
 
 // ClientBriefContext is imported from components/insights/ClientBriefContext.js
 // (first slice of the app/insights/page.js split refactor).
 
 
-/**
- * Source-files panel — accordion pattern.
- * Collapsed by default; click the header to reveal the scrollable file list.
- * Loads its own data via /api/briefs/[id]/files. Renders nothing while
- * loading or when the analysis has no brief link.
- */
-function SourceFilesPanel({ briefId }) {
-  const [files,    setFiles]    = useState(null);
-  const [error,    setError]    = useState(null);
-  const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    if (!briefId) return;
-    let cancelled = false;
-    fetch(`/api/briefs/${briefId}/files`)
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => { if (!cancelled) setFiles(Array.isArray(d) ? d : []); })
-      .catch(err => { if (!cancelled) setError(err.message); });
-    return () => { cancelled = true; };
-  }, [briefId]);
-
-  if (!briefId || error || !Array.isArray(files) || files.length === 0) return null;
-
-  const fmtTs = (ts) => new Date(ts).toLocaleString(undefined, {
-    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-  });
-
-  return (
-    <div style={{
-      marginTop: 22, background: '#fff', borderRadius: 14,
-      boxShadow: 'var(--shadow)', overflow: 'hidden',
-    }}>
-      {/* ── Accordion header — always visible, click to toggle ── */}
-      <button
-        onClick={() => setExpanded(e => !e)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', gap: 12,
-          padding: '16px 22px', background: 'none', border: 'none',
-          cursor: 'pointer', textAlign: 'left',
-          borderBottom: expanded ? '1px solid #F1F5F9' : 'none',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 16 }}>📂</span>
-          <div>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111827' }}>
-              Source Files
-              <span style={{
-                marginLeft: 8, fontSize: 11, fontWeight: 600,
-                background: '#EEF2FF', color: '#4F46E5',
-                padding: '1px 7px', borderRadius: 20,
-              }}>{files.length}</span>
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>
-              {expanded ? 'Click to collapse' : 'Click to view files used to generate these insights'}
-            </div>
-          </div>
-        </div>
-        {/* Chevron icon — rotates when expanded */}
-        <svg
-          width="16" height="16" viewBox="0 0 16 16" fill="none"
-          style={{ flexShrink: 0, transition: 'transform 0.22s ease', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
-        >
-          <path d="M4 6l4 4 4-4" stroke="#9CA3AF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </button>
-
-      {/* ── Accordion body — scrollable file list ── */}
-      {expanded && (
-        <div style={{
-          maxHeight: 280, overflowY: 'auto', padding: '12px 16px 16px',
-          display: 'flex', flexDirection: 'column', gap: 7,
-        }}>
-          {files.map(f => (
-            <div key={f.id} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 12px',
-              border: '1px solid #E5E7EB', borderRadius: 10,
-              background: '#F9FAFB',
-            }}>
-              <div style={{ fontSize: 16 }}>📄</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {f.filename || '(unnamed file)'}
-                </div>
-                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 1 }}>
-                  {f.sheet_count ? `${f.sheet_count} sheet${f.sheet_count !== 1 ? 's' : ''} · ` : ''}
-                  Uploaded {fmtTs(f.created_at)}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// SourceFilesPanel moved to components/insights/SourceFilesPanel.js
 
 function timeAgo(ts) {
   const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
@@ -1694,50 +1509,7 @@ function timeAgo(ts) {
 
 // BUCKET_META, BUCKET_TABS, FLOAT_PHASE moved to lib/insights/buckets.js
 
-function AnimatedCard({ index, bucketCls, children }) {
-  const ref    = useRef(null);
-  const [shown, setShown] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    // Fallback: if IntersectionObserver unavailable (old browser / SSR), show immediately
-    if (!el || typeof IntersectionObserver === 'undefined') { setShown(true); return; }
-
-    const io = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setShown(true); io.disconnect(); } },
-      // rootMargin: reveal cards 80px before they fully enter the viewport (smoother feel)
-      { threshold: 0.06, rootMargin: '0px 0px 80px 0px' },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);  // empty deps → runs once per mount; re-mounts on key change auto-resets
-
-  // .insight-card runs TWO animations: fadeInUp then float-card.
-  // animation-delay accepts comma-separated values — one per animation.
-  // Inline style must supply BOTH values, otherwise CSS repeats the single
-  // value for both and the float phase offset is wrong.
-  const fadeDelay  = index * 0.08;                       // staggered entry
-  const floatDelay = FLOAT_PHASE[index % FLOAT_PHASE.length]; // float phase offset
-
-  return (
-    <div
-      ref={ref}
-      className={`insight-card ${bucketCls}`}
-      style={
-        shown
-          ? { animationDelay: `${fadeDelay}s, ${floatDelay}s` }
-          : { animation: 'none', opacity: 0, transform: 'translateY(12px)', minHeight: 260 }
-      }
-    >
-      {/* Only mount children (incl. Chart.js) once card is visible.
-          This ensures the 900 ms Chart.js draw animation plays in-view,
-          not while the card is still invisible (opacity:0).
-          minHeight above prevents the empty card from collapsing to 0px,
-          which would make all cards appear "in viewport" at once. */}
-      {shown ? children : null}
-    </div>
-  );
-}
+// AnimatedCard moved to components/insights/AnimatedCard.js
 
 /* ─── chart dispatcher for demo insights ─── */
 function InsightChart({ ins }) {
