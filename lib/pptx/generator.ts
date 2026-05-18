@@ -164,78 +164,97 @@ function footer(s: any, no: number, brief: string, dark = false, lineColor = 'E2
     { fontSize: 7.5, color: c, fontFace: FB, align: 'right' });
 }
 
-// ─── Slide 1: Cover (enriched per Tier 1 D) ─────────────────────────────────
+// ─── Slide 1: Cover (designer redesign — visual pass 1) ─────────────────────
+// Composition: asymmetric. Left 2/3 = type-driven hero (eyebrow → big
+// headline → byline). Right 1/3 = data context column (flavour badge,
+// category badge, audience badge, source badge stacked vertically).
+// Whitespace-forward. No emoji on the cover.
 function slideCover(prs: any, d: PresentationData, p: Palette) {
   const s = prs.addSlide();
-  s.background = { color: p.dark };
+  s.background = { color: 'FAFAFA' };  // soft off-white background
 
-  // Left sidebar band
-  r(s, 0, 0, 0.20, H, p.mid);
+  // ── Left column — type-driven hero ─────────────────────────────────
+  const heroX = 0.70;
+  const heroW = W * 0.62;
 
-  // Top-right accent block
-  r(s, W - 2.0, 0, 2.0, 1.4, p.pri);
+  // Top accent — thin coloured strip, full width
+  r(s, 0, 0, W, 0.08, p.pri);
 
-  // Bottom accent bar
-  r(s, 0, H - 0.20, W, 0.20, p.acc);
+  // Brand tag (small label in top-left)
+  t(s, 'PRISM · INSIGHTS REPORT', heroX, 0.50, 4, 0.22,
+    { fontSize: 8.5, color: '64748B', fontFace: FB, bold: true, charSpacing: 3.5 });
 
-  // Deck type label
-  t(s, 'PRISM INSIGHTS REPORT', ML + 0.25, 2.0, 9, 0.28,
-    { fontSize: 10, color: p.acc, fontFace: FB, bold: true, charSpacing: 3.5 });
-
-  // Headline
-  t(s, d.headline || 'Strategic Insights', ML + 0.25, 2.45, CW - 2.2, 2.1,
-    { fontSize: 40, color: 'FFFFFF', fontFace: FH, bold: true, lineSpacingMultiple: 1.1 });
-
-  // Divider
-  ln(s, ML + 0.25, 4.72, 2.0, p.pri, 1.5);
-
-  // Brief name + date
-  t(s, d.briefName || 'Analysis Report', ML + 0.25, 4.90, CW - 1, 0.42,
-    { fontSize: 15, color: 'FFFFFF', fontFace: FH, bold: true });
-  t(s, d.date || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-    ML + 0.25, 5.40, 5, 0.28,
-    { fontSize: 10, color: p.tl, fontFace: FB });
-
-  // ── Tier 1 D: enrichment — audience + category context strip ──
-  const contextStripY = 5.80;
-  const chips: { label: string; value: string }[] = [];
-  if (d.audienceDescriptor) chips.push({ label: 'AUDIENCE', value: d.audienceDescriptor });
-  if (d.categoryValue)      chips.push({ label: 'CATEGORY VALUE', value: `${d.categoryValue}${d.categoryCAGR ? ' · ' + d.categoryCAGR + ' CAGR' : ''}` });
-  if (d.sourceCount)        chips.push({ label: 'SOURCES', value: `${d.sourceCount} file${d.sourceCount > 1 ? 's' : ''} analysed` });
-
-  if (chips.length > 0) {
-    const chipW = Math.min(3.7, (CW - 0.5) / chips.length);
-    chips.forEach((chip, i) => {
-      const cx = ML + 0.25 + i * (chipW + 0.18);
-      t(s, chip.label, cx, contextStripY, chipW, 0.20,
-        { fontSize: 7.5, color: p.acc, fontFace: FB, bold: true, charSpacing: 2.5 });
-      t(s, chip.value, cx, contextStripY + 0.22, chipW, 0.30,
-        { fontSize: 11, color: 'FFFFFF', fontFace: FB, bold: true });
-    });
+  // Brand name in small caps under the tag (if present)
+  if (d.brand) {
+    t(s, d.brand.toUpperCase(), heroX, 0.80, heroW, 0.32,
+      { fontSize: 14, color: '0F172A', fontFace: FB, bold: true, charSpacing: 2 });
   }
 
-  // Brief flavour badge in top-right (LAUNCH / DEFEND / GROW)
+  // Big headline — the only thing that should grab the eye
+  const headlineText = d.headline || 'Strategic Insights';
+  const headlineSize = headlineText.length > 90 ? 32 : headlineText.length > 60 ? 38 : 46;
+  t(s, headlineText, heroX, 1.85, heroW, 3.6,
+    { fontSize: headlineSize, color: '0F172A', fontFace: FH, bold: true, lineSpacingMultiple: 1.12, valign: 'top' });
+
+  // Subtle divider
+  ln(s, heroX, 5.85, 1.4, p.pri, 2.0);
+
+  // Byline — brief name + date
+  t(s, (d.briefName || 'Analysis Report'), heroX, 6.05, heroW, 0.30,
+    { fontSize: 12.5, color: '334155', fontFace: FB, bold: true });
+  const dateStr = d.date || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  t(s, dateStr, heroX, 6.42, heroW, 0.24,
+    { fontSize: 10, color: '94A3B8', fontFace: FB });
+
+  // ── Right column — context badges stacked vertically ──────────────
+  const rightX = W - 4.10;
+  const rightW = 3.40;
+
+  // Flavour badge — bold, colour-coded, sits at top
   if (d.briefFlavour) {
-    const badgeBg = { LAUNCH: '10B981', DEFEND: 'EF4444', GROW: 'F59E0B' }[d.briefFlavour] || p.pri;
-    r(s, W - 1.85, 1.75, 1.55, 0.42, badgeBg);
-    t(s, d.briefFlavour, W - 1.85, 1.82, 1.55, 0.28,
-      { fontSize: 13, color: 'FFFFFF', fontFace: FH, bold: true, align: 'center', charSpacing: 4 });
+    const flavourBg = { LAUNCH: '10B981', DEFEND: 'EF4444', GROW: 'F59E0B' }[d.briefFlavour] || p.pri;
+    r(s, rightX, 0.55, rightW, 0.62, flavourBg);
+    t(s, `${d.briefFlavour} BRIEF`, rightX, 0.72, rightW, 0.30,
+      { fontSize: 14, color: 'FFFFFF', fontFace: FH, bold: true, align: 'center', charSpacing: 4 });
   }
 
-  // Pillar labels in bottom strip area
-  const pKeys = PILLAR_ORDER;
-  const pw = CW / pKeys.length;
-  pKeys.forEach((key, i) => {
-    const pm = PILLARS[key];
-    t(s, `${pm.icon} ${pm.label.toUpperCase()}`, ML + 0.25 + i * pw, 6.62, pw, 0.28,
-      { fontSize: 9, color: p.tl, fontFace: FB, charSpacing: 0.8 });
+  // Context cards — stacked vertically below the flavour badge
+  type CtxCard = { eyebrow: string; value: string; sub?: string; color: string };
+  const ctxCards: CtxCard[] = [];
+  if (d.audienceDescriptor) ctxCards.push({ eyebrow: 'AUDIENCE',  value: d.audienceDescriptor, color: '0891B2' });
+  if (d.categoryValue)      ctxCards.push({ eyebrow: 'CATEGORY',  value: d.categoryValue, sub: d.categoryCAGR ? `${d.categoryCAGR} CAGR` : (d.category || ''), color: '7C3AED' });
+  if (d.sourceCount)        ctxCards.push({ eyebrow: 'SOURCES',   value: `${d.sourceCount} file${d.sourceCount > 1 ? 's' : ''}`, sub: 'analysed', color: '0D9488' });
+
+  const cardY0 = d.briefFlavour ? 1.50 : 0.55;
+  const cardH  = 1.20;
+  const cardGap = 0.20;
+  ctxCards.forEach((card, i) => {
+    const y = cardY0 + i * (cardH + cardGap);
+    // Card bg
+    r(s, rightX, y, rightW, cardH, 'FFFFFF');
+    // Left colour strip
+    r(s, rightX, y, 0.10, cardH, card.color);
+    // Eyebrow
+    t(s, card.eyebrow, rightX + 0.30, y + 0.18, rightW - 0.40, 0.22,
+      { fontSize: 8.5, color: card.color, fontFace: FB, bold: true, charSpacing: 2.5 });
+    // Value (big)
+    t(s, card.value, rightX + 0.30, y + 0.42, rightW - 0.40, 0.46,
+      { fontSize: card.value.length > 25 ? 14 : 18, color: '0F172A', fontFace: FH, bold: true, valign: 'top', wrap: true });
+    // Sub
+    if (card.sub) {
+      t(s, card.sub, rightX + 0.30, y + cardH - 0.32, rightW - 0.40, 0.24,
+        { fontSize: 10, color: '64748B', fontFace: FB, italic: true });
+    }
   });
 
-  // CONFIDENTIAL
-  t(s, 'CONFIDENTIAL', W - 3.5, 0.32, 3.2, 0.26,
-    { fontSize: 8.5, color: 'FFFFFF', fontFace: FB, bold: true, charSpacing: 2, align: 'right' });
+  // ── Footer ribbon (subtle) ─────────────────────────────────────────
+  ln(s, 0.70, H - 0.42, W - 1.4, 'E2E8F0', 0.5);
+  t(s, 'CONFIDENTIAL · STRATEGIC USE ONLY', 0.70, H - 0.38, 6, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, bold: true, charSpacing: 3 });
+  t(s, 'PAGE 01', W - MR - 1.0, H - 0.38, 1, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, align: 'right', charSpacing: 1.5 });
 
-  // ── Tier 1 C: speaker notes for the cover ──
+  // ── Speaker notes ──────────────────────────────────────────────────
   const notesParts = [
     d.brand && `Brand: ${d.brand}`,
     d.category && `Category: ${d.category}`,
@@ -246,94 +265,95 @@ function slideCover(prs: any, d: PresentationData, p: Palette) {
     d.categoryValue && `Category value: ${d.categoryValue}${d.categoryCAGR ? ' (' + d.categoryCAGR + ' CAGR)' : ''}`,
     d.sourceCount && `Source files: ${d.sourceCount}${d.sourceFiles?.length ? ' (' + d.sourceFiles.join(', ') + ')' : ''}`,
     '',
-    'Open by reading the headline. Pause for 2 seconds. Then anchor the room: name the brand, the audience, and the moment this brief lands in.',
+    'Open by reading the headline aloud, pause for 2 seconds. Then anchor the room: name the brand, the audience moment, and the brief flavour. Right-column cards are reference only — do not read them off the slide.',
   ].filter(Boolean).join('\n');
   if (notesParts) s.addNotes(notesParts);
 }
 
-// ─── Tier 1 A: Executive Summary slide ──────────────────────────────────────
-// Sits between Cover and Agenda. Carries the Strategic Read paragraph (the
-// only narrative connective tissue on the deck) + Audience Snapshot + top
-// 3 Next Moves. Pull from d.strategicRead / d.audienceSnapshot / d.nextMoves.
+// ─── Executive Summary slide (visual pass 5 — magazine pull-quote aesthetic)
+// Sits between Cover and Stats Snapshot. Carries the Strategic Read
+// paragraph (the only narrative connective tissue on the deck) + Audience
+// Snapshot + top 3 Next Moves.
 function slideExecutiveSummary(prs: any, d: PresentationData, p: Palette, slideNo: number) {
   const s = prs.addSlide();
-  s.background = { color: 'FAFBFD' };
+  s.background = { color: 'FAFAFA' };
 
-  // Top accent band
-  r(s, 0, 0, W, 0.18, p.pri);
+  // Thin top accent
+  r(s, 0, 0, W, 0.08, p.pri);
 
-  // Eyebrow + section title
-  t(s, '★ EXECUTIVE SUMMARY', ML, 0.42, 6, 0.28,
-    { fontSize: 9.5, color: p.pri, fontFace: FB, bold: true, charSpacing: 3 });
-  t(s, d.headline || 'Strategic Readout', ML, 0.75, CW, 0.85,
-    { fontSize: 24, color: '0F172A', fontFace: FH, bold: true, lineSpacingMultiple: 1.15 });
-  ln(s, ML, 1.78, 1.6, p.acc, 2);
+  // Header
+  t(s, 'EXECUTIVE SUMMARY', 0.70, 0.42, 6, 0.24,
+    { fontSize: 9.5, color: '64748B', fontFace: FB, bold: true, charSpacing: 3.5 });
+  // Use brief flavour as a visual cue if present, else fall back to headline
+  const subTitle = d.briefFlavour ? `${d.briefFlavour} BRIEF · ${d.brand || ''}`.trim() : (d.briefName || 'Strategic Readout');
+  t(s, subTitle, 0.70, 0.74, CW, 0.42,
+    { fontSize: 22, color: '0F172A', fontFace: FH, bold: true });
+  ln(s, 0.70, 1.28, 0.80, p.pri, 2.5);
 
-  // Layout: left column 60% = Strategic Read; right column 40% = Next Moves
-  const leftW  = CW * 0.60 - 0.20;
-  const rightX = ML + leftW + 0.30;
-  const rightW = CW - leftW - 0.30;
-  const bodyY  = 2.00;
+  // Layout: left ~60% Strategic Read, right ~40% Next Moves
+  const leftX  = 0.70;
+  const leftW  = CW * 0.58;
+  const rightX = leftX + leftW + 0.40;
+  const rightW = W - rightX - 0.70;
+  const bodyY  = 1.55;
 
-  // ── LEFT: Strategic Read paragraph ──
-  t(s, '🧭 STRATEGIC READ', ML, bodyY, leftW, 0.24,
-    { fontSize: 9, color: '0891B2', fontFace: FB, bold: true, charSpacing: 2.5 });
-  t(s, 'Synthesised from data', ML + 2.4, bodyY + 0.02, 2.4, 0.20,
+  // ── LEFT: Strategic Read ──
+  t(s, 'STRATEGIC READ', leftX, bodyY, leftW, 0.22,
+    { fontSize: 9, color: '0891B2', fontFace: FB, bold: true, charSpacing: 3 });
+  t(s, 'Synthesised from data', leftX + 2.0, bodyY + 0.02, 2.4, 0.20,
     { fontSize: 8, color: '94A3B8', fontFace: FB, italic: true });
 
-  // The Strategic Read paragraph itself OR fall back to audienceSnapshot
   const readText = d.strategicRead?.trim() || d.audienceSnapshot?.trim() || d.objective?.trim() || '';
   t(s, readText || 'Strategic read not available for this analysis.',
-    ML, bodyY + 0.36, leftW, 4.0,
+    leftX, bodyY + 0.36, leftW, 4.0,
     {
-      fontSize: 13, color: '1F2937', fontFace: FB,
-      lineSpacingMultiple: 1.55, valign: 'top', wrap: true,
+      fontSize: 13.5, color: '1F2937', fontFace: FB,
+      lineSpacingMultiple: 1.62, valign: 'top', wrap: true,
     });
 
-  // Audience Snapshot (small block below the Strategic Read if both present)
+  // Audience Snapshot (only if Strategic Read also present)
   if (d.strategicRead && d.audienceSnapshot) {
-    const snapY = bodyY + 4.6;
-    r(s, ML, snapY, leftW, 0.86, '#F1F5F9');  // light grey card bg
-    t(s, '👥 AUDIENCE SNAPSHOT', ML + 0.18, snapY + 0.08, 3, 0.22,
-      { fontSize: 8.5, color: '7C3AED', fontFace: FB, bold: true, charSpacing: 2 });
-    t(s, d.audienceSnapshot, ML + 0.18, snapY + 0.32, leftW - 0.36, 0.5,
-      { fontSize: 10.5, color: '475569', fontFace: FB, italic: true, lineSpacingMultiple: 1.4 });
+    const snapY = bodyY + 4.50;
+    r(s, leftX, snapY, leftW, 0.96, 'FFFFFF');
+    r(s, leftX, snapY, 0.05, 0.96, '7C3AED');  // edge accent
+    t(s, 'AUDIENCE SNAPSHOT', leftX + 0.22, snapY + 0.14, 3, 0.20,
+      { fontSize: 8.5, color: '7C3AED', fontFace: FB, bold: true, charSpacing: 2.5 });
+    t(s, d.audienceSnapshot, leftX + 0.22, snapY + 0.36, leftW - 0.40, 0.56,
+      { fontSize: 10.5, color: '475569', fontFace: FB, italic: true, lineSpacingMultiple: 1.42, wrap: true });
   }
 
-  // ── RIGHT: Next Moves (numbered cards) ──
-  t(s, '💡 NEXT MOVES', rightX, bodyY, rightW, 0.24,
-    { fontSize: 9, color: 'D97706', fontFace: FB, bold: true, charSpacing: 2.5 });
-  t(s, 'Bucket-diverse, concrete', rightX + 2.0, bodyY + 0.02, 2.5, 0.20,
+  // ── RIGHT: Next Moves ──
+  t(s, 'NEXT MOVES', rightX, bodyY, rightW, 0.22,
+    { fontSize: 9, color: 'D97706', fontFace: FB, bold: true, charSpacing: 3 });
+  t(s, 'Bucket-diverse', rightX + 1.7, bodyY + 0.02, 2.0, 0.20,
     { fontSize: 8, color: '94A3B8', fontFace: FB, italic: true });
 
   const moves = Array.isArray(d.nextMoves) && d.nextMoves.length > 0
     ? d.nextMoves
     : (Array.isArray(d.recommendations) ? d.recommendations.slice(0, 3) : []);
 
-  const moveCardH = 1.30;
-  const moveGap   = 0.18;
+  const moveCardH = 1.42;
+  const moveGap   = 0.20;
   moves.slice(0, 3).forEach((move, i) => {
     const y = bodyY + 0.36 + i * (moveCardH + moveGap);
-    // Card bg
-    r(s, rightX, y, rightW, moveCardH, '#FFFFFF');
-    // Number badge
-    r(s, rightX, y, 0.55, moveCardH, '#FEF3C7');
-    t(s, String(i + 1), rightX, y, 0.55, moveCardH,
-      { fontSize: 26, color: '92400E', fontFace: FH, bold: true, align: 'center', valign: 'middle' });
+    r(s, rightX, y, rightW, moveCardH, 'FFFFFF');
+    // Large typographic number on left
+    t(s, String(i + 1).padStart(2, '0'), rightX + 0.15, y + 0.15, 0.75, moveCardH - 0.30,
+      { fontSize: 30, color: 'D97706', fontFace: FH, bold: true, valign: 'middle', align: 'left' });
     // Move text
     const moveText = move.length > 220 ? move.slice(0, 218) + '…' : move;
-    t(s, moveText, rightX + 0.70, y + 0.10, rightW - 0.80, moveCardH - 0.20,
-      { fontSize: 10.5, color: '1F2937', fontFace: FB, lineSpacingMultiple: 1.4, valign: 'top', wrap: true });
+    t(s, moveText, rightX + 0.90, y + 0.16, rightW - 1.00, moveCardH - 0.30,
+      { fontSize: 10.5, color: '1F2937', fontFace: FB, lineSpacingMultiple: 1.42, valign: 'top', wrap: true });
+    // Bottom hairline for separation
+    r(s, rightX, y + moveCardH - 0.01, rightW, 0.01, 'E2E8F0');
   });
 
-  // Bottom strip: provenance
-  if (d.sourceCount) {
-    t(s, `Synthesised from ${d.sourceCount} source file${d.sourceCount > 1 ? 's' : ''} · ${d.briefFlavour || 'BRIEF'} flavour · regenerate from /insights anytime`,
-      ML, H - 0.7, CW, 0.22,
-      { fontSize: 8.5, color: '94A3B8', fontFace: FB, italic: true, charSpacing: 0.5 });
-  }
-
-  footer(s, slideNo, d.briefName);
+  // Footer ribbon
+  ln(s, 0.70, H - 0.42, W - 1.4, 'E2E8F0', 0.5);
+  t(s, d.briefName.toUpperCase(), 0.70, H - 0.38, 8, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, bold: true, charSpacing: 2 });
+  t(s, `PAGE ${String(slideNo).padStart(2, '0')}`, W - MR - 1, H - 0.38, 1, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, align: 'right', charSpacing: 1.5 });
 
   // Speaker notes
   const notes = [
@@ -350,157 +370,180 @@ function slideExecutiveSummary(prs: any, d: PresentationData, p: Palette, slideN
   s.addNotes(notes);
 }
 
-// ─── Tier 1 B: Computed Stats Snapshot slide ────────────────────────────────
-// Big-number tiles pulled from d.nuggets. Each tile = ONE arresting number
-// that is computed from raw data (HHI, weighted YoY, brand SOV, etc).
-// Sits between Executive Summary and Agenda.
+// ─── Tier 1 B: Stats Snapshot (visual pass 2 — hero big-number tiles) ──────
+// Composition: title block top (4 lines breathing room), then 2×3 hero
+// tile grid (or 3×2 depending on tile count). Each tile is a BIG number
+// (~52pt) + a small contextual sub-line — McKinsey/BCG hero-stat aesthetic.
+// Background stays soft off-white. Tiles are subtle (no heavy borders,
+// just a fine top-stripe in tile colour + faint shadow via vert gradient).
 function slideStatsSnapshot(prs: any, d: PresentationData, p: Palette, slideNo: number) {
   const s = prs.addSlide();
-  s.background = { color: 'FAFBFD' };
+  s.background = { color: 'FAFAFA' };
 
-  // Top accent band
-  r(s, 0, 0, W, 0.18, p.pri);
+  // Top accent strip (subtle, full width)
+  r(s, 0, 0, W, 0.08, p.pri);
 
-  t(s, '📊 CATEGORY AT A GLANCE', ML, 0.42, 6, 0.28,
-    { fontSize: 9.5, color: p.pri, fontFace: FB, bold: true, charSpacing: 3 });
-  t(s, 'The numbers that frame the brief', ML, 0.75, CW, 0.55,
-    { fontSize: 22, color: '0F172A', fontFace: FH, bold: true });
-  t(s, 'Every figure below is computed directly from the uploaded data — none are invented or benchmarked from external sources.',
-    ML, 1.30, CW, 0.30,
-    { fontSize: 11, color: '64748B', fontFace: FB, italic: true });
-  ln(s, ML, 1.65, 1.6, p.acc, 2);
+  // Header block — eyebrow + title + dek
+  t(s, 'CATEGORY AT A GLANCE', 0.70, 0.40, 6, 0.24,
+    { fontSize: 9.5, color: '64748B', fontFace: FB, bold: true, charSpacing: 3.5 });
+  t(s, 'The numbers that frame this brief.', 0.70, 0.74, CW, 0.58,
+    { fontSize: 28, color: '0F172A', fontFace: FH, bold: true });
+  t(s, 'Every figure below is computed directly from the uploaded data — none invented or benchmarked from external sources.',
+    0.70, 1.40, CW - 0.50, 0.30,
+    { fontSize: 11, color: '64748B', fontFace: FB });
+
+  // Thin coloured rule under the dek
+  ln(s, 0.70, 1.78, 0.80, p.pri, 2.5);
 
   // ── Extract tile data from d.nuggets ──
   type Tile = { label: string; value: string; sub?: string; color: string };
   const tiles: Tile[] = [];
-
   const n = d.nuggets || {};
-  // Tile 1 — Keyword headline (search demand)
+
+  // Helpers to pull the most-arresting number out of a nugget headline
+  const firstPct  = (s: string) => { const m = s.match(/([+-]?\d+(?:\.\d+)?)\s*%/); return m ? `${m[1]}%` : null; };
+  const firstHHI  = (s: string) => { const m = s.match(/HHI\s*(\d+)/i); return m ? `HHI ${m[1]}` : null; };
+  const firstNum  = (s: string) => { const m = s.match(/([+-]?\d+(?:\.\d+)?\s*[KMBL]?)/); return m ? m[1].trim() : null; };
+
   if (n.keyword?.headline) {
-    // Try to extract a leading number from the headline like "+18.3% YoY" or "2.2M monthly queries"
-    const match = n.keyword.headline.match(/([+-]?[\d.,]+\s*[%×KM]?\s*(?:YoY|monthly\s*queries|searches)?)/i);
+    const yoy = n.keyword.headline.match(/([+-]?\d+(?:\.\d+)?)\s*%\s*YoY/i);
+    const vol = n.keyword.headline.match(/(\d+(?:\.\d+)?\s*[KMB])\s*monthly/i);
     tiles.push({
-      label: 'SEARCH DEMAND',
-      value: match ? match[1].trim() : 'Strong',
-      sub:   String(n.keyword.headline).slice(0, 85) + (n.keyword.headline.length > 85 ? '…' : ''),
+      label: 'CATEGORY SEARCH',
+      value: yoy ? `${Number(yoy[1]) > 0 ? '+' : ''}${yoy[1]}%` : (vol ? vol[1] : (firstPct(n.keyword.headline) || 'Strong')),
+      sub:   yoy ? 'YoY · across the long tail' : (vol ? 'monthly queries · long tail' : 'category demand'),
       color: '0891B2',
     });
   }
-  // Tile 2 — Helium 10 (shelf concentration)
   if (n.helium10?.headline) {
-    const hhi = n.helium10.headline.match(/HHI\s*(\d+)/i);
-    const lead = n.helium10.headline.match(/(\d+)\s*%/);
+    const hhi = firstHHI(n.helium10.headline);
+    const lead = firstPct(n.helium10.headline);
     tiles.push({
       label: 'SHELF CONCENTRATION',
-      value: hhi ? `HHI ${hhi[1]}` : (lead ? `${lead[1]}% leader` : 'Tracked'),
-      sub:   String(n.helium10.headline).slice(0, 85) + (n.helium10.headline.length > 85 ? '…' : ''),
+      value: hhi || lead || 'Tracked',
+      sub:   hhi ? (n.helium10.headline.toLowerCase().includes('highly') ? 'highly concentrated' : n.helium10.headline.toLowerCase().includes('moderately') ? 'moderately concentrated' : 'fragmented') : 'category leader',
       color: 'B91C1C',
     });
   }
-  // Tile 3 — Brand SOV from competition
   if (n.competition?.headline) {
-    const ourBrand = n.competition.headline.match(/(\d+)\s*%/);
+    const sov = firstPct(n.competition.headline);
+    const brandMatch = n.competition.headline.match(/^(\S+(?:\s+\S+)?)\s+(?:leads|owns|commands)/);
     tiles.push({
-      label: 'BRAND SOV',
-      value: ourBrand ? `${ourBrand[1]}%` : 'Tracked',
-      sub:   String(n.competition.headline).slice(0, 85) + (n.competition.headline.length > 85 ? '…' : ''),
+      label: 'BRAND POSITION',
+      value: sov || 'Tracked',
+      sub:   brandMatch ? `${brandMatch[1]} leads category search` : 'category search share',
       color: 'DC2626',
     });
   }
-  // Tile 4 — Trust signals (branded vs non-branded)
   if (n.trust?.headline) {
-    const branded = n.trust.headline.match(/(\d+)\s*%/);
+    const pct = firstPct(n.trust.headline);
+    const unbrandedHigh = /\bunbranded\b/i.test(n.trust.headline);
     tiles.push({
-      label: 'TRUST SIGNAL',
-      value: branded ? `${branded[1]}%` : 'Mixed',
-      sub:   String(n.trust.headline).slice(0, 85) + (n.trust.headline.length > 85 ? '…' : ''),
+      label: 'BRANDED MIX',
+      value: pct || 'Mixed',
+      sub:   unbrandedHigh ? 'searches are unbranded — trust-gap signal' : 'branded — established trust',
       color: '0D9488',
     });
   }
-  // Tile 5 — Cultural cues (top theme)
   if (n.cultural?.headline) {
-    const themeMatch = n.cultural.headline.match(/^"([^"]+)"/);
+    const theme = n.cultural.headline.match(/^"([^"]+)"/);
+    const themeVol = n.cultural.headline.match(/(\d+\s*[KM])\s*monthly/i);
     tiles.push({
-      label: 'TOP CULTURAL CUE',
-      value: themeMatch ? `"${themeMatch[1].slice(0, 18)}"` : 'Tracked',
-      sub:   String(n.cultural.headline).slice(0, 85) + (n.cultural.headline.length > 85 ? '…' : ''),
+      label: 'CULTURAL CUE',
+      value: theme ? `"${theme[1].slice(0, 16)}"` : (themeVol ? themeVol[1] : 'Tracked'),
+      sub:   theme ? 'leading creative territory' : 'creative direction signal',
       color: '9333EA',
     });
   }
-  // Tile 6 — Category value from the brief
   if (d.categoryValue) {
     tiles.push({
       label: 'CATEGORY VALUE',
       value: d.categoryValue,
-      sub:   d.categoryCAGR ? `${d.categoryCAGR} CAGR · ${d.category || 'category'}` : (d.category || ''),
+      sub:   d.categoryCAGR ? `${d.categoryCAGR} CAGR · ${(d.category || 'category').toLowerCase()}` : (d.category || ''),
       color: '7C3AED',
     });
   }
 
-  // ── Render tile grid (3 cols × 2 rows max) ──
+  // ── Render hero tile grid ──
   if (tiles.length === 0) {
-    t(s, 'No computed nuggets available for this analysis. Upload more data sources to populate this slide.',
-      ML, 3.5, CW, 0.5,
-      { fontSize: 13, color: '94A3B8', fontFace: FB, italic: true, align: 'center' });
+    t(s, 'Upload more data sources to populate the snapshot.',
+      0.70, 4.0, CW - 0.50, 0.5,
+      { fontSize: 13, color: '94A3B8', fontFace: FB, italic: true, align: 'left' });
   } else {
-    const cols  = tiles.length <= 3 ? tiles.length : 3;
-    const rows  = Math.ceil(tiles.length / cols);
-    const gap   = 0.20;
-    const tileW = (CW - gap * (cols - 1)) / cols;
-    const tileH = Math.min(2.30, (5.20 - gap * (rows - 1)) / rows);
-    const startY = 1.95;
+    // Grid layout: prefer 3 cols. With 6 tiles → 3×2. With 5 → 3+2.
+    // With 4 → 2×2. With 3 → 1×3. With 2 → 1×2. With 1 → 1×1.
+    const cols = tiles.length >= 5 ? 3 : tiles.length >= 4 ? 2 : Math.min(3, tiles.length);
+    const rows = Math.ceil(tiles.length / cols);
+    const startY = 2.10;
+    const availH = H - startY - 0.55;
+    const gap = 0.22;
+    const tileW = (W - 1.40 - gap * (cols - 1)) / cols;
+    const tileH = Math.min(2.40, (availH - gap * (rows - 1)) / rows);
 
     tiles.forEach((tile, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const x = ML + col * (tileW + gap);
+      const x = 0.70 + col * (tileW + gap);
       const y = startY + row * (tileH + gap);
 
-      // Card bg
-      r(s, x, y, tileW, tileH, '#FFFFFF');
-      // Color strip top
-      r(s, x, y, tileW, 0.10, tile.color);
-      // Label
-      t(s, tile.label, x + 0.20, y + 0.26, tileW - 0.40, 0.24,
-        { fontSize: 9, color: tile.color, fontFace: FB, bold: true, charSpacing: 2 });
-      // Big value
-      t(s, tile.value, x + 0.20, y + 0.55, tileW - 0.40, 0.80,
-        { fontSize: tile.value.length > 8 ? 28 : 36, color: '0F172A', fontFace: FH, bold: true,
-          align: 'left', valign: 'middle' });
-      // Sub
+      // Hero tile composition
+      r(s, x, y, tileW, tileH, 'FFFFFF');                  // card bg
+      // Hairline top stripe in tile colour (no full coloured strip — keep it subtle)
+      r(s, x, y, tileW, 0.04, tile.color);
+      // Faint bottom shadow line for depth
+      r(s, x, y + tileH - 0.01, tileW, 0.01, 'E2E8F0');
+
+      // Eyebrow label
+      t(s, tile.label, x + 0.32, y + 0.28, tileW - 0.50, 0.22,
+        { fontSize: 8.5, color: tile.color, fontFace: FB, bold: true, charSpacing: 3 });
+
+      // Hero number — large, dominant
+      const numLen = tile.value.length;
+      const numSize = numLen > 9 ? 30 : numLen > 6 ? 42 : numLen > 4 ? 50 : 58;
+      t(s, tile.value, x + 0.30, y + 0.55, tileW - 0.50, tileH * 0.50,
+        { fontSize: numSize, color: '0F172A', fontFace: FH, bold: true,
+          align: 'left', valign: 'middle', lineSpacingMultiple: 1.0 });
+
+      // Sub-context
       if (tile.sub) {
-        t(s, tile.sub, x + 0.20, y + tileH - 0.78, tileW - 0.40, 0.62,
-          { fontSize: 9.5, color: '475569', fontFace: FB, lineSpacingMultiple: 1.35, valign: 'top', wrap: true });
+        t(s, tile.sub, x + 0.32, y + tileH - 0.58, tileW - 0.50, 0.46,
+          { fontSize: 10, color: '475569', fontFace: FB,
+            lineSpacingMultiple: 1.35, valign: 'top', wrap: true });
       }
     });
   }
 
-  footer(s, slideNo, d.briefName);
+  // Bottom footer ribbon
+  ln(s, 0.70, H - 0.42, W - 1.4, 'E2E8F0', 0.5);
+  t(s, `${d.briefName.toUpperCase()} · COMPUTED FROM SOURCE DATA`, 0.70, H - 0.38, 8, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, charSpacing: 1.5 });
+  t(s, `PAGE ${String(slideNo).padStart(2, '0')}`, W - MR - 1, H - 0.38, 1, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, align: 'right', charSpacing: 1.5 });
 
   // Speaker notes
   const noteLines = [
-    'Category at a Glance — every figure here is computed deterministically from the uploaded data (Pareto / HHI / weighted YoY / brand SOV). Never invented or benchmarked from external sources.',
+    'Category at a Glance — every figure here is computed deterministically from the uploaded data (Pareto / HHI / weighted YoY / brand SOV). None invented or benchmarked from external sources.',
     '',
     ...tiles.map(tile => `• ${tile.label}: ${tile.value} — ${tile.sub || ''}`),
     '',
-    'Delivery tip: walk left-to-right, top-to-bottom. For each tile, read the BIG number first, then the sub-line. Pause for 1 second between tiles to let it land.',
+    'Delivery tip: walk left-to-right, top-to-bottom. Read the BIG number first, pause, then the sub-line. The hero numbers are the punch — the sub-lines are context.',
   ];
   s.addNotes(noteLines.join('\n'));
 }
 
-// ─── Slide: Agenda ───────────────────────────────────────────────────────────
+// ─── Slide: Agenda (visual pass 5 — match magazine aesthetic) ───────────
 function slideAgenda(prs: any, d: PresentationData, p: Palette, data: PresentationData) {
   const s = prs.addSlide();
-  s.background = { color: 'FAFBFD' };
+  s.background = { color: 'FAFAFA' };
 
-  // Top accent band
-  r(s, 0, 0, W, 0.18, p.pri);
+  // Thin top accent
+  r(s, 0, 0, W, 0.08, p.pri);
 
-  t(s, 'AGENDA', ML, 0.42, 4, 0.26,
-    { fontSize: 9, color: p.pri, fontFace: FB, bold: true, charSpacing: 3 });
-  t(s, 'What we\'ll cover today', ML, 0.75, CW, 0.60,
-    { fontSize: 28, color: '0F172A', fontFace: FH, bold: true });
-  ln(s, ML, 1.45, 1.6, p.acc, 2);
+  t(s, 'AGENDA', 0.70, 0.42, 4, 0.24,
+    { fontSize: 9.5, color: '64748B', fontFace: FB, bold: true, charSpacing: 3.5 });
+  t(s, "What we'll cover.", 0.70, 0.74, CW, 0.58,
+    { fontSize: 30, color: '0F172A', fontFace: FH, bold: true });
+  ln(s, 0.70, 1.42, 0.80, p.pri, 2.5);
 
   // Only show pillars that actually have insights, capped at 5 so cards fit
   // on the 7.5-inch slide (card height 1.08 + gap 0.14 × 5 = ~6.1 inches used).
@@ -518,39 +561,43 @@ function slideAgenda(prs: any, d: PresentationData, p: Palette, data: Presentati
 
   activePillars.forEach((key, i) => {
     const pm = PILLARS[key];
-    // Safe access — pillar is guaranteed to exist here (filtered above)
     const pillarInsights = (data[key as keyof PresentationData] as PillarData)?.insights ?? [];
     const y = startY + i * (cardH + cardGap);
 
-    // Card background
-    r(s, ML, y, CW, cardH, i % 2 === 0 ? 'F8FAFC' : 'FFFFFF');
+    // Card BG: white, no zebra striping (cleaner look)
+    r(s, 0.70, y, CW, cardH, 'FFFFFF');
+    // Hairline bottom border for separation
+    r(s, 0.70, y + cardH - 0.01, CW, 0.01, 'E2E8F0');
 
-    // Pillar color strip
-    r(s, ML, y, 0.28, cardH, pm.color);
+    // Pillar number — large typographic mark
+    t(s, String(i + 1).padStart(2, '0'),
+      0.70, y + cardH * 0.10, 0.90, cardH * 0.80,
+      { fontSize: 36, color: pm.color, fontFace: FH, bold: true, valign: 'middle', align: 'left' });
 
-    // Pillar number
-    t(s, `0${i + 1}`, ML + 0.36, y + cardH * 0.14, 0.55, cardH * 0.42,
-      { fontSize: Math.min(22, cardH * 17), color: pm.color, fontFace: FH, bold: true, valign: 'middle' });
+    // Pillar name (no emoji — type-driven)
+    t(s, pm.label, 1.85, y + cardH * 0.18, 3.4, cardH * 0.40,
+      { fontSize: 18, color: '0F172A', fontFace: FH, bold: true });
 
-    // Pillar icon + name
-    t(s, `${pm.icon}  ${pm.label}`, ML + 0.96, y + cardH * 0.10, 3.5, cardH * 0.33,
-      { fontSize: Math.min(17, cardH * 13), color: '0F172A', fontFace: FH, bold: true });
+    // Insight count + description
+    t(s, `${pillarInsights.length} insight${pillarInsights.length !== 1 ? 's' : ''} · ${getPillarMeaning(pm.label.toLowerCase()).slice(0, 60)}`,
+      1.85, y + cardH * 0.56, 3.4, cardH * 0.30,
+      { fontSize: 10.5, color: '64748B', fontFace: FB });
 
-    // Insight count
-    t(s, `${pillarInsights.length} insight${pillarInsights.length !== 1 ? 's' : ''}`,
-      ML + 0.96, y + cardH * 0.48, 3.5, cardH * 0.28,
-      { fontSize: 11, color: '64748B', fontFace: FB });
-
-    // First insight teaser
+    // First insight teaser — italic pull-quote style
     const firstTitle = pillarInsights[0]?.title || '';
     if (firstTitle) {
-      const teaser = firstTitle.length > 65 ? firstTitle.slice(0, 65) + '…' : firstTitle;
-      t(s, `"${teaser}"`, ML + 4.8, y + cardH * 0.22, CW - 4.4, cardH * 0.55,
-        { fontSize: 11, color: '475569', fontFace: FB, italic: true, valign: 'middle' });
+      const teaser = firstTitle.length > 80 ? firstTitle.slice(0, 80) + '…' : firstTitle;
+      t(s, `"${teaser}"`, 5.50, y + cardH * 0.22, CW - 4.8, cardH * 0.55,
+        { fontSize: 11.5, color: '475569', fontFace: FB, italic: true, valign: 'middle', wrap: true });
     }
   });
 
-  footer(s, 2, d.briefName);
+  // Footer ribbon (consistent with cover)
+  ln(s, 0.70, H - 0.42, W - 1.4, 'E2E8F0', 0.5);
+  t(s, d.briefName.toUpperCase(), 0.70, H - 0.38, 8, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, bold: true, charSpacing: 2 });
+  t(s, 'PAGE 02', W - MR - 1, H - 0.38, 1, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, align: 'right', charSpacing: 1.5 });
 
   // Speaker notes — set context for the agenda walkthrough
   const totalInsights = activePillars.reduce((sum, key) => {
@@ -568,45 +615,52 @@ function slideAgenda(prs: any, d: PresentationData, p: Palette, data: Presentati
   s.addNotes(agendaNotes);
 }
 
-// ─── Pillar section divider ───────────────────────────────────────────────────
+// ─── Section divider (visual pass 4 — magazine table-of-contents style) ───
+// Composition: light off-white background (matches Cover + Stats Snapshot
+// rhythm). Giant section number as a typographic mark, pillar name in
+// black as the headline, single hairline rule, then a one-line dek
+// explaining what's coming. No emoji. No solid colour fills.
 function slideDivider(prs: any, pm: PillarMeta, insightCount: number, slideNo: number, d: PresentationData) {
   const s = prs.addSlide();
-  s.background = { color: pm.dark };
+  s.background = { color: 'FAFAFA' };
 
-  // Full bleed decorative block top-left
-  r(s, 0, 0, 0.22, H, pm.color + '40'); // semi-transparent strip
+  // Thin top accent strip in pillar colour (full-bleed, hairline)
+  r(s, 0, 0, W, 0.08, pm.color);
 
-  // Corner geometry
-  r(s, W - 2.4, 0, 2.4, 1.8, pm.color + '30');
-  r(s, W - 1.2, 0, 1.2, 0.9, pm.color);
+  // Section number in pillar colour at very low opacity-equivalent (lighter hue)
+  const lightHue = lightenHex(pm.color, 0.85);  // 85% lighter, almost ghost
+  const idxNumber = String(PILLAR_ORDER.indexOf(pm.label.toLowerCase() as any) + 1).padStart(2, '0');
+  t(s, idxNumber, 0.70, 0.80, 5, 4.0,
+    { fontSize: 280, color: lightHue, fontFace: FH, bold: true, valign: 'middle', align: 'left' });
 
-  // Bottom bar
-  r(s, 0, H - 0.20, W, 0.20, pm.color);
+  // Right column — actual content sits over the ghost number
+  const contentX = 0.70;
+  const contentW = CW - 0.20;
 
-  // Section number
-  t(s, `0${PILLAR_ORDER.indexOf(pm.label.toLowerCase() as any) + 1}`, ML + 0.3, 1.6, 2.0, 1.4,
-    { fontSize: 80, color: pm.color + '55', fontFace: FH, bold: true });
+  // Eyebrow — type-driven, no emoji
+  t(s, 'SECTION', contentX, 1.85, 4, 0.22,
+    { fontSize: 9, color: pm.color, fontFace: FB, bold: true, charSpacing: 3.5 });
 
-  // Section label
-  t(s, 'SECTION', ML + 0.3, 1.65, 4, 0.26,
-    { fontSize: 9, color: pm.color, fontFace: FB, bold: true, charSpacing: 3 });
+  // Pillar name — magazine-cover scale
+  t(s, pm.label, contentX, 2.20, contentW, 1.40,
+    { fontSize: 72, color: '0F172A', fontFace: FH, bold: true, lineSpacingMultiple: 1.0 });
 
-  // Pillar name
-  t(s, `${pm.icon}  ${pm.label}`, ML + 0.3, 2.1, CW - 1, 1.2,
-    { fontSize: 54, color: 'FFFFFF', fontFace: FH, bold: true });
+  // Hairline rule
+  ln(s, contentX, 3.95, 0.80, pm.color, 2);
 
-  // Divider line
-  ln(s, ML + 0.3, 3.5, 2.0, pm.color, 2);
+  // Single-line dek
+  t(s, `${insightCount} insight${insightCount !== 1 ? 's' : ''} · ${getPillarMeaning(pm.label.toLowerCase())}`,
+    contentX, 4.15, contentW, 0.34,
+    { fontSize: 14, color: '475569', fontFace: FB });
 
-  // Sub-description
-  t(s,
-    `${insightCount} key insight${insightCount !== 1 ? 's' : ''} · Data-driven findings & strategic recommendations`,
-    ML + 0.3, 3.72, CW - 1, 0.38,
-    { fontSize: 12, color: 'FFFFFF99', fontFace: FB });
+  // Bottom strip with brief name + page
+  ln(s, contentX, H - 0.42, W - 1.4, 'E2E8F0', 0.5);
+  t(s, d.briefName.toUpperCase(), contentX, H - 0.38, 8, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, bold: true, charSpacing: 2 });
+  t(s, `PAGE ${String(slideNo).padStart(2, '0')}`, W - MR - 1, H - 0.38, 1, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, align: 'right', charSpacing: 1.5 });
 
-  footer(s, slideNo, d.briefName, true, pm.color);
-
-  // Speaker notes — section context
+  // Speaker notes
   s.addNotes([
     `Section divider: ${pm.label} (${insightCount} insight${insightCount !== 1 ? 's' : ''} in this section).`,
     '',
@@ -614,6 +668,21 @@ function slideDivider(prs: any, pm: PillarMeta, insightCount: number, slideNo: n
     '',
     'Delivery: pause for 2-3 seconds on this divider. Use it as a transition cue — name the section, hint at the headline, then advance.',
   ].join('\n'));
+}
+
+/** Lighten a hex colour by `amount` (0..1). Used for the ghost section
+   number on the new divider — gives us a "pillar colour at 15% opacity"
+   feel without needing pptxgenjs alpha. */
+function lightenHex(hex: string, amount: number): string {
+  const h = hex.replace(/^#/, '');
+  if (h.length !== 6) return hex;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const lr = Math.round(r + (255 - r) * amount);
+  const lg = Math.round(g + (255 - g) * amount);
+  const lb = Math.round(b + (255 - b) * amount);
+  return [lr, lg, lb].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
 // Plain-English description of what each pillar covers (used in speaker notes
@@ -754,7 +823,14 @@ function addNativeChart(
   }
 }
 
-// ─── Insight card slide ───────────────────────────────────────────────────────
+// ─── Insight slide (visual pass 3 — magazine-style article layout) ────────
+// Composition: thin pillar colour rail (left), section-meta eyebrow + huge
+// headline taking the top third, then a clean horizontal divider, then
+// content area split. Without a chart: obs full-width as lead, rec below
+// as a designed pull-quote (white text on dark accent background). With a
+// chart: text occupies left 55%, chart panel right 42% with a designed
+// frame. Key-stat strip sits at the BOTTOM, full-width, like a magazine
+// caption bar. No emoji on the section meta — type-driven.
 function slideInsight(
   prs: any,
   ins: InsightCard,
@@ -766,83 +842,94 @@ function slideInsight(
   const s = prs.addSlide();
   s.background = { color: 'FFFFFF' };
 
-  // Detect whether we have chart data to show in right column
   const hasChart = !!(ins.chartType && ins.chartLabels?.length && ins.chartValues?.length);
 
-  // ── Layout constants ──────────────────────────────────────────────────────
-  // With chart: text occupies left 60%, chart occupies right 38%
-  // Without chart: text occupies full width (original layout)
-  const TEXT_W  = hasChart ? 7.40 : CW - 0.20;  // text block width
-  const CHART_X = 8.62;                           // chart panel x
-  const CHART_Y = 1.88;                           // chart panel y
-  const CHART_W = 4.42;                           // chart panel width
-  const CHART_H = 4.80;                           // chart panel height
+  // ── Layout constants ─────────────────────────────────────────────
+  const PAD_X    = 0.80;
+  const TEXT_X   = PAD_X;
+  const TEXT_W   = hasChart ? 6.60 : CW - 0.20;
+  const CHART_X  = hasChart ? PAD_X + TEXT_W + 0.40 : 0;
+  const CHART_W  = hasChart ? W - CHART_X - PAD_X : 0;
+  const CHART_Y  = 2.30;
+  const CHART_H  = 4.20;
 
-  // Left pillar colour bar
-  r(s, 0, 0, 0.12, H, pm.color);
+  // Hairline left rail in pillar colour (thinner than the old solid bar)
+  r(s, 0, 0, 0.08, H, pm.color);
 
-  // Top section meta
-  t(s, `${pm.icon} ${pm.label.toUpperCase()} — INSIGHT ${String(insightNo).padStart(2, '0')}`,
-    ML + 0.18, 0.38, 8, 0.24,
-    { fontSize: 9, color: pm.color, fontFace: FB, bold: true, charSpacing: 2 });
+  // ── Section meta — eyebrow (type-driven, no emoji) ──
+  t(s, `${pm.label.toUpperCase()} · INSIGHT ${String(insightNo).padStart(2, '0')}`,
+    TEXT_X, 0.42, 8, 0.22,
+    { fontSize: 8.5, color: pm.color, fontFace: FB, bold: true, charSpacing: 3.5 });
 
-  // Insight headline / hook (always full-width — spans both columns)
+  // ── Headline — magazine-cover scale, plenty of whitespace below ──
   const titleText = ins.title.length > 110 ? ins.title.slice(0, 110) + '…' : ins.title;
-  t(s, titleText, ML + 0.18, 0.70, CW - 0.2, 1.1,
-    { fontSize: 24, color: '0F172A', fontFace: FH, bold: true, lineSpacingMultiple: 1.15 });
+  const titleSize = titleText.length > 80 ? 22 : titleText.length > 50 ? 26 : 30;
+  t(s, titleText, TEXT_X, 0.78, CW - 0.20, 1.30,
+    { fontSize: titleSize, color: '0F172A', fontFace: FH, bold: true, lineSpacingMultiple: 1.18, valign: 'top' });
 
-  ln(s, ML + 0.18, 1.90, 1.6, pm.color, 2);
+  // Thin underline divider in pillar colour
+  ln(s, TEXT_X, 2.12, 0.6, pm.color, 1.5);
 
-  // ── Observation block ────────────────────────────────────────────────────
-  r(s, ML + 0.18, 2.08, TEXT_W, 1.62, pm.light);
-  r(s, ML + 0.18, 2.08, 0.06, 1.62, pm.color);
+  // ── Body: Observation as lead paragraph ──
+  t(s, 'WHAT THE DATA SHOWS', TEXT_X, 2.30, TEXT_W, 0.22,
+    { fontSize: 8, color: '64748B', fontFace: FB, bold: true, charSpacing: 2.5 });
+  const obsText = ins.obs.length > 380 ? ins.obs.slice(0, 380) + '…' : ins.obs;
+  t(s, obsText, TEXT_X, 2.58, TEXT_W, 2.10,
+    { fontSize: 13, color: '1E293B', fontFace: FB, lineSpacingMultiple: 1.50, valign: 'top', wrap: true });
 
-  t(s, 'OBSERVATION', ML + 0.40, 2.14, 3.5, 0.22,
-    { fontSize: 8, color: pm.color, fontFace: FB, bold: true, charSpacing: 1.8 });
+  // ── Recommendation — designed as a pull-quote block ──
+  // Dark accent background, pillar-coloured eyebrow, white body type
+  const recY = 4.80;
+  const recH = 1.30;
+  r(s, TEXT_X, recY, TEXT_W, recH, '0F172A');
+  r(s, TEXT_X, recY, 0.05, recH, pm.color);  // pillar colour edge accent
 
-  const obsText = ins.obs.length > 260 ? ins.obs.slice(0, 260) + '…' : ins.obs;
-  t(s, obsText, ML + 0.40, 2.42, TEXT_W - 0.40, 1.16,
-    { fontSize: 12.5, color: '1E293B', fontFace: FB, lineSpacingMultiple: 1.4, valign: 'top' });
+  t(s, 'WHAT TO DO', TEXT_X + 0.30, recY + 0.18, TEXT_W - 0.50, 0.22,
+    { fontSize: 8, color: pm.color, fontFace: FB, bold: true, charSpacing: 2.5 });
+  const recText = ins.rec.length > 280 ? ins.rec.slice(0, 280) + '…' : ins.rec;
+  t(s, recText, TEXT_X + 0.30, recY + 0.48, TEXT_W - 0.50, recH - 0.60,
+    { fontSize: 12, color: 'F1F5F9', fontFace: FB, lineSpacingMultiple: 1.42, valign: 'top', wrap: true });
 
-  // ── Recommendation block ─────────────────────────────────────────────────
-  r(s, ML + 0.18, 3.86, TEXT_W, 1.62, '1E293B');
-  r(s, ML + 0.18, 3.86, 0.06, 1.62, pm.color);
-
-  t(s, '→  RECOMMENDATION', ML + 0.40, 3.92, 4.5, 0.22,
-    { fontSize: 8, color: pm.color, fontFace: FB, bold: true, charSpacing: 1.8 });
-
-  const recText = ins.rec.length > 260 ? ins.rec.slice(0, 260) + '…' : ins.rec;
-  t(s, recText, ML + 0.40, 4.20, TEXT_W - 0.40, 1.14,
-    { fontSize: 12.5, color: 'FFFFFF', fontFace: FB, lineSpacingMultiple: 1.4, valign: 'top' });
-
-  // ── Key stat + source ────────────────────────────────────────────────────
-  if (ins.stat) {
-    r(s, ML + 0.18, 5.62, TEXT_W, 0.60, pm.light);
-    t(s, '📊  ' + ins.stat, ML + 0.38, 5.66, TEXT_W - 0.40, 0.50,
-      { fontSize: 11.5, color: pm.dark || '0F172A', fontFace: FB, bold: true, valign: 'middle' });
-  }
-
-  const sourceLabel = [
-    ins.source ? `Source: ${ins.source}` : '',
-    ins.conviction ? `Confidence: ${ins.conviction}%` : '',
-  ].filter(Boolean).join('  ·  ');
-
-  if (sourceLabel) {
-    t(s, sourceLabel, ML + 0.18, 6.30, TEXT_W, 0.24,
-      { fontSize: 8, color: '94A3B8', fontFace: FB });
-  }
-
-  // ── Right column: native chart ────────────────────────────────────────────
+  // ── Right column: chart (when present) — designed frame ──
   if (hasChart) {
-    // Subtle background panel for the chart area
-    r(s, CHART_X - 0.12, CHART_Y - 0.12, CHART_W + 0.24, CHART_H + 0.24, 'F8FAFC');
-    // Thin pillar-coloured top border on the chart panel
-    r(s, CHART_X - 0.12, CHART_Y - 0.12, CHART_W + 0.24, 0.04, pm.color);
-
+    // Thin frame line around the chart area (subtle, not heavy)
+    r(s, CHART_X, CHART_Y - 0.20, CHART_W, 0.04, pm.color);  // top hairline
+    // Chart label
+    t(s, 'DATA VIEW', CHART_X, CHART_Y - 0.50, CHART_W, 0.22,
+      { fontSize: 8, color: '64748B', fontFace: FB, bold: true, charSpacing: 2.5 });
+    if (ins.chartLabels && ins.chartLabels.length > 0) {
+      // Sub-label: what this chart shows
+      const chartSub = ins.chartType === 'doughnut' ? 'proportional split'
+                     : ins.chartType === 'line' || ins.chartType === 'area' ? 'trend over time'
+                     : ins.chartType === 'radar' ? 'multi-attribute profile'
+                     : ins.chartType === 'scatter' ? 'correlation'
+                     : 'ranked comparison';
+      t(s, chartSub, CHART_X, CHART_Y - 0.24, CHART_W, 0.20,
+        { fontSize: 9, color: '94A3B8', fontFace: FB, italic: true });
+    }
     addNativeChart(prs, s, ins, pm, CHART_X, CHART_Y, CHART_W, CHART_H);
   }
 
-  footer(s, slideNo, d.briefName);
+  // ── Bottom caption bar — KEY STAT + source attribution (full width) ──
+  const captionY = H - 0.62;
+  ln(s, PAD_X, captionY, W - 2 * PAD_X, 'E2E8F0', 0.5);
+  if (ins.stat) {
+    t(s, ins.stat.length > 110 ? ins.stat.slice(0, 110) + '…' : ins.stat,
+      PAD_X, captionY + 0.10, W - 2 * PAD_X - 3.5, 0.30,
+      { fontSize: 10.5, color: pm.color, fontFace: FB, bold: true, valign: 'middle' });
+  }
+  const sourceLabel = [
+    ins.source ? ins.source : null,
+    ins.conviction ? `conviction ${ins.conviction}` : null,
+  ].filter(Boolean).join(' · ');
+  if (sourceLabel) {
+    t(s, sourceLabel, W - PAD_X - 3.5, captionY + 0.10, 3.5, 0.30,
+      { fontSize: 8.5, color: '94A3B8', fontFace: 'Consolas',
+        align: 'right', valign: 'middle', charSpacing: 1 });
+  }
+  // Page number bottom-right (tiny, separate from caption)
+  t(s, String(slideNo).padStart(2, '0'), W - PAD_X - 0.5, H - 0.32, 0.5, 0.18,
+    { fontSize: 7, color: 'CBD5E1', fontFace: FB, align: 'right', charSpacing: 1.5 });
 
   // Speaker notes — full obs + rec + source + confidence
   const insightNotes = [
@@ -863,7 +950,7 @@ function slideInsight(
   s.addNotes(insightNotes);
 }
 
-// ─── "So What" slide — pillar recommendations ─────────────────────────────────
+// ─── "So What" slide (visual pass 5 — light bg, numbered list, magazine) ───
 function slidePillarRecs(
   prs: any,
   pm: PillarMeta,
@@ -872,53 +959,57 @@ function slidePillarRecs(
   d: PresentationData,
 ) {
   const s = prs.addSlide();
-  s.background = { color: '0F172A' };
+  s.background = { color: 'FAFAFA' };
 
-  // Top accent band
-  r(s, 0, 0, W, 0.18, pm.color);
+  // Thin top accent
+  r(s, 0, 0, W, 0.08, pm.color);
 
-  // Left bar
-  r(s, 0, 0.18, 0.12, H - 0.38, pm.dark || '1E293B');
+  // Header — same rhythm as agenda + stats slides
+  t(s, `${pm.label.toUpperCase()} · SO WHAT?`, 0.70, 0.42, 8, 0.24,
+    { fontSize: 9.5, color: pm.color, fontFace: FB, bold: true, charSpacing: 3.5 });
+  t(s, 'Recommendations to act on.', 0.70, 0.74, CW, 0.58,
+    { fontSize: 30, color: '0F172A', fontFace: FH, bold: true });
+  ln(s, 0.70, 1.42, 0.80, pm.color, 2.5);
 
-  // Section label
-  t(s, `${pm.icon}  ${pm.label.toUpperCase()} — SO WHAT?`, ML + 0.18, 0.40, 8, 0.26,
-    { fontSize: 9, color: pm.color, fontFace: FB, bold: true, charSpacing: 2 });
-
-  t(s, 'Recommendations', ML + 0.18, 0.72, CW, 0.72,
-    { fontSize: 30, color: 'FFFFFF', fontFace: FH, bold: true });
-
-  ln(s, ML + 0.18, 1.52, 1.6, pm.color, 2);
-
-  // Recommendation rows from insights
+  // Recommendation list — numbered, breathing room
   const recs = insights.map(ins => ins.rec).filter(Boolean).slice(0, 5);
-  const rowH = 0.88;
-  const gap  = 0.12;
-  const startY = 1.74;
+  const rowH = 0.94;
+  const gap  = 0.16;
+  const startY = 1.78;
 
   recs.forEach((rec, i) => {
     const y = startY + i * (rowH + gap);
 
-    // Row background — alternating shades
-    r(s, ML + 0.18, y, CW - 0.20, rowH, i % 2 === 0 ? '1E293B' : '162032');
+    // Card BG: white
+    r(s, 0.70, y, CW, rowH, 'FFFFFF');
+    // Hairline left edge in pillar colour
+    r(s, 0.70, y, 0.06, rowH, pm.color);
+    // Bottom border for separation
+    r(s, 0.70, y + rowH - 0.01, CW, 0.01, 'E2E8F0');
 
-    // Priority strip
-    r(s, ML + 0.18, y, 0.32, rowH, pm.color);
-    t(s, String(i + 1), ML + 0.18, y, 0.32, rowH,
-      { fontSize: 14, color: 'FFFFFF', fontFace: FH, bold: true, align: 'center', valign: 'middle' });
+    // Number — large typographic mark on left
+    t(s, String(i + 1).padStart(2, '0'),
+      0.96, y + 0.20, 0.80, rowH - 0.30,
+      { fontSize: 26, color: pm.color, fontFace: FH, bold: true, valign: 'middle', align: 'left' });
 
     // Recommendation text
-    const short = rec.length > 160 ? rec.slice(0, 160) + '…' : rec;
-    t(s, short, ML + 0.64, y + 0.10, CW - 0.82, rowH - 0.20,
-      { fontSize: 12, color: 'FFFFFF', fontFace: FB, lineSpacingMultiple: 1.35, valign: 'middle' });
+    const short = rec.length > 200 ? rec.slice(0, 200) + '…' : rec;
+    t(s, short, 1.90, y + 0.18, CW - 2.50, rowH - 0.30,
+      { fontSize: 12, color: '0F172A', fontFace: FB, lineSpacingMultiple: 1.40, valign: 'middle', wrap: true });
 
-    // Priority label
-    const badge = i === 0 ? 'HIGH' : i === 1 ? 'HIGH' : 'MED';
-    const bColor = i <= 1 ? pm.color : '64748B';
-    t(s, badge, ML + CW - 1.25, y + 0.08, 1.10, 0.24,
-      { fontSize: 7.5, color: bColor, fontFace: FB, bold: true, charSpacing: 1.2, align: 'right' });
+    // Priority badge — minimal, pillar-coloured on top-2
+    const badge = i === 0 ? 'PRIORITY 1' : i === 1 ? 'PRIORITY 2' : 'MONITOR';
+    const bColor = i <= 1 ? pm.color : '94A3B8';
+    t(s, badge, W - MR - 1.4, y + 0.30, 1.30, 0.24,
+      { fontSize: 8, color: bColor, fontFace: FB, bold: true, charSpacing: 2, align: 'right', valign: 'middle' });
   });
 
-  footer(s, slideNo, d.briefName, true);
+  // Footer ribbon (consistent across all slides)
+  ln(s, 0.70, H - 0.42, W - 1.4, 'E2E8F0', 0.5);
+  t(s, d.briefName.toUpperCase(), 0.70, H - 0.38, 8, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, bold: true, charSpacing: 2 });
+  t(s, `PAGE ${String(slideNo).padStart(2, '0')}`, W - MR - 1, H - 0.38, 1, 0.22,
+    { fontSize: 7.5, color: '94A3B8', fontFace: FB, align: 'right', charSpacing: 1.5 });
 
   // Speaker notes — full recommendations text
   const recsNotes = [
@@ -931,45 +1022,42 @@ function slidePillarRecs(
   s.addNotes(recsNotes);
 }
 
-// ─── Closing slide ────────────────────────────────────────────────────────────
+// ─── Closing slide (visual pass 5 — magazine end-card aesthetic) ──────────
 function slideClosing(prs: any, d: PresentationData, p: Palette) {
   const s = prs.addSlide();
-  s.background = { color: p.dark };
+  s.background = { color: '0F172A' };  // dark to signal "end" — different rhythm from light slides
 
-  // Accent bars
-  r(s, 0, 0, W, 0.18, p.pri);
-  r(s, 0, H - 0.20, W, 0.20, p.acc);
+  // Thin top accent
+  r(s, 0, 0, W, 0.08, p.pri);
 
-  // Left geometric block
-  r(s, 0, H * 0.28, 0.48, H * 0.44, p.mid);
+  // Eyebrow
+  t(s, "WHAT'S NEXT", 0.70, 1.20, 5, 0.24,
+    { fontSize: 9.5, color: p.acc, fontFace: FB, bold: true, charSpacing: 3.5 });
 
-  // Corner decor
-  r(s, W - 1.5, H - 1.7, 1.5, 1.7, p.mid);
-  r(s, W - 0.75, H - 0.85, 0.75, 0.85, p.pri);
+  // Big closing question — magazine-cover scale
+  t(s, 'Ready to move\non these insights?', 0.70, 1.65, W - 1.4, 2.6,
+    { fontSize: 56, color: 'FFFFFF', fontFace: FH, bold: true, lineSpacingMultiple: 1.10 });
 
-  // Label
-  t(s, "WHAT'S NEXT", ML + 0.55, 1.8, CW, 0.28,
-    { fontSize: 10, color: p.acc, fontFace: FB, bold: true, charSpacing: 3 });
+  // Hairline
+  ln(s, 0.70, 4.45, 1.0, p.pri, 2.5);
 
-  // Main heading
-  t(s, 'Ready to act\non these insights?', ML + 0.55, 2.22, CW - 2.2, 2.1,
-    { fontSize: 42, color: 'FFFFFF', fontFace: FH, bold: true, lineSpacingMultiple: 1.1 });
+  // Primary recommendation as a pull quote
+  const primaryRec = d.nextMoves?.[0] || d.recommendations?.[0] || 'Review the full findings and align on priorities with your team.';
+  const shortened = primaryRec.length > 140 ? primaryRec.slice(0, 140) + '…' : primaryRec;
+  t(s, 'TOP MOVE', 0.70, 4.70, 3, 0.22,
+    { fontSize: 8.5, color: p.acc, fontFace: FB, bold: true, charSpacing: 3 });
+  t(s, shortened, 0.70, 4.98, W - 1.4, 1.4,
+    { fontSize: 16, color: 'E2E8F0', fontFace: FH, italic: true, lineSpacingMultiple: 1.40 });
 
-  ln(s, ML + 0.55, 4.46, 1.8, p.acc, 2);
-
-  // Overall recommendation
-  const primaryRec = d.recommendations[0] || 'Review the full findings and align on priorities with your team.';
-  const shortened = primaryRec.length > 120 ? primaryRec.slice(0, 120) + '…' : primaryRec;
-  t(s, `"${shortened}"`, ML + 0.55, 4.68, CW - 2.0, 1.0,
-    { fontSize: 13, color: p.tl, fontFace: FB, italic: true, lineSpacingMultiple: 1.45 });
-
-  // Date + brief
-  t(s, d.date || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' }),
-    ML + 0.55, 5.90, 4, 0.28,
-    { fontSize: 10, color: p.tl, fontFace: FB });
-
-  t(s, (d.briefName || '').toUpperCase(), W - MR - 5.5, 5.90, 5.2, 0.28,
-    { fontSize: 10, color: p.tl, fontFace: FB, bold: true, charSpacing: 1.6, align: 'right' });
+  // Bottom metadata strip
+  ln(s, 0.70, H - 0.78, W - 1.4, '1E293B', 0.5);
+  t(s, (d.brand || d.briefName || '').toUpperCase(), 0.70, H - 0.65, 8, 0.22,
+    { fontSize: 8.5, color: '64748B', fontFace: FB, bold: true, charSpacing: 2.5 });
+  t(s, d.date || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    0.70, H - 0.38, 8, 0.22,
+    { fontSize: 8.5, color: '64748B', fontFace: FB });
+  t(s, 'PRISM · CONFIDENTIAL', W - MR - 4, H - 0.38, 4, 0.22,
+    { fontSize: 8.5, color: '64748B', fontFace: FB, align: 'right', charSpacing: 2.5 });
 
   // Speaker notes — wrap-up + Q&A prompt
   const closingNotes = [
