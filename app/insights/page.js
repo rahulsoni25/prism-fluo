@@ -1584,16 +1584,78 @@ function ToolsUsedPanel({ charts }) {
  * objective are blank.
  */
 function ClientBriefContext({ brief, audienceDescriptor }) {
+  // Lazy LLM-summarised context. Falls back to deterministic extraction
+  // while the request is in flight or on error.
+  const [llmSummary, setLlmSummary] = useState(null);
+  const [llmSource,  setLlmSource]  = useState(null);
+
+  useEffect(() => {
+    if (!brief?.id || !brief?.background) return;
+    let cancelled = false;
+    fetch(`/api/briefs/${brief.id}/context-summary`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (cancelled || !d?.summary) return;
+        setLlmSummary(d.summary);
+        setLlmSource(d.source || 'llm');
+      })
+      .catch(() => { /* keep deterministic fallback */ });
+    return () => { cancelled = true; };
+  }, [brief?.id, brief?.background]);
+
   if (!brief || (!brief.background && !brief.objective)) return null;
 
   const audience = audienceDescriptor || [
     brief.age_ranges, brief.gender !== 'All Genders' ? brief.gender : null, brief.market,
   ].filter(Boolean).join(' · ');
 
-  // Keep background tight so it doesn't compete with the AI snapshot.
-  const MAX = 320;
-  const bg = (brief.background || '').trim();
-  const truncated = bg.length > MAX ? bg.slice(0, MAX).trimEnd() + '…' : bg;
+  // Build a clean 1–3 sentence summary from the brief background. We:
+  //   1. Drop section-label lines like "Brief:", "Context", "DEMO –",
+  //      "Core TG Persona" — short label-only lines that are noise here.
+  //   2. Split on sentence-ending punctuation so we never end mid-word.
+  //   3. Accumulate sentences up to a soft char budget, stopping at the
+  //      last full sentence we can fit.
+  const summarise = (raw) => {
+    if (!raw) return '';
+    const BUDGET = 360;
+    const labelRe = /^(brief\s*[:\-]|context|objective|key\s+questions?|demo\s*[-–]|core\s+tg\s+persona|key\s+frictions|current\s+behaviour|data\s+sources)/i;
+
+    // Flatten line-breaks into spaces. Drop:
+    //   - short label-only lines ("Context", "Objective", "DEMO –", etc.)
+    //   - title lines: short-ish text that doesn't end in sentence punctuation
+    //     (so headings like "Brief: Building Behavioural Understanding…" go)
+    const cleaned = raw
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => {
+        if (!l) return false;
+        if (l.length < 60 && labelRe.test(l)) return false;
+        if (l.length < 90 && !/[.!?:]$/.test(l)) return false;
+        if (labelRe.test(l) && l.length < 110) return false;
+        return true;
+      })
+      .join(' ')
+      .replace(/\s+/g, ' ');
+
+    // Split on . ! ? followed by space or end. Keep sentences with their
+    // terminator by capturing it back.
+    const sentences = cleaned
+      .split(/(?<=[.!?])\s+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 8);
+
+    let out = '';
+    for (const s of sentences) {
+      if (!out) { out = s; if (out.length >= BUDGET) break; continue; }
+      if (out.length + 1 + s.length > BUDGET) break;
+      out += ' ' + s;
+    }
+    return out;
+  };
+
+  // Prefer the server's LLM/extractive summary (already grounded + cleaned).
+  // Use local deterministic summarise() as the immediate-paint fallback.
+  const truncated = llmSummary || summarise(brief.background);
 
   return (
     <div style={{
@@ -1605,7 +1667,7 @@ function ClientBriefContext({ brief, audienceDescriptor }) {
       borderRadius: 10,
       maxWidth: 1100,
     }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: bg ? 8 : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: truncated ? 8 : 0 }}>
         <span style={{
           fontSize: 10, fontWeight: 800, letterSpacing: '0.12em',
           textTransform: 'uppercase', color: '#2563EB',
@@ -2423,6 +2485,7 @@ function AnalysisDetail({ id }) {
   const [printing,     setPrinting]     = useState(false);
   const [showDeckModal, setShowDeckModal] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [sortDir,      setSortDir]      = useState('desc'); // 'desc' = high→low confidence
 
   useEffect(() => {
     fetch(`/api/analyses/${id}`)
@@ -2819,7 +2882,16 @@ function AnalysisDetail({ id }) {
           : [currentBucket]
       ).map((bucketKey) => {
         const sectionMeta   = BUCKET_META[bucketKey];
-        const sectionCharts = bucketedCharts[bucketKey] || [];
+        const rawCharts     = bucketedCharts[bucketKey] || [];
+        // Sort by conviction (a.k.a. confidence score). Missing conviction
+        // values fall back to the same 78–92 synthetic ramp the card UI uses,
+        // so the visible "% confidence" badge always matches sort order.
+        const synth = (i) => 78 + (i * 3) % 15;
+        const score = (c, i) => (c.conviction != null ? Number(c.conviction) : synth(i));
+        const sectionCharts = rawCharts
+          .map((c, i) => ({ c, s: score(c, i) }))
+          .sort((a, b) => sortDir === 'desc' ? b.s - a.s : a.s - b.s)
+          .map(x => x.c);
         return (
           <div key={bucketKey} className="insights-body">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -2829,9 +2901,21 @@ function AnalysisDetail({ id }) {
                   {sectionCharts.length} insight{sectionCharts.length !== 1 ? 's' : ''} · sourced from {sourceBadge}
                 </div>
               </div>
-              <div className="no-print" style={{ fontSize: '11px', color: 'var(--muted)', background: '#fff', padding: '5px 12px', borderRadius: '20px', boxShadow: 'var(--shadow)' }}>
-                Sorted by confidence score
-              </div>
+              <button
+                type="button"
+                className="no-print"
+                onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                title={sortDir === 'desc' ? 'Click to sort low → high' : 'Click to sort high → low'}
+                style={{
+                  fontSize: '11px', fontWeight: 600, color: '#475569',
+                  background: '#fff', padding: '6px 14px', borderRadius: '20px',
+                  boxShadow: 'var(--shadow)', border: '1px solid #E2E8F0',
+                  cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontFamily: 'inherit',
+                }}
+              >
+                Confidence {sortDir === 'desc' ? '↓ High → Low' : '↑ Low → High'}
+              </button>
             </div>
 
             {sectionCharts.length === 0 ? (
