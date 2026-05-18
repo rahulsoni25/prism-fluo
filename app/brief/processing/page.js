@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import Navbar from '@/components/Navbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PLATFORMS_DATA } from '@/lib/data';
@@ -43,44 +43,51 @@ function ProcessingInner() {
   const [expandedCard, setExpandedCard] = useState(null);
   const [elapsed,      setElapsed]     = useState(0);
 
-  // Per-platform animation speeds (% per tick) and caps
-  const BAR_SPEED = [0.25, 0.30, 0.35, 0.18, 0.55, 0.28, 0.60, 0.32];
-  const BAR_CAP   = [88,   82,   72,   92,   55,   85,   45,   78  ];
+  // Max fill each bar/bucket can reach (never hits 100% — stays "in progress")
+  const BAR_CAP    = [88, 82, 72, 92, 55, 85, 45, 78];
   const BUCKET_CAP = [88, 75, 82, 70, 68, 72, 78, 65, 80];
-  const TOTAL_MS  = 8 * 60 * 60 * 1000; // 8 hours default
+  const TOTAL_MS   = 8 * 60 * 60 * 1000; // 8 h default
+
+  // Refs so the tick interval always reads fresh values without re-registering
+  const startMsRef = useRef(null);
+  const totalMsRef = useRef(TOTAL_MS);
 
   useEffect(() => {
+    // Fallback: no briefId — start clock from now
+    if (!startMsRef.current) startMsRef.current = Date.now();
+
     if (!briefId) return;
     fetch(`/api/briefs/${briefId}`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then(d => {
         if (d.error) return;
         setBrief(d);
-        // Seed bars proportional to real elapsed time so a user returning
-        // after 4 hours sees ~50% progress, not a freshly-reset 0%.
         if (d.created_at) {
           const createdMs = new Date(d.created_at).getTime();
           const totalMs   = d.sla_due_at
             ? new Date(d.sla_due_at).getTime() - createdMs
             : TOTAL_MS;
-          const ratio = Math.min((Date.now() - createdMs) / totalMs, 0.98);
-          setWidths(BAR_CAP.map(cap => Math.max(2, Math.round(ratio * cap))));
-          setBucketPcts(BUCKET_CAP.map(cap => Math.max(2, Math.round(ratio * cap))));
+          startMsRef.current = createdMs;
+          totalMsRef.current = totalMs;
         }
       })
       .catch(err => console.warn('[processing] Could not load brief:', err.message));
   }, [briefId]);
 
-  // Animate bars forward from wherever they were seeded
+  // Single tick drives elapsed counter + bar positions from real clock ratio
   useEffect(() => {
-    const tb = setInterval(() => {
-      setWidths(prev => prev.map((w, i) => w < BAR_CAP[i] ? Math.min(w + BAR_SPEED[i], BAR_CAP[i]) : w));
-    }, 400);
-    const tBucket = setInterval(() => {
-      setBucketPcts(prev => prev.map((p, i) => p < BUCKET_CAP[i] ? Math.min(p + Math.random() * 0.5 + 0.1, BUCKET_CAP[i]) : p));
-    }, 600);
-    const te = setInterval(() => setElapsed(e => e + 1), 1000);
-    return () => { clearInterval(tb); clearInterval(tBucket); clearInterval(te); };
+    const tick = setInterval(() => {
+      setElapsed(e => e + 1);
+      if (startMsRef.current) {
+        const ratio = Math.min(
+          (Date.now() - startMsRef.current) / totalMsRef.current,
+          0.98,
+        );
+        setWidths(BAR_CAP.map(cap => Math.max(2, ratio * cap)));
+        setBucketPcts(BUCKET_CAP.map(cap => Math.max(2, ratio * cap)));
+      }
+    }, 1000);
+    return () => clearInterval(tick);
   }, []);
 
   const fetchingSources = PLATFORMS_DATA.filter(p => p.status === 'fetching').length;
