@@ -137,7 +137,7 @@ Look for: claims about trends that aren't in the labels; named brands/products t
 Return shape: [{"field":"title|obs|stat|rec","severity":"blocker|major|minor","issue":"description","evidence":"the unsupported phrase"}]
 Return ONLY the JSON array. No prose.`;
   try {
-    const raw = await callOpenRouterText(prompt, 500);
+    const raw = await callOpenRouterText(prompt, 500, 'verify-fact-analyzer');
     const m = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').match(/\[[\s\S]*\]/);
     if (!m) return [];
     const arr = JSON.parse(m[0]);

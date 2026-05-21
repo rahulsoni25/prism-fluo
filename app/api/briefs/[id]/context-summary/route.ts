@@ -125,15 +125,23 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   if (cached) return NextResponse.json({ ...cached, cached: true });
 
   // No API key → skip the call and serve the deterministic version. We still
-  // cache it so the client doesn't keep retrying.
+  // cache it so the client doesn't keep retrying. Notify the fallback monitor
+  // so admins see the AI surface is degraded.
   if (!process.env.OPENROUTER_API_KEY) {
+    const { recordFallback } = await import('@/lib/ai/fallback-monitor');
+    recordFallback({
+      kind: 'extractive-fallback',
+      severity: 'alert',
+      surface: 'context-summary',
+      errorMessage: 'OPENROUTER_API_KEY not set — serving extractive summary',
+    });
     const payload = { summary: extractiveSummary(background), source: 'extractive' };
     cache.set(cacheKey, payload, TTL_SECONDS);
     return NextResponse.json(payload);
   }
 
   try {
-    const raw = await callOpenRouterText(buildPrompt(brief), 220);
+    const raw = await callOpenRouterText(buildPrompt(brief), 220, 'context-summary');
     const cleaned = raw
       .trim()
       .replace(/^["'`]+|["'`]+$/g, '')
@@ -149,6 +157,13 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       /^(the brief|this brief|the client)/i.test(cleaned);
 
     if (looksBad) {
+      const { recordFallback } = await import('@/lib/ai/fallback-monitor');
+      recordFallback({
+        kind: 'extractive-fallback',
+        severity: 'warn',
+        surface: 'context-summary',
+        errorMessage: 'LLM response failed sanity check (length/sentence count/banned opening)',
+      });
       const payload = { summary: extractiveSummary(background), source: 'extractive-fallback' };
       cache.set(cacheKey, payload, TTL_SECONDS);
       return NextResponse.json(payload);

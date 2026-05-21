@@ -193,7 +193,7 @@ Return shape: [{"field":"title|obs|stat|rec","severity":"blocker|major|minor","i
 
 Return ONLY the JSON array. No prose, no markdown.`;
   try {
-    const raw = await callOpenRouterText(prompt, 600);
+    const raw = await callOpenRouterText(prompt, 600, 'analysis-proofread');
     const match = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').match(/\[[\s\S]*\]/);
     if (!match) return [];
     const arr = JSON.parse(match[0]);

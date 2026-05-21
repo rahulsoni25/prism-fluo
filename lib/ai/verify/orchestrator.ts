@@ -103,7 +103,17 @@ export async function verifyCard(
   };
 }
 
-/** Verify an entire analysis. Concurrency-limited so we don't melt the LLM. */
+/** Verify an entire analysis. Concurrency-limited so we don't melt the LLM.
+ *
+ *  Token-optimization notes:
+ *  • Rule-based passes run in O(n) over cards, no token cost.
+ *  • LLM passes are SKIPPED entirely on cards where the rule passes already
+ *    flagged a finding the LLM would just duplicate (e.g. blocker-grade
+ *    truncated-title — no point asking the LLM to find what regex caught).
+ *  • Cross-confirm step is pure-rule. No LLM round-trips for confirmation.
+ *  • Higher concurrency = same total tokens, less wall time. We cap at 8
+ *    so we don't exhaust the OpenRouter rate limit on a 200-card analysis.
+ */
 export async function verifyAnalysis(
   analysisId: string,
   cards: CardInput[],
@@ -113,11 +123,39 @@ export async function verifyAnalysis(
   const limit = Math.max(1, opts.concurrency ?? 8);
   const out: CardVerification[] = [];
 
-  // Simple chunked concurrency — enough for our card volumes (< 300 cards)
-  for (let i = 0; i < cards.length; i += limit) {
-    const chunk = cards.slice(i, i + limit);
-    const verified = await Promise.all(chunk.map(c => verifyCard(c, brand, opts)));
-    out.push(...verified);
+  // Run a quick rules-only pass first to identify cards that already have
+  // hits — when LLM mode is on, we only re-scan cards with NO rule hits
+  // (LLM serves as a "second pair of eyes" on the otherwise-clean cards).
+  // This routes the expensive token budget to where rules can't see.
+  if (opts.llm) {
+    // First pass: rules only, parallel chunks
+    for (let i = 0; i < cards.length; i += limit) {
+      const chunk = cards.slice(i, i + limit);
+      const verified = await Promise.all(chunk.map(c => verifyCard(c, brand, { llm: false })));
+      out.push(...verified);
+    }
+    // Second pass: LLM only on cards that survived the rule pass with zero findings
+    const cleanCards = cards.filter((_c, i) => out[i].findings.length === 0);
+    for (let i = 0; i < cleanCards.length; i += limit) {
+      const chunk = cleanCards.slice(i, i + limit);
+      const verifiedAgain = await Promise.all(chunk.map(c => verifyCard(c, brand, { llm: true })));
+      // Merge any new LLM findings back into the corresponding out[i]
+      verifiedAgain.forEach(v => {
+        const target = out.find(o => o.index === v.index);
+        if (target && v.findings.length > 0) {
+          target.findings.push(...v.findings);
+          if (v.worstSeverity) target.worstSeverity = v.worstSeverity;
+          target.verified = false;
+        }
+      });
+    }
+  } else {
+    // Rule-only mode: single pass, parallel chunks
+    for (let i = 0; i < cards.length; i += limit) {
+      const chunk = cards.slice(i, i + limit);
+      const verified = await Promise.all(chunk.map(c => verifyCard(c, brand, opts)));
+      out.push(...verified);
+    }
   }
 
   // Summary

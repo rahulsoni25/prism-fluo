@@ -285,6 +285,45 @@ export async function sendPasswordResetEmail(
   }
 }
 
+// ── AI Fallback Burst Alert (admin-only) ─────────────────────────────────────
+
+/**
+ * Sent by lib/ai/fallback-monitor.ts when 5+ alert-severity fallback events
+ * happen within 5 minutes. The single email is rate-limited (30-min cooldown)
+ * so an outage doesn't flood the inbox.
+ */
+export async function sendBurstAlertEmail(subject: string, body: string): Promise<void> {
+  const transport = await getTransporter();
+  if (!transport) {
+    console.warn('[Email] burst alert NOT sent (no SMTP) —', subject);
+    return;
+  }
+  const user = process.env.SMTP_USER!;
+  const html = `<!DOCTYPE html>
+<html><body style="font-family:Inter,Arial,sans-serif;background:#FEF2F2;padding:24px">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:2px solid #DC2626">
+  <div style="background:#DC2626;color:#fff;padding:16px 22px;font-weight:800;font-size:16px">🚨 PRISM AI Fallback Alert</div>
+  <div style="padding:20px 22px">
+    <p style="margin:0 0 10px;font-weight:700;color:#0F172A">${subject}</p>
+    <pre style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px;font-size:12px;color:#334155;white-space:pre-wrap;font-family:'SF Mono',Consolas,Menlo,monospace">${body.replace(/[<>&]/g, ch => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[ch]!)}</pre>
+    <p style="margin:14px 0 0;font-size:12px;color:#64748B">
+      Visit <a href="https://prism-fluo.vercel.app/admin/ai-health" style="color:#2563EB">/admin/ai-health</a> for the full event log.
+    </p>
+  </div>
+</div></body></html>`;
+  try {
+    await transport.sendMail({
+      from:    FROM_LABEL(user),
+      to:      NOTIFY_TO,
+      subject: `🚨 ${subject}`,
+      html,
+    });
+    console.log('[Email] burst alert sent to', NOTIFY_TO);
+  } catch (e) {
+    console.error('[Email] burst alert failed:', (e as Error).message);
+  }
+}
+
 // ── Brief Active (data uploaded) ─────────────────────────────────────────────
 
 export async function sendBriefActiveEmail(

@@ -114,6 +114,13 @@ When answering:
     // ── Call OpenRouter / Gemma ───────────────────────────────────────
     if (!process.env.OPENROUTER_API_KEY) {
       logger.error('copilot:missing_api_key', { error: 'OPENROUTER_API_KEY not set' });
+      const { recordFallback } = await import('@/lib/ai/fallback-monitor');
+      recordFallback({
+        kind: 'all-models-down',
+        severity: 'alert',
+        surface: 'copilot',
+        errorMessage: 'OPENROUTER_API_KEY not set',
+      });
       return NextResponse.json(
         {
           error: 'CONFIG_ERROR',
@@ -129,7 +136,7 @@ When answering:
       messages.map((m: any) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')
     }`;
 
-    const answer = await callOpenRouterText(fullPrompt, 2000);
+    const answer = await callOpenRouterText(fullPrompt, 2000, 'copilot');
 
     if (!answer) {
       logger.error('copilot:empty_response', { analysisId });

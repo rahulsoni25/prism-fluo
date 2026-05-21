@@ -91,7 +91,8 @@ export default function AuditLogPanel() {
           <span style={{ color: 'rgba(255,255,255,.3)', fontSize: 14 }}>/</span>
           <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Audit Log</span>
           <Link href="/admin/users" style={{ marginLeft: 18, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Users</Link>
-          <Link href="/admin/pages" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Pages</Link>
+          <Link href="/admin/pages"     style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Pages</Link>
+          <Link href="/admin/ai-health" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ AI Health</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700 }}>

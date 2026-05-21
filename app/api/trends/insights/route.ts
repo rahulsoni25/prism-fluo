@@ -113,7 +113,7 @@ Return ONLY valid JSON array:
 ]`;
 
   try {
-    const raw   = await callOpenRouterText(prompt, 1500);
+    const raw   = await callOpenRouterText(prompt, 1500, 'trends-insights');
     const match = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').match(/\[[\s\S]*\]/);
     if (!match) throw new Error('No JSON in Gemma response');
 

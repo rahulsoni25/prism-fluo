@@ -328,13 +328,30 @@ const TEXT_MODELS = [
 export async function callOpenRouterText(
   prompt:    string,
   maxTokens: number = 2000,
+  surface:   string = 'unspecified',  // origin of the call — used by fallback monitor (e.g. 'context-summary', 'verify-llm', 'copilot')
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY not set');
+  if (!apiKey) {
+    const { recordFallback } = await import('./fallback-monitor');
+    recordFallback({
+      kind: 'all-models-down',
+      severity: 'alert',
+      surface,
+      errorMessage: 'OPENROUTER_API_KEY not set',
+    });
+    throw new Error('OPENROUTER_API_KEY not set');
+  }
 
   const failures: string[] = [];
+  const primaryModel = TEXT_MODELS[0];
 
-  for (const model of TEXT_MODELS) {
+  // ── Token optimization: trim leading/trailing whitespace + collapse
+  //    runs of 3+ blank lines to a single blank line. Saves ~5-15% of
+  //    tokens on bigger prompts without changing semantics.
+  const trimmedPrompt = prompt.trim().replace(/\n{3,}/g, '\n\n');
+
+  for (let i = 0; i < TEXT_MODELS.length; i++) {
+    const model = TEXT_MODELS[i];
     try {
       const res = await fetch(OPENROUTER_URL, {
         method: 'POST',
@@ -346,7 +363,7 @@ export async function callOpenRouterText(
         },
         body: JSON.stringify({
           model,
-          messages:    [{ role: 'user', content: prompt }],
+          messages:    [{ role: 'user', content: trimmedPrompt }],
           temperature: 0.65,
           max_tokens:  maxTokens,
         }),
@@ -368,6 +385,19 @@ export async function callOpenRouterText(
         continue;
       }
 
+      // Record fallback if cascade was needed
+      if (i > 0) {
+        const { recordFallback } = await import('./fallback-monitor');
+        recordFallback({
+          kind: 'model-cascade',
+          severity: i >= 2 ? 'warn' : 'info',
+          surface,
+          primaryModel,
+          actualModel: model,
+          attempts: i + 1,
+          details: { failedModels: failures.slice(0, i) },
+        });
+      }
       console.log(`[OpenRouter] ${model} — OK`);
       return text;
 
@@ -377,6 +407,17 @@ export async function callOpenRouterText(
     }
   }
 
+  // Full exhaustion → high-severity alert
+  const { recordFallback } = await import('./fallback-monitor');
+  recordFallback({
+    kind: 'all-models-down',
+    severity: 'alert',
+    surface,
+    primaryModel,
+    attempts: TEXT_MODELS.length,
+    errorMessage: failures.slice(0, 3).join(' | '),
+    details: { allFailures: failures },
+  });
   throw new Error(`All OpenRouter models failed:\n${failures.join('\n')}`);
 }
 

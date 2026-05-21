@@ -137,7 +137,7 @@ REC:   ${card.rec || ''}
 Shape: [{"field":"title|obs|stat|rec","severity":"blocker|major|minor","issue":"description","suggest":"optional rewrite"}]
 Return ONLY the JSON array. No markdown, no prose.`;
   try {
-    const raw = await callOpenRouterText(prompt, 500);
+    const raw = await callOpenRouterText(prompt, 500, 'verify-proofreader');
     const m = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').match(/\[[\s\S]*\]/);
     if (!m) return [];
     const arr = JSON.parse(m[0]);
