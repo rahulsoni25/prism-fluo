@@ -13,6 +13,7 @@ import SourceFilesPanel from '@/components/insights/SourceFilesPanel';
 import BriefContextStrip from '@/components/insights/BriefContextStrip';
 import StrategicBetCard from '@/components/insights/StrategicBetCard';
 import ProofreadButton from '@/components/insights/ProofreadButton';
+import VerifiedBadge from '@/components/insights/VerifiedBadge';
 import { fmtTs, timeAgo, parseRecommendation } from '@/lib/insights/helpers';
 import {
   BUCKET_META, BUCKET_TABS,
@@ -1870,6 +1871,11 @@ function AnalysisDetail({ id }) {
 
             {/* ── Brief context strip — flat, no card-in-card ── */}
             <BriefContextStrip brief={analysis.brief} sourceBadge={sourceBadge} createdAt={analysis.created_at} />
+
+            {/* ── Verification council badge ── */}
+            <div style={{ marginTop: 10 }}>
+              <VerifiedBadge analysisId={id} />
+            </div>
 
             {analysis.brief?.sla_due_at && (
               <SlaStrip brief={analysis.brief} />
