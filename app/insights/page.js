@@ -12,6 +12,7 @@ import ToolsUsedPanel from '@/components/insights/ToolsUsedPanel';
 import SourceFilesPanel from '@/components/insights/SourceFilesPanel';
 import BriefContextStrip from '@/components/insights/BriefContextStrip';
 import StrategicBetCard from '@/components/insights/StrategicBetCard';
+import ProofreadButton from '@/components/insights/ProofreadButton';
 import { fmtTs, timeAgo, parseRecommendation } from '@/lib/insights/helpers';
 import {
   BUCKET_META, BUCKET_TABS,
@@ -1997,21 +1998,24 @@ function AnalysisDetail({ id }) {
                   {sectionCharts.length} insight{sectionCharts.length !== 1 ? 's' : ''} · sourced from {sourceBadge}
                 </div>
               </div>
-              <button
-                type="button"
-                className="no-print"
-                onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
-                title={sortDir === 'desc' ? 'Click to sort low → high' : 'Click to sort high → low'}
-                style={{
-                  fontSize: '11px', fontWeight: 600, color: '#475569',
-                  background: '#fff', padding: '6px 14px', borderRadius: '20px',
-                  boxShadow: 'var(--shadow)', border: '1px solid #E2E8F0',
-                  cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontFamily: 'inherit',
-                }}
-              >
-                Confidence {sortDir === 'desc' ? '↓ High → Low' : '↑ Low → High'}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  className="no-print"
+                  onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                  title={sortDir === 'desc' ? 'Click to sort low → high' : 'Click to sort high → low'}
+                  style={{
+                    fontSize: '11px', fontWeight: 600, color: '#475569',
+                    background: '#fff', padding: '6px 14px', borderRadius: '20px',
+                    boxShadow: 'var(--shadow)', border: '1px solid #E2E8F0',
+                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  Confidence {sortDir === 'desc' ? '↓ High → Low' : '↑ Low → High'}
+                </button>
+                <ProofreadButton analysisId={id} />
+              </div>
             </div>
 
             {sectionCharts.length === 0 ? (
