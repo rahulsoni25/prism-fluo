@@ -23,6 +23,7 @@ import { db } from '@/lib/db/client';
 import { getSession } from '@/lib/auth/server';
 import { POST as analyzeDataPOST } from '@/app/api/ai/analyze-data/route';
 import { insightsToCharts } from '@/lib/charts/build-gemini-chart-data';
+import { fireCouncilInBackground } from '@/lib/ai/verify/trigger';
 
 export const maxDuration = 300;  // Gemini batches + overview can take ~90s for large files
 
@@ -158,6 +159,10 @@ export async function POST(
         WHERE id = $2 AND (user_id = $3 OR user_id IS NULL)`,
       [JSON.stringify(updatedResults), id, session.userId],
     );
+
+    // Re-run the 3-agent verification council against the regenerated cards.
+    // Background fire — the response goes out immediately.
+    fireCouncilInBackground(id, { reason: 'analyses:regenerate' });
 
     return NextResponse.json({
       id,

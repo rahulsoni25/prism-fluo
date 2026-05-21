@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { getSession } from '@/lib/auth/server';
 import { verifyAnalysis, buildGeminiFeedback } from '@/lib/ai/verify/orchestrator';
+import { triggerCouncilForAnalysis, ensureCouncilHasRun } from '@/lib/ai/verify/trigger';
 import type { CardInput } from '@/lib/ai/verify/types';
 
 export const dynamic = 'force-dynamic';
@@ -69,7 +70,15 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       [id],
     );
     if (rows.length === 0) {
-      return NextResponse.json({ status: 'never-run', message: 'No verification stored yet. POST to run.' });
+      // Auto-backfill: silently fire the council in the background. The
+      // user sees "verification pending" once; the next page load shows
+      // the result. Keeps existing analyses moving toward 100% coverage
+      // without anyone having to remember to click anything.
+      ensureCouncilHasRun(id, 'verify:GET:backfill').catch(() => {});
+      return NextResponse.json({
+        status: 'never-run',
+        message: 'Verification started in the background. Refresh shortly to see results.',
+      });
     }
     return NextResponse.json({
       status: 'stored',
@@ -87,25 +96,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
 
-  const useLlm = req.nextUrl.searchParams.get('llm') === '1';
+  // Confirm read access via the same loadCards check (it scopes by user_id)
   const data = await loadCards(id, session.userId);
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const report  = await verifyAnalysis(id, data.cards, data.brand, { llm: useLlm });
+  const useLlm = req.nextUrl.searchParams.get('llm') === '1';
+  // Use the centralized trigger helper — same code path as the auto-fire
+  // from analyses POST / regenerate, ensures identical storage shape.
+  const report = await triggerCouncilForAnalysis(id, { llm: useLlm, reason: 'verify:manual' });
+  if (!report) return NextResponse.json({ error: 'Council failed' }, { status: 500 });
   const feedback = buildGeminiFeedback(report);
-
-  try {
-    await ensureTable();
-    await db.query(
-      `INSERT INTO analysis_verifications (analysis_id, report, generated_at, mode)
-       VALUES ($1, $2, NOW(), $3)
-       ON CONFLICT (analysis_id)
-       DO UPDATE SET report = EXCLUDED.report, generated_at = EXCLUDED.generated_at, mode = EXCLUDED.mode`,
-      [id, JSON.stringify(report), useLlm ? 'rules+llm' : 'rules-only'],
-    );
-  } catch (err) {
-    console.warn('[verify] store failed:', (err as Error).message);
-  }
 
   return NextResponse.json({
     status: 'verified',

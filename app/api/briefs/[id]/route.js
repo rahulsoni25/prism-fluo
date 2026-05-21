@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { cache } from '@/lib/cache';
 import { getSession } from '@/lib/auth/server';
+import { ensureCouncilHasRun } from '@/lib/ai/verify/trigger';
 
 const VALID_STATUSES = ['draft', 'waiting_for_data', 'processing', 'ready'];
 
@@ -69,6 +70,15 @@ export async function PATCH(req, { params }) {
     if (rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     cache.del(`dashboard:overview:${session.userId}`);
+
+    // If this PATCH flipped the brief to 'ready' AND a linked analysis
+    // exists, ensure the 3-agent council has run against that analysis.
+    // ensureCouncilHasRun() is idempotent — it only fires if no report
+    // exists yet, so re-PATCHing the same brief never re-runs the council.
+    if (rows[0].status === 'ready' && rows[0].analysis_id) {
+      ensureCouncilHasRun(rows[0].analysis_id, 'briefs:PATCH→ready').catch(() => {});
+    }
+
     return NextResponse.json(rows[0]);
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });

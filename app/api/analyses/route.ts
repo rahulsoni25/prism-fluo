@@ -12,7 +12,7 @@ import { logger } from '@/lib/logger';
 import { getSession, upsertUser } from '@/lib/auth/server';
 import { calculateSla } from '@/lib/sla.server';
 import { sendBriefActiveEmail } from '@/lib/email';
-import { verifyAnalysis } from '@/lib/ai/verify/orchestrator';
+import { fireCouncilInBackground } from '@/lib/ai/verify/trigger';
 
 export async function GET() {
   const t0 = Date.now();
@@ -235,55 +235,9 @@ export async function POST(req: NextRequest) {
     logger.info('api:POST /api/analyses', { ms: Date.now() - t0, id });
 
     // ── Fire 3-agent verification council in the background ───────────
-    // Runs the proofreader + stat-checker + fact-analyzer over every card,
-    // cross-confirms findings, and stores the report. Non-blocking so the
-    // client still gets a fast 201. Rules-only by default (deterministic,
-    // no LLM cost). Pass ?llm=1 on the verify route later to do a deep
-    // grammar/consistency pass.
+    // Non-blocking — see lib/ai/verify/trigger.ts for the full flow.
     if (id && Array.isArray(results?.charts) && results.charts.length > 0) {
-      const cards = results.charts.map((c: any, i: number) => ({
-        index: i,
-        title: c.title || '(no title)',
-        obs:   c.obs,
-        stat:  c.stat,
-        rec:   c.rec,
-        bucket: c.bucket,
-        computedChartData: c.computedChartData,
-        toolLabel: c.toolLabel,
-      }));
-      // Look up brand on a best-effort basis (briefId may be null for legacy)
-      let brand: string | null = null;
-      if (briefId) {
-        try {
-          const b = await db.query('SELECT brand FROM briefs WHERE id = $1', [briefId]);
-          brand = b.rows[0]?.brand ?? null;
-        } catch { /* ignore */ }
-      }
-      verifyAnalysis(id, cards, brand, { llm: false })
-        .then(async (report) => {
-          // Ensure table + upsert
-          await db.query(`
-            CREATE TABLE IF NOT EXISTS analysis_verifications (
-              analysis_id   UUID PRIMARY KEY,
-              report        JSONB NOT NULL,
-              generated_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-              mode          TEXT NOT NULL DEFAULT 'rules-only'
-            )
-          `);
-          await db.query(
-            `INSERT INTO analysis_verifications (analysis_id, report, generated_at, mode)
-             VALUES ($1, $2, NOW(), 'rules-only')
-             ON CONFLICT (analysis_id)
-             DO UPDATE SET report = EXCLUDED.report, generated_at = EXCLUDED.generated_at, mode = EXCLUDED.mode`,
-            [id, JSON.stringify(report)],
-          );
-          logger.info('analyses:verify_complete', {
-            id, ms: Date.now() - t0,
-            cardsWithIssues: report.summary.cardsWithIssues,
-            confirmed: report.summary.confirmedFindings,
-          });
-        })
-        .catch((err: Error) => logger.warn('analyses:verify_failed', { id, error: err.message }));
+      fireCouncilInBackground(id, { reason: 'analyses:POST' });
     }
 
     return NextResponse.json({ id }, { status: 201 });

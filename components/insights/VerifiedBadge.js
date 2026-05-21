@@ -17,20 +17,27 @@ export default function VerifiedBadge({ analysisId }) {
   useEffect(() => {
     if (!analysisId) return;
     let cancelled = false;
-    fetch(`/api/analyses/${analysisId}/verify`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (cancelled || !d) return;
-        if (d.status === 'never-run') {
-          setState({ kind: 'pending' });
-        } else if (d.report) {
-          setReport(d.report);
-          const s = d.report.summary;
-          if (s.confirmedFindings === 0) setState({ kind: 'verified', summary: s });
-          else setState({ kind: 'issues', summary: s });
-        }
-      })
-      .catch(() => setState({ kind: 'pending' }));
+
+    const load = (isPoll = false) => {
+      fetch(`/api/analyses/${analysisId}/verify`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (cancelled || !d) return;
+          if (d.status === 'never-run') {
+            // Council is running in the background — poll every 4s until it lands.
+            setState({ kind: 'pending' });
+            if (!isPoll) setTimeout(() => !cancelled && load(true), 4000);
+          } else if (d.report) {
+            setReport(d.report);
+            const s = d.report.summary;
+            if (s.confirmedFindings === 0) setState({ kind: 'verified', summary: s });
+            else setState({ kind: 'issues', summary: s });
+          }
+        })
+        .catch(() => setState({ kind: 'pending' }));
+    };
+
+    load(false);
     return () => { cancelled = true; };
   }, [analysisId]);
 
