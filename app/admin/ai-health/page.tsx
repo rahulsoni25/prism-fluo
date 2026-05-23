@@ -84,6 +84,7 @@ export default function AiHealthPanel() {
           <Link href="/admin/users"       style={{ marginLeft: 18, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Users</Link>
           <Link href="/admin/audit-log"   style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Audit Log</Link>
           <Link href="/admin/pages"       style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Pages</Link>
+          <Link href="/admin/verification-history" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Verification</Link>
         </div>
         <Link href="/dashboard" style={{ color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>← Back to app</Link>
       </div>
@@ -93,6 +94,36 @@ export default function AiHealthPanel() {
         <p style={{ color: '#64748B', fontSize: 14, marginBottom: 24 }}>
           Live monitor for every LLM fallback in the system. Recorded by <code style={{ background: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>lib/ai/fallback-monitor</code>.
         </p>
+
+        {/* Actionable banner — fires when OpenRouter key is missing or empty.
+            Single-click jump to the right Vercel screen to fix it. */}
+        {!data.providerStatus.openRouterKeySet || data.providerStatus.openRouterKeyLength < 20 ? (
+          <div style={{
+            marginBottom: 24, padding: '16px 20px', borderRadius: 14,
+            background: '#FEF2F2', border: '2px solid #FECACA',
+            display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 16, alignItems: 'center',
+          }}>
+            <div style={{ fontSize: 28 }}>🚨</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#991B1B', marginBottom: 2 }}>
+                OpenRouter API key missing or empty
+              </div>
+              <div style={{ fontSize: 12.5, color: '#7F1D1D', lineHeight: 1.5 }}>
+                Three features (Trends AI · Brief context summary · Copilot) are degraded.
+                Set <code style={{ background: '#fff', padding: '1px 6px', borderRadius: 4, fontSize: 11 }}>OPENROUTER_API_KEY</code> on Vercel → Settings → Environment Variables (Production + Preview), then redeploy.
+              </div>
+            </div>
+            <a href="https://vercel.com/rahul-sonis-projects-94160bba/prism-fluo/settings/environment-variables?q=OPENROUTER_API_KEY"
+              target="_blank" rel="noopener noreferrer"
+              style={{
+                padding: '10px 16px', borderRadius: 10, textDecoration: 'none',
+                background: '#DC2626', color: '#fff', fontSize: 12.5, fontWeight: 700,
+                whiteSpace: 'nowrap',
+              }}>
+              Open Vercel →
+            </a>
+          </div>
+        ) : null}
 
         {/* Provider status */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 28 }}>
