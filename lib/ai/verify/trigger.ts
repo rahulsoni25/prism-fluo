@@ -60,7 +60,8 @@ export async function triggerCouncilForAnalysis(
   const reason = opts.reason || 'unspecified';
   try {
     const { rows } = await db.query(
-      `SELECT a.results_json, b.brand, b.gender, b.age_ranges, b.geography, b.market
+      `SELECT a.results_json, b.brand, b.gender, b.age_ranges, b.geography, b.market,
+              b.competitors, b.category, b.objective
          FROM analyses a
          LEFT JOIN briefs b ON b.id = a.brief_id
         WHERE a.id = $1`,
@@ -79,11 +80,14 @@ export async function triggerCouncilForAnalysis(
     // Attach brief audience fields to the first card so math-integrity
     // agent can re-derive TAM. (Other agents ignore the .brief field.)
     const brief = {
-      brand:      rows[0].brand,
-      gender:     rows[0].gender,
-      age_ranges: rows[0].age_ranges,
-      geography:  rows[0].geography,
-      market:     rows[0].market,
+      brand:       rows[0].brand,
+      gender:      rows[0].gender,
+      age_ranges:  rows[0].age_ranges,
+      geography:   rows[0].geography,
+      market:      rows[0].market,
+      competitors: rows[0].competitors,
+      category:    rows[0].category,
+      objective:   rows[0].objective,
     };
     const cards: CardInput[] = charts.map((c: any, i: number) => ({
       index: i,

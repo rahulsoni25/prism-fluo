@@ -23,8 +23,9 @@ import { proofreadCard, proofreaderConfirms } from './proofreader';
 import { checkCardStats, statCheckerConfirms } from './stat-checker';
 import { analyzeCardFacts, factAnalyzerConfirms } from './fact-analyzer';
 import { checkCardMath, checkAnalysisMath, mathIntegrityConfirms } from './math-integrity';
+import { checkCoverage, coverageConfirms } from './coverage';
 
-const ALL_AGENTS: AgentName[] = ['proofreader', 'stat-checker', 'fact-analyzer', 'math-integrity'];
+const ALL_AGENTS: AgentName[] = ['proofreader', 'stat-checker', 'fact-analyzer', 'math-integrity', 'coverage'];
 
 /** A finding has hard evidence if it includes a specific quoted phrase /
  *  number / source-row reference. Hard-evidence findings are confirmed
@@ -50,6 +51,7 @@ function consult(
     if (a === 'stat-checker')    agrees = statCheckerConfirms(finding, card);
     if (a === 'fact-analyzer')   agrees = factAnalyzerConfirms(finding, card, brand);
     if (a === 'math-integrity')  agrees = mathIntegrityConfirms(finding, card);
+    if (a === 'coverage')        agrees = coverageConfirms(finding);
     if (agrees) confirmedBy.push(a);
     else        disputedBy.push(a);
   }
@@ -171,6 +173,27 @@ export async function verifyAnalysis(
     ? (cards[0] as any).brief
     : (brand ? { brand } : null);
   if (briefForMath) {
+    // Coverage pass — runs across whole analysis, not per-card. Findings
+    // attach to the synthetic card-0 since they're analysis-wide.
+    const coverageFindings = checkCoverage(briefForMath, cards);
+    for (const f of coverageFindings) {
+      if (out[0]) {
+        out[0].findings.push({
+          ...f,
+          confirmedBy: ['coverage'],
+          disputedBy: [],
+          verdict: 'confirmed',
+        } as any);
+        if (f.severity === 'blocker') {
+          out[0].worstSeverity = 'blocker';
+          out[0].verified = false;
+        } else if (f.severity === 'major' && out[0].worstSeverity !== 'blocker') {
+          out[0].worstSeverity = 'major';
+          out[0].verified = false;
+        }
+      }
+    }
+
     const analysisFindings = checkAnalysisMath(briefForMath, cards);
     for (const f of analysisFindings) {
       // Attach to the matching card if we can identify it; otherwise
