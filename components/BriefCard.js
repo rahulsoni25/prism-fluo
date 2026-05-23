@@ -80,17 +80,17 @@ export default function BriefCard({
           overflow:      'hidden',
           border:        hover ? `1.5px solid ${color}50` : '1.5px solid #E2E8F0',
           boxShadow:     hover
-            ? `0 20px 48px ${color}18, 0 4px 16px rgba(0,0,0,.07)`
-            : '0 2px 8px rgba(0,0,0,.05)',
-          transform:     hover ? 'translateY(-4px)' : 'translateY(0)',
-          transition:    'all .25s cubic-bezier(.34,1.56,.64,1)',
+            ? `0 10px 24px ${color}1c, 0 2px 8px rgba(0,0,0,.06)`
+            : '0 1px 4px rgba(0,0,0,.05)',
+          transform:     hover ? 'translateY(-2px)' : 'translateY(0)',
+          transition:    'all .2s cubic-bezier(.34,1.56,.64,1)',
           cursor:        'pointer',
         }}
       >
         {/* ── Gradient header ── */}
         <div style={{
           background:  ss.gradient,
-          padding:     '20px 20px 16px',
+          padding:     '14px 16px 12px',
           position:    'relative',
           overflow:    'hidden',
         }}>
@@ -198,11 +198,11 @@ export default function BriefCard({
         </div>
 
         {/* ── Card body ── */}
-        <div style={{ padding:'14px 18px 0' }}>
-          <div style={{ fontSize:11, color:'#94A3B8', marginBottom:8, lineHeight:1.5 }}>{meta}</div>
+        <div style={{ padding:'10px 14px 0' }}>
+          <div style={{ fontSize:10.5, color:'#94A3B8', marginBottom:6, lineHeight:1.45 }}>{meta}</div>
 
           {tags.length > 0 && (
-            <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:10 }}>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginBottom:8 }}>
               {tags.slice(0, 4).map((tag, i) => (
                 <span key={i} style={{
                   background:'#F1F5F9', color:'#475569',
@@ -227,22 +227,22 @@ export default function BriefCard({
 
         {/* ── Footer ── */}
         {isDraft ? (
-          <div style={{ padding:'10px 18px 16px' }}>
+          <div style={{ padding:'8px 14px 12px' }}>
             <div style={{
-              padding:'8px 0', border:'none', background:'transparent',
-              fontSize:12, fontWeight:700, color:'#64748B',
+              padding:'6px 0', border:'none', background:'transparent',
+              fontSize:11.5, fontWeight:700, color:'#64748B',
               display:'flex', alignItems:'center', gap:4,
             }}>✏ Continue Editing →</div>
           </div>
         ) : (
           <div style={{
-            display:'flex', gap:0, marginTop:10,
+            display:'flex', gap:0, marginTop:6,
             borderTop:'1px solid #F1F5F9',
           }}>
             {footerItems.map((item, i) => (
               <span key={i} style={{
-                flex:1, padding:'10px 12px',
-                fontSize:11, fontWeight:600, color:'#64748B',
+                flex:1, padding:'8px 10px',
+                fontSize:10.5, fontWeight:600, color:'#64748B',
                 borderRight: i < footerItems.length - 1 ? '1px solid #F1F5F9' : 'none',
                 textAlign:'center',
               }}>{item}</span>

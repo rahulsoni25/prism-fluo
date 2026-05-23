@@ -53,7 +53,7 @@ body {
 .nav-signout {color:#475569;cursor:pointer}
 .nav-signout:hover {color:#CBD5E1}
 
-.container {max-width:1200px;margin:0 auto;padding:32px;width:100%}
+.container {max-width:1200px;margin:0 auto;padding:20px 24px;width:100%}
 .main {flex:1}
 
 /* FORMS */
@@ -106,18 +106,20 @@ textarea {resize:vertical;min-height:80px}
 .demo-hint {background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:8px;padding:12px;margin-top:18px;font-size:11px;color:var(--muted);line-height:1.6}
 
 /* ── DASHBOARD ── */
-.page-header {display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px}
-.page-title {font-size:22px;font-weight:800}
-.page-sub {font-size:13px;color:var(--muted);margin-top:3px}
-.stats-row {display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
-.stat-card {background:#fff;border-radius:12px;padding:20px;box-shadow:var(--shadow)}
-.stat-label {font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
-.stat-val {font-size:30px;font-weight:800;margin:8px 0 2px}
-.stat-note {font-size:11px;color:var(--success)}
-.filter-bar {display:flex;gap:8px;margin-bottom:22px}
-.filter-btn {padding:6px 14px;border:1.5px solid var(--border);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;font-family:inherit;color:var(--muted);transition:all .15s}
+.page-header {display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap}
+.page-title {font-size:20px;font-weight:800}
+.page-sub {font-size:12.5px;color:var(--muted);margin-top:2px}
+.stats-row {display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat-card {background:#fff;border-radius:10px;padding:12px 14px;box-shadow:var(--shadow)}
+.stat-label {font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.stat-val {font-size:24px;font-weight:800;margin:4px 0 2px;line-height:1.1}
+.stat-note {font-size:10.5px;color:var(--success)}
+.filter-bar {display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.filter-btn {padding:5px 12px;border:1.5px solid var(--border);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;font-family:inherit;color:var(--muted);transition:all .15s}
 .filter-btn.active,.filter-btn:hover {border-color:var(--primary);color:var(--primary);background:#EFF6FF}
-.briefs-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:18px}
+/* Briefs grid: grid auto-sizes; cards reserve extra space below to absorb
+   the hover lift (translateY -3px) without overflowing or scroll-shifting */
+.briefs-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;padding-bottom:6px}
 .brief-card {background:#fff;border-radius:14px;padding:22px;box-shadow:var(--shadow);cursor:pointer;transition:all .2s;border:1.5px solid transparent}
 .brief-card:hover {transform:translateY(-2px);box-shadow:var(--shadow-lg);border-color:var(--primary)}
 .brief-card-top {display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
@@ -442,12 +444,36 @@ textarea {resize:vertical;min-height:80px}
 .ac-item {padding:9px 13px;font-size:13px;cursor:pointer;transition:background .1s}
 .ac-item:hover {background:#EFF6FF;color:var(--primary)}
 
+/* Tablet + small laptop: 2-up stats, tighter container */
 @media(max-width:900px){
+  .container {padding:16px}
   .form-row,.brief-layout {grid-template-columns:1fr}
-  .stats-row {grid-template-columns:repeat(2,1fr)}
+  .stats-row {grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
   .bucket-progress-grid {grid-template-columns:repeat(2,1fr)}
   .insights-grid {grid-template-columns:1fr}
   .scatter-legend {grid-template-columns:repeat(2,1fr)}
+  .briefs-grid {grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+  .page-header {margin-bottom:12px}
+  .page-title {font-size:18px}
+  .stat-val {font-size:22px}
+}
+
+/* Phone: single-column stats, even tighter padding/typography so the
+   stats row + filter bar + first row of briefs sit above the fold */
+@media(max-width:560px){
+  .container {padding:14px 12px}
+  .stats-row {grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+  .stat-card {padding:10px 12px;border-radius:9px}
+  .stat-val {font-size:20px;margin:2px 0 0}
+  .stat-label {font-size:9.5px}
+  .stat-note {font-size:9.5px}
+  .filter-bar {margin-bottom:12px;gap:5px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .filter-bar::-webkit-scrollbar {display:none}
+  .filter-btn {padding:5px 10px;font-size:11.5px;white-space:nowrap;flex-shrink:0}
+  .briefs-grid {grid-template-columns:1fr;gap:10px}
+  .page-header {margin-bottom:10px;flex-direction:column;align-items:stretch}
+  .page-title {font-size:17px}
+  .page-sub {font-size:11.5px}
 }
 
 /* ── Floating chart card animation ─────────────────────────── */
