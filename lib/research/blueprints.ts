@@ -243,6 +243,42 @@ export function blueprintsForBrief(brief: { competitors?: string | null } | null
   });
 }
 
+/** Build a compact prompt addendum listing the research framework sections
+ *  + key metrics. Injected into Gemini prompts so the AI structures its
+ *  output around the methodology instead of inventing its own structure.
+ *
+ *  Output is intentionally terse — < 700 tokens — so it doesn't crowd
+ *  out the actual data slots. Lists section titles + 4–7 metrics each.
+ *
+ *  Combined with the verification-feedback string from past runs, this
+ *  gives the AI two complementary signals:
+ *    "Cover these"  (this fn)
+ *    "Don't repeat these mistakes"  (buildGeminiFeedback)
+ */
+export function buildMethodologyPromptBlock(brief: { competitors?: string | null } | null | undefined): string {
+  const sections = blueprintsForBrief(brief);
+  const lines: string[] = [
+    '━━ RESEARCH METHODOLOGY (Fluo Digital Audience Framework) ━━',
+    'Aim to address the following sections in your insights. You don\'t need',
+    'one card per metric — a single insight can cover multiple metrics from',
+    'the same section. Flagged feasibility helps you grade evidence strength:',
+    '  S = Syndicated (high confidence)   P = Platform/inferred   R = Primary research only.',
+    '',
+  ];
+  for (const s of sections) {
+    if (s.rows.length === 0) continue;
+    lines.push(`${s.id}. ${s.title}`);
+    const top = s.rows.slice(0, 7);
+    for (const r of top) {
+      const flag = r.f === 'syndicated' ? 'S' : r.f === 'platform' ? 'P' : 'R';
+      lines.push(`   • ${r.k} [${flag}]`);
+    }
+    if (s.rows.length > 7) lines.push(`   • + ${s.rows.length - 7} more`);
+  }
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  return lines.join('\n');
+}
+
 /** Build a flat list of all keywords this analysis is expected to address.
  *  Used by the coverage agent to score how many were addressed. */
 export function expectedKeywordsForBrief(brief: { competitors?: string | null } | null | undefined): Array<{ section: string; metric: string; keywords: string[]; feasibility: Feasibility }> {

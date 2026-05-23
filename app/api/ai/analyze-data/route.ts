@@ -1178,8 +1178,44 @@ export async function POST(req: NextRequest) {
 
     // Fetch brief context (non-blocking — null if no briefId or DB unreachable)
     const brief       = briefId ? await fetchBrief(briefId) : null;
-    const briefContext = buildBriefContext(brief);
+    let briefContext  = buildBriefContext(brief);
     if (briefContext) console.log(`[analyze-data] Brief context loaded for briefId=${briefId} (${brief?.brand})`);
+
+    // ── METHODOLOGY ADDENDUM ─────────────────────────────────────
+    // Inject the Fluo Research Framework so Gemini structures cards
+    // around the 10-section blueprint instead of inventing structure.
+    // Combined with any stored verification feedback ("don't repeat
+    // these past mistakes"), this is the two-sided prompt-strengthening
+    // we promised: cover X, avoid Y.
+    if (brief) {
+      try {
+        const { buildMethodologyPromptBlock } = await import('@/lib/research/blueprints');
+        const methodology = buildMethodologyPromptBlock(brief);
+        briefContext = `${briefContext}\n\n${methodology}`;
+      } catch (e) { /* non-fatal */ }
+    }
+    // Pull stored verification feedback from the most recent prior
+    // analysis for this brief, and prepend it as a "Recurring issues —
+    // DO NOT REPEAT" addendum. This is what closes the learning loop:
+    // every regenerate tightens the AI on the patterns the council kept
+    // catching last time.
+    if (briefId) {
+      try {
+        const { db: dbCl } = await import('@/lib/db/client');
+        const { rows: fbRows } = await dbCl.query(
+          `SELECT av.feedback
+             FROM analysis_verifications av
+             JOIN analyses a ON a.id = av.analysis_id
+            WHERE a.brief_id = $1 AND av.feedback IS NOT NULL
+            ORDER BY av.generated_at DESC LIMIT 1`,
+          [briefId],
+        );
+        const feedback = fbRows[0]?.feedback;
+        if (feedback && feedback.length > 0) {
+          briefContext = `${feedback}\n\n${briefContext}`;
+        }
+      } catch (e) { /* non-fatal */ }
+    }
 
     const slots = buildInsightSlots(rows);
     const context = [fileNames?.join(' + ') || sheetName].filter(Boolean).join(' ');
