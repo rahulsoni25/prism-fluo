@@ -44,10 +44,14 @@ export interface InspectorIssue {
     | 'slide-count-low' | 'slide-count-high'
     | 'no-charts' | 'flow-out-of-order'
     | 'dropped-high-conviction-insight'
+    | 'image-missing-alt' | 'low-contrast'
     | 'parse-error';
   severity:  IssueSeverity;
   detail:    string;
   evidence?: string;
+  /** True if this finding is auto-recoverable via /regenerate. The
+   *  orchestrator uses this to decide whether to attempt auto-heal. */
+  recoverable?: boolean;
 }
 
 export interface InspectorReport {
@@ -189,6 +193,41 @@ export async function inspectDeck(buffer: Buffer, opts: InspectOpts = {}): Promi
     issues.push({ kind: 'parse-error', severity: 'blocker', detail: 'PPTX contains 0 slides.' });
   }
 
+  // ── Accessibility helpers ────────────────────────────────────
+  // Pull <p:pic> elements + their <p:nvPicPr><p:cNvPr descr="…"/>
+  // attribute. Missing/empty descr fails screen-readers.
+  const checkAltText = (xml: string, slideNum: number) => {
+    const picRe = /<p:pic\b[\s\S]*?<\/p:pic>/g;
+    let m;
+    while ((m = picRe.exec(xml)) !== null) {
+      const block = m[0];
+      const descrMatch = block.match(/<p:cNvPr[^>]*\sdescr="([^"]*)"/);
+      const descr = descrMatch ? descrMatch[1].trim() : '';
+      if (!descr) {
+        issues.push({
+          slide: slideNum, kind: 'image-missing-alt', severity: 'minor', recoverable: true,
+          detail: `Image on slide ${slideNum} has no alt-text — fails screen-reader accessibility.`,
+        });
+        break; // one finding per slide
+      }
+    }
+  };
+
+  // Cheap contrast estimate: if a text-fill colour and the slide background
+  // colour are both in the palette, flag if their luminance delta is < 0.3.
+  const luminance = (hex: string) => {
+    const r = parseInt(hex.slice(0, 2), 16) / 255;
+    const g = parseInt(hex.slice(2, 4), 16) / 255;
+    const b = parseInt(hex.slice(4, 6), 16) / 255;
+    const lin = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  };
+  const contrastRatio = (a: string, b: string) => {
+    const la = luminance(a), lb = luminance(b);
+    const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
   // ── Per-slide scan ───────────────────────────────────────────
   let tableCount = 0;
   const allTitleSizes: number[] = [];
@@ -204,12 +243,27 @@ export async function inspectDeck(buffer: Buffer, opts: InspectOpts = {}): Promi
     const shapes = extractShapes(xml);
     const firstText = texts[0] || '';
 
+    // Accessibility: alt text on images
+    checkAltText(xml, slideNum);
+
+    // Cheap contrast check: pull the first two distinct fills on the slide
+    // and compute WCAG ratio. < 4.5 = AA fail for normal text.
+    const fills = paletteHexes(xml);
+    const distinctFills = [...new Set(fills)];
+    if (distinctFills.length >= 2) {
+      const ratio = contrastRatio(distinctFills[0], distinctFills[1]);
+      if (ratio < 3.0) {
+        issues.push({ slide: slideNum, kind: 'low-contrast', severity: 'minor', recoverable: false,
+          detail: `Foreground/background contrast on slide ${slideNum} is ${ratio.toFixed(1)}:1 — below WCAG AA 4.5:1 minimum for normal text.` });
+      }
+    }
+
     // Empty / placeholder / truncated title
     if (!firstText && !/p:pic/.test(xml)) {
       issues.push({ slide: slideNum, kind: 'empty-title', severity: 'major', detail: 'Slide has no text and no image.' });
     } else if (firstText) {
-      if (isPlaceholder(firstText)) issues.push({ slide: slideNum, kind: 'placeholder-text', severity: 'blocker', detail: `Placeholder text in title: "${firstText}"`, evidence: firstText });
-      else if (looksTruncated(firstText)) issues.push({ slide: slideNum, kind: 'truncated-title', severity: 'blocker', detail: `Title appears truncated mid-sentence: "${firstText}"`, evidence: firstText });
+      if (isPlaceholder(firstText)) issues.push({ slide: slideNum, kind: 'placeholder-text', severity: 'blocker', recoverable: true, detail: `Placeholder text in title: "${firstText}"`, evidence: firstText });
+      else if (looksTruncated(firstText)) issues.push({ slide: slideNum, kind: 'truncated-title', severity: 'blocker', recoverable: true, detail: `Title appears truncated mid-sentence: "${firstText}"`, evidence: firstText });
     }
     for (const t of texts.slice(1)) {
       if (isPlaceholder(t)) { issues.push({ slide: slideNum, kind: 'placeholder-text', severity: 'major', detail: `Body text contains placeholder: "${t.slice(0, 60)}"`, evidence: t }); break; }

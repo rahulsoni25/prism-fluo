@@ -49,12 +49,13 @@ export default function GenerateDeckModal({ analysisId, onClose, onSuccess }) {
         }
         if (verdict.kind === 'verification-blocked') {
           const da = verdict.dualAgent || {};
-          const lines = [
-            `Dual-agent verification blocked this download.`,
-            `Visual issues: ${da.visualBlockers || 0} blocker(s), ${da.visualMajors || 0} major.`,
-            `Content issues: ${da.contentBlockers || 0} blocker(s), ${da.contentMajors || 0} major.`,
-          ];
-          setDownloadError(lines.join(' '));
+          const conf = verdict.confidence ? ` · ${verdict.confidence}% confident` : '';
+          setDownloadError(
+            `🛡 Agent verdict: ${verdict.action || 'block'}${conf}\n` +
+            `${verdict.detail}\n` +
+            `(Visual: ${da.visualBlockers || 0} blocker / ${da.visualMajors || 0} major · ` +
+            `Content: ${da.contentBlockers || 0} blocker / ${da.contentMajors || 0} major)`,
+          );
           return;
         }
         setDownloadError(verdict.message || 'Download failed.');

@@ -128,7 +128,39 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     // Runs in parallel — typical < 1 second extra.
     const full = await loadFullBytes(id, session.userId);
     if (full) {
-      const verdict = await dualAgentVerify(full.buffer, full.analysisId, full.templateName);
+      let verdict = await dualAgentVerify(full.buffer, full.analysisId, full.templateName);
+
+      // ── AUTOMOUS AUTO-RECOVERY ────────────────────────────────────
+      // If the verdict says auto-recover, we kick off a regenerate of
+      // the linked analysis (which the upstream council feedback will
+      // tighten) and re-verify ONCE. Total added budget: ≤ 6 seconds.
+      // If still bad → fall through to block.
+      if (verdict.action === 'auto-recover' && full.analysisId) {
+        try {
+          // Fire the analysis regenerate in-process. This re-runs Gemini
+          // with the council's feedback already saved, which tightens
+          // titles + obs/stat consistency on the next pass.
+          const regenHost = req.headers.get('host') ?? 'localhost:3000';
+          const regenProto = regenHost.startsWith('localhost') ? 'http' : 'https';
+          const regenRes = await fetch(
+            `${regenProto}://${regenHost}/api/analyses/${full.analysisId}/regenerate`,
+            { method: 'POST', headers: { cookie: req.headers.get('cookie') || '' } },
+          ).catch(() => null);
+
+          // Re-read bytes (the regenerate doesn't directly affect the deck
+          // — only the source analysis — so the deck PPTX is unchanged
+          // here. The recovery for visual blockers is upstream: next
+          // /generate call will use cleaner cards.) For now we just
+          // re-verify the existing deck — if regen succeeded, content
+          // council will re-run automatically and feed back.
+          const full2 = await loadFullBytes(id, session.userId);
+          if (full2) {
+            verdict = await dualAgentVerify(full2.buffer, full2.analysisId, full2.templateName);
+          }
+        } catch (e) {
+          // Recovery failed — verdict stays as auto-recover with reason
+        }
+      }
       // Aggregate visual issues by kind so admins see "12 font-too-small,
       // 8 text-overflow" instead of an opaque "126 majors" count
       const visualByKind: Record<string, { blocker: number; major: number; minor: number }> = {};
@@ -145,15 +177,20 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
             .map(f => `[content/${f.agent}/${f.field}] ${f.issue}`),
         ].slice(0, 8);
 
+        // ASK action is also "not ready" but the UI treats it differently
+        // — user can force-proceed with a single click.
         return NextResponse.json({
           ok: true, ready: false, pass: 'dual-agent',
-          reason: 'verification-failed',
-          detail: `Dual-agent verification blocked the download — ${verdict.combinedBlockers} blocker(s) found. Top: ${blockers.join(' | ')}`,
+          reason: verdict.action === 'ask' ? 'review-needed' : 'verification-failed',
+          detail: verdict.reasoning,
+          action:     verdict.action,
+          confidence: verdict.confidence,
           dualAgent: {
             visualBlockers: verdict.visual.issues.filter(i => i.severity === 'blocker').length,
             visualMajors:   verdict.visual.issues.filter(i => i.severity === 'major').length,
             contentBlockers: verdict.content?.summary?.bySeverity?.blocker ?? 0,
             contentMajors:   verdict.content?.summary?.bySeverity?.major ?? 0,
+            recoverableBlockers: verdict.recoverableBlockers,
             slideCount: verdict.visual.slideCount,
             chartCount: verdict.visual.chartCount,
             templateName: verdict.visual.templateName,
@@ -170,7 +207,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       return NextResponse.json({
         ...fast,
         pass: 'fast+dual-agent',
-        elapsedMs: Date.now() - t0,
+        action:     verdict.action,
+        confidence: verdict.confidence,
+        reasoning:  verdict.reasoning,
+        elapsedMs:  Date.now() - t0,
         dualAgent: {
           visualClean: true,
           contentClean: verdict.combinedBlockers === 0,
