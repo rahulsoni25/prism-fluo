@@ -53,17 +53,20 @@ function rulePass(card: CardInput, brandCanonical: string | null): Finding[] {
         evidence: card.title });
   }
 
-  // Brand consistency
+  // Brand consistency — find every occurrence of the brand stem,
+  // case-INSENSITIVELY, then verify the actual cased text matches the
+  // canonical Capitalised form.
   if (brandCanonical) {
     const stem = brandCanonical.split(/\s+/)[0];
-    const re = new RegExp(`\\b(${stem})\\b`, 'g');
+    const expected = stem[0].toUpperCase() + stem.slice(1).toLowerCase();
+    const re = new RegExp(`\\b${stem}\\b`, 'gi');
     const allText = `${card.title || ''} ${card.obs || ''} ${card.stat || ''} ${card.rec || ''}`;
     let m;
-    while ((m = re.exec(allText.toLowerCase())) !== null) {
-      const found = allText.slice(m.index, m.index + stem.length);
-      if (found !== stem[0].toUpperCase() + stem.slice(1).toLowerCase()) {
+    while ((m = re.exec(allText)) !== null) {
+      const found = m[0];
+      if (found !== expected) {
         findings.push({ agent: NAME, field: 'title', severity: 'blocker',
-          issue: `Brand stem "${found}" should be capitalised as "${stem}".`,
+          issue: `Brand stem "${found}" should be capitalised as "${expected}".`,
           evidence: found });
         break;
       }

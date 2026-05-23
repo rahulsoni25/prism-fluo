@@ -12,7 +12,10 @@
     "start": "next start",
     "lint": "eslint",
     "db:init": "node scripts/init_db.mjs",
-    "preflight": "node scripts/preflight.mjs"
+    "preflight": "node scripts/preflight.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
@@ -42,8 +45,10 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "19.2.14",
+    "@vitest/coverage-v8": "^4.1.7",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.7"
   }
 }

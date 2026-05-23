@@ -637,11 +637,13 @@ export default function TrendPanel({ defaultKeyword = '', brandContext = '' }) {
                 )}
                 {errorI && (
                   errorI.toLowerCase().includes('api_key') || errorI.toLowerCase().includes('not set') || errorI.toLowerCase().includes('not configured') ? (
+                    // AI service is temporarily unavailable — show a friendly
+                    // message instead of leaking implementation detail.
                     <div style={{ textAlign: 'center', padding: '28px 16px' }}>
-                      <div style={{ fontSize: 32, marginBottom: 10 }}>🔑</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 6 }}>AI Insights not configured</div>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>✨</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 6 }}>AI Insights warming up</div>
                       <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>
-                        Add <code style={{ background: '#F1F5F9', padding: '1px 5px', borderRadius: 4 }}>OPENROUTER_API_KEY</code> to your environment variables to enable AI-powered trend analysis.
+                        Live trend interpretation is briefly offline. The Trend Chart and Related Searches tabs are unaffected.
                       </div>
                     </div>
                   ) : (

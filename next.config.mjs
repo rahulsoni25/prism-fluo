@@ -24,6 +24,38 @@ const SECURITY_HEADERS = [
   { key: 'Permissions-Policy',        value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()' },
   { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin' },
   { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
+  // Content-Security-Policy — pragmatic policy that ALLOWS the inline
+  // styles Chart.js + our inline-style components require (so we don't
+  // break the UI), while still hard-restricting scripts and frames.
+  //   default-src 'self'            — everything defaults to same-origin
+  //   script-src 'self' 'unsafe-inline' 'unsafe-eval' — Next.js needs eval
+  //     for HMR + runtime chunks; tighten later with nonces
+  //   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com
+  //     — required for inline-style React + Google Fonts in admin pages
+  //   img-src 'self' data: https: blob:
+  //     — data: for charts, blob: for canvas exports, https: for external imgs
+  //   font-src 'self' https://fonts.gstatic.com data:
+  //   connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com
+  //     https://openrouter.ai https://generativelanguage.googleapis.com
+  //     — OAuth callbacks + LLM endpoints
+  //   frame-ancestors 'none' — same as X-Frame-Options DENY
+  //   object-src 'none'      — block plugins
+  //   base-uri 'self'        — prevent <base> injection
+  {
+    key: 'Content-Security-Policy',
+    value: [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "img-src 'self' data: https: blob:",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://openrouter.ai https://generativelanguage.googleapis.com https://*.upstash.io https://www.googleapis.com",
+      "frame-ancestors 'none'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; '),
+  },
 ];
 
 const nextConfig = {

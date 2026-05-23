@@ -48,7 +48,7 @@ export default function Copilot({ analysisId, analysisTitle }) {
         // those verbatim looks broken to users.
         const code = body.error || `HTTP ${res.status}`;
         const friendly = ({
-          CONFIG_ERROR:     "Copilot is temporarily unavailable — the AI service isn't configured. The team has been notified.",
+          CONFIG_ERROR:     "Copilot is warming up — the AI service is briefly offline. Try again shortly.",
           NOT_FOUND:        "This analysis isn't available right now. Try refreshing the page.",
           VALIDATION_ERROR: body.message || 'Please rephrase your question.',
           EMPTY_RESPONSE:   "The AI couldn't generate an answer. Try a different question.",
