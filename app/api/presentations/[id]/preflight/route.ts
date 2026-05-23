@@ -73,14 +73,14 @@ async function loadRow(id: string, userId: string) {
   return rows[0] ?? null;
 }
 
-async function loadFullBytes(id: string, userId: string): Promise<{ buffer: Buffer; analysisId: string | null } | null> {
+async function loadFullBytes(id: string, userId: string): Promise<{ buffer: Buffer; analysisId: string | null; templateName: string | null } | null> {
   const { rows } = await db.query(
-    `SELECT pptx_data, analysis_id FROM presentations WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)`,
+    `SELECT pptx_data, analysis_id, template_name FROM presentations WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)`,
     [id, userId],
   );
   if (rows.length === 0 || !rows[0].pptx_data) return null;
   const buf = Buffer.isBuffer(rows[0].pptx_data) ? rows[0].pptx_data : Buffer.from(rows[0].pptx_data);
-  return { buffer: buf, analysisId: rows[0].analysis_id ?? null };
+  return { buffer: buf, analysisId: rows[0].analysis_id ?? null, templateName: rows[0].template_name ?? null };
 }
 
 async function markFailed(id: string, reason: string) {
@@ -128,7 +128,15 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     // Runs in parallel — typical < 1 second extra.
     const full = await loadFullBytes(id, session.userId);
     if (full) {
-      const verdict = await dualAgentVerify(full.buffer, full.analysisId);
+      const verdict = await dualAgentVerify(full.buffer, full.analysisId, full.templateName);
+      // Aggregate visual issues by kind so admins see "12 font-too-small,
+      // 8 text-overflow" instead of an opaque "126 majors" count
+      const visualByKind: Record<string, { blocker: number; major: number; minor: number }> = {};
+      for (const i of verdict.visual.issues) {
+        if (!visualByKind[i.kind]) visualByKind[i.kind] = { blocker: 0, major: 0, minor: 0 };
+        visualByKind[i.kind][i.severity]++;
+      }
+
       if (!verdict.ready) {
         const blockers = [
           ...verdict.visual.issues.filter(i => i.severity === 'blocker').map(i => `[visual/${i.kind}${i.slide ? `:slide${i.slide}` : ''}] ${i.detail}`),
@@ -148,6 +156,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
             contentMajors:   verdict.content?.summary?.bySeverity?.major ?? 0,
             slideCount: verdict.visual.slideCount,
             chartCount: verdict.visual.chartCount,
+            templateName: verdict.visual.templateName,
+            templateMatched: verdict.visual.templateMatched,
+            visualByKind,
             contentNote: verdict.contentNote,
             sample: blockers,
           },

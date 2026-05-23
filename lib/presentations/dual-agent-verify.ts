@@ -1,36 +1,17 @@
 /**
  * lib/presentations/dual-agent-verify.ts
  *
- * Two-agent download gatekeeper. Both agents must report clean before the
- * download is allowed to proceed.
+ * Two-agent download gatekeeper. Both must report clean before download.
  *
  *   Agent A — Visual / Structural Inspector (lib/presentations/deck-inspector)
- *     Reads the PPTX bytes, walks every slide + chart, flags:
- *       • empty / placeholder / truncated titles
- *       • charts with no data or no labels
- *       • mixed colour palettes
- *       • table-header gaps
+ *     Now template-aware (per-template slide flow, brand palette, font
+ *     bands) + content-cross-referenced (every high-conviction insight
+ *     card from the source analysis must appear in the deck).
  *
  *   Agent B — Content Verification Council (lib/ai/verify/orchestrator)
- *     The ProofReader + StatChecker + FactAnalyzer trio scans the source
- *     analysis cards (the same content that fed the deck generator) for:
- *       • language quality, jargon, length
- *       • number-traces-to-data
- *       • claim-vs-source consistency
+ *     ProofReader + StatChecker + FactAnalyzer. Report read from cache.
  *
- * The two agents talk through this orchestrator. They run in PARALLEL —
- * total wall time = max(A, B), not A + B. Typical: A ≈ 300ms, B is cached
- * from the analysis lifecycle so ≈ 50ms. Worst case under 1 second.
- *
- * VERDICT POLICY:
- *   ready=true   ↔ Agent A clean (no blockers) AND Agent B clean (0 confirmed)
- *   ready=false  ↔ either agent flagged blockers. Return both reports so
- *                  the UI can show a unified "what's wrong" list.
- *
- * The content council is consulted only via its STORED report. If no report
- * exists for the analysis yet (rare — the council auto-runs on analysis
- * create), we skip the content check and warn rather than block. Visual
- * remains the hard gate.
+ * Total time budget: ≤ 1 second on warm cache, ≤ 4 seconds cold.
  */
 
 import { db } from '@/lib/db/client';
@@ -61,44 +42,52 @@ async function fetchContentReport(analysisId: string | null): Promise<Verificati
   }
 }
 
+async function fetchSourceCards(analysisId: string | null): Promise<Array<{ title: string; conviction?: number }>> {
+  if (!analysisId) return [];
+  try {
+    const { rows } = await db.query(
+      'SELECT results_json FROM analyses WHERE id = $1',
+      [analysisId],
+    );
+    const charts = rows[0]?.results_json?.charts ?? [];
+    return charts.map((c: any) => ({
+      title: String(c.title || ''),
+      conviction: Number(c.conviction) || 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function dualAgentVerify(
   pptxBuffer: Buffer,
   analysisId: string | null,
+  templateName: string | null = null,
 ): Promise<DualAgentVerdict> {
   const t0 = Date.now();
-  // Run both agents in parallel
-  const [visual, content] = await Promise.all([
-    inspectDeck(pptxBuffer),
+  // Run prep + both agents in parallel for max speed
+  const [content, sourceCards] = await Promise.all([
     fetchContentReport(analysisId),
+    fetchSourceCards(analysisId),
   ]);
+  const visual = await inspectDeck(pptxBuffer, { templateName, sourceCards });
 
   let contentNote: string | undefined;
-  if (!content && analysisId) {
-    contentNote = 'Content council has not run for this analysis yet — visual checks only.';
-  }
-  if (!analysisId) {
-    contentNote = 'No analysis linked to this presentation — visual checks only.';
-  }
+  if (!content && analysisId) contentNote = 'Content council has not run for this analysis yet — visual checks only.';
+  if (!analysisId)            contentNote = 'No analysis linked to this presentation — visual checks only.';
 
-  const visualBlockers = visual.issues.filter(i => i.severity === 'blocker').length;
-  const visualMajors   = visual.issues.filter(i => i.severity === 'major').length;
+  const visualBlockers  = visual.issues.filter(i => i.severity === 'blocker').length;
+  const visualMajors    = visual.issues.filter(i => i.severity === 'major').length;
   const contentBlockers = content?.summary?.bySeverity?.blocker ?? 0;
   const contentMajors   = content?.summary?.bySeverity?.major ?? 0;
 
   const combinedBlockers = visualBlockers + contentBlockers;
   const combinedMajors   = visualMajors + contentMajors;
-
-  // Ready = no blockers from either agent. Majors are surfaced as warnings
-  // but don't block — the user can still download with a notice.
   const ready = combinedBlockers === 0 && visual.ok;
 
   return {
-    ready,
-    visual,
-    content,
-    contentNote,
-    combinedBlockers,
-    combinedMajors,
+    ready, visual, content, contentNote,
+    combinedBlockers, combinedMajors,
     elapsedMs: Date.now() - t0,
   };
 }

@@ -5,62 +5,73 @@
  * verification system.
  *
  * Cracks open the generated PPTX (which is a ZIP of XML files), walks every
- * slide + every embedded chart, and looks for:
+ * slide + every embedded chart + every shape, and checks:
  *
- *   • Charts that have no data series, no labels, or empty axis values
- *   • Slide titles that are empty / placeholder ("Click to add title") /
- *     truncated mid-sentence
- *   • Text frames with only whitespace or known placeholder strings
- *   • Charts whose colour palette is mixed across slides (we expect ONE
- *     consistent palette per template per deck)
- *   • Tables with empty cells in header row
- *   • Slide counts that don't match the template (e.g. a "deep-dive" deck
- *     with only 3 slides is suspect)
+ *   STRUCTURE
+ *     • Slide count matches template's min/max/ideal
+ *     • Charts present where template requires them
+ *     • Expected slide flow (title → summary → insight → recommendation)
+ *     • No empty / placeholder / truncated titles
  *
- * Returns a structured InspectorReport. Pure rules — no LLM cost. Targets
- * 200–500ms for a typical 20-slide deck. Never throws — on parse failure
- * returns ok:false with the parse error.
+ *   VISUAL QUALITY (the new pass)
+ *     • Brand palette: chart fills include the template's expected colours
+ *     • Font sizes: title and body text within template's declared bands
+ *     • Bounding boxes: text length doesn't exceed shape dimensions
+ *       (catches overflow without needing to render)
+ *     • Chart axis label content (not just presence) — labels aren't ""/"N/A"
+ *     • Inter-chart palette consistency
+ *
+ *   CONTENT INTEGRITY (cross-checked with the source analysis)
+ *     • Every analysis card with conviction >= 85 appears as a slide
+ *       (no high-conviction insights silently dropped by the generator)
+ *
+ * Pure rules — no LLM cost. Target: ≤ 500ms for a typical 20-slide deck.
  */
 
 import JSZip from 'jszip';
+import { ruleFor, classifySlide, type TemplateRule } from './template-rules';
 
 export type IssueSeverity = 'blocker' | 'major' | 'minor';
 
 export interface InspectorIssue {
   slide?:    number;
-  kind:      'empty-title' | 'placeholder-text' | 'truncated-title' | 'chart-no-data' |
-              'chart-no-labels' | 'mixed-palette' | 'table-empty-header' | 'slide-count-low' |
-              'no-charts' | 'parse-error';
+  kind:
+    | 'empty-title' | 'placeholder-text' | 'truncated-title'
+    | 'chart-no-data' | 'chart-no-labels' | 'chart-bad-axis-label'
+    | 'mixed-palette' | 'palette-off-brand'
+    | 'font-too-small' | 'font-too-large' | 'font-inconsistent'
+    | 'text-overflow'
+    | 'slide-count-low' | 'slide-count-high'
+    | 'no-charts' | 'flow-out-of-order'
+    | 'dropped-high-conviction-insight'
+    | 'parse-error';
   severity:  IssueSeverity;
   detail:    string;
   evidence?: string;
 }
 
 export interface InspectorReport {
-  ok:           boolean;
-  slideCount:   number;
-  chartCount:   number;
-  tableCount:   number;
-  imageCount:   number;
-  issues:       InspectorIssue[];
+  ok:            boolean;
+  templateName:  string | null;
+  templateMatched: boolean;
+  slideCount:    number;
+  chartCount:    number;
+  tableCount:    number;
+  imageCount:    number;
+  issues:        InspectorIssue[];
   worstSeverity: IssueSeverity | null;
-  /** ms spent parsing + scanning */
-  elapsedMs:    number;
+  elapsedMs:     number;
 }
 
-// Common PPTX placeholder text that should never reach a downloadable deck
 const PLACEHOLDER_RE = [
   /^click to add (?:title|text|sub-?title)/i,
   /^add (?:a |your )?title/i,
-  /^lorem ipsum/i,
-  /^todo\b/i,
-  /^placeholder/i,
-  /^\[.*?\]$/,             // [BRAND] / [DATE] etc.
+  /^lorem ipsum/i, /^todo\b/i, /^placeholder/i,
+  /^\[.*?\]$/,
 ];
 
+// ── Tiny XML helpers (cheap regex — good enough for our shape) ──
 function textFromXml(xml: string): string[] {
-  // Pull every <a:t>…</a:t> text run. Cheap regex — good enough for
-  // checking emptiness / placeholders, not for full DOM-correct parsing.
   const out: string[] = [];
   const re = /<a:t(?:\s[^>]*)?>([^<]*)<\/a:t>/g;
   let m;
@@ -70,142 +81,281 @@ function textFromXml(xml: string): string[] {
   }
   return out;
 }
-
-function isPlaceholder(t: string): boolean {
-  return PLACEHOLDER_RE.some(re => re.test(t));
-}
-
+function isPlaceholder(t: string): boolean { return PLACEHOLDER_RE.some(re => re.test(t)); }
 function looksTruncated(t: string): boolean {
-  // Ends mid-sentence: no terminal punctuation and either a comma-end or
-  // a stub word like "Not Just" / "and Just" / "is the"
-  if (!t) return false;
   const trimmed = t.trim();
-  if (/[.!?…]$/.test(trimmed)) return false;
+  if (!trimmed || /[.!?…)]$/.test(trimmed)) return false;
   if (/,\s*$/.test(trimmed)) return true;
   if (/\b(?:is|the|and|with|of|to|in|on|at|for|by|but|not just|and just|because)\s*$/i.test(trimmed)) return true;
   return false;
 }
 
-function paletteFingerprint(xml: string): string {
-  // Capture the first few colour values used by chart series. We use the
-  // sorted, deduped set so order-only differences don't trigger a "mixed
-  // palette" flag.
-  const colours = new Set<string>();
-  const re = /<a:srgbClr\s+val="([0-9A-Fa-f]{6})"/g;
-  let m;
-  while ((m = re.exec(xml)) !== null && colours.size < 12) {
-    colours.add(m[1].toLowerCase());
+/** PPTX uses EMU (914400 EMU = 1 inch). Pull all `<p:sp>` shapes plus their
+ *  text + a:rPr font sizes + xfrm dimensions for the overflow check. */
+function extractShapes(xml: string): Array<{ text: string; sz: number[]; cx?: number; cy?: number }> {
+  const shapes: Array<{ text: string; sz: number[]; cx?: number; cy?: number }> = [];
+  // Split on <p:sp> boundaries. Cheap, not strictly DOM-correct, but works
+  // for the shapes the pptxgenjs generator emits.
+  const parts = xml.split(/<p:sp[\s>]/);
+  for (let i = 1; i < parts.length; i++) {
+    const body = parts[i];
+    const text = textFromXml(body).join(' ');
+    if (!text) continue;
+    const sizes: number[] = [];
+    const szRe = /<a:rPr[^>]*\ssz="(\d+)"/g;
+    let m;
+    while ((m = szRe.exec(body)) !== null) sizes.push(Number(m[1]));
+    const xfrm = body.match(/<a:ext\s+cx="(\d+)"\s+cy="(\d+)"/);
+    const cx = xfrm ? Number(xfrm[1]) : undefined;
+    const cy = xfrm ? Number(xfrm[2]) : undefined;
+    shapes.push({ text, sz: sizes, cx, cy });
   }
-  return [...colours].sort().join('-');
+  return shapes;
 }
 
-export async function inspectDeck(buffer: Buffer): Promise<InspectorReport> {
+function paletteHexes(xml: string): string[] {
+  const out: string[] = [];
+  const re = /<a:srgbClr\s+val="([0-9A-Fa-f]{6})"/g;
+  let m;
+  while ((m = re.exec(xml)) !== null) out.push(m[1].toLowerCase());
+  return out;
+}
+
+/** Rough text-fits-in-box estimate. Conservative — we err on the side of
+ *  NOT flagging unless overflow is highly likely. EMU width per char at
+ *  font size sz (100ths of a point): ~sz * 70 (empirical for sans-serif). */
+function likelyOverflows(text: string, sz: number, cx?: number, cy?: number): boolean {
+  if (!cx || !cy || !sz || sz < 800) return false;
+  const charsPerLine = Math.floor(cx / (sz * 70));
+  if (charsPerLine <= 0) return false;
+  const linesNeeded = Math.ceil(text.length / charsPerLine);
+  const lineHeightEmu = sz * 140;
+  const linesFit = Math.floor(cy / lineHeightEmu);
+  return linesNeeded > linesFit && linesNeeded >= 3;
+}
+
+export interface InspectOpts {
+  templateName?: string | null;
+  /** Optional source analysis cards — enables the "high-conviction
+   *  insight dropped" check. Each card needs at least { title, conviction }. */
+  sourceCards?: Array<{ title: string; conviction?: number }>;
+}
+
+export async function inspectDeck(buffer: Buffer, opts: InspectOpts = {}): Promise<InspectorReport> {
   const t0 = Date.now();
   const issues: InspectorIssue[] = [];
+  const rule = ruleFor(opts.templateName);
+  const templateMatched = rule !== ruleFor(null);
 
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(buffer);
   } catch (err: any) {
     return {
-      ok: false, slideCount: 0, chartCount: 0, tableCount: 0, imageCount: 0,
+      ok: false, templateName: opts.templateName ?? null, templateMatched,
+      slideCount: 0, chartCount: 0, tableCount: 0, imageCount: 0,
       worstSeverity: 'blocker',
       issues: [{ kind: 'parse-error', severity: 'blocker', detail: `Could not open PPTX: ${err.message}` }],
       elapsedMs: Date.now() - t0,
     };
   }
 
-  // ── Inventory ────────────────────────────────────────────────
-  const slideFiles = Object.keys(zip.files).filter(p => /^ppt\/slides\/slide\d+\.xml$/.test(p)).sort();
+  const slideFiles = Object.keys(zip.files).filter(p => /^ppt\/slides\/slide\d+\.xml$/.test(p)).sort((a, b) => {
+    const an = Number(a.match(/(\d+)/)?.[1] || 0);
+    const bn = Number(b.match(/(\d+)/)?.[1] || 0);
+    return an - bn;
+  });
   const chartFiles = Object.keys(zip.files).filter(p => /^ppt\/charts\/chart\d+\.xml$/.test(p));
-  const tableFiles: string[] = [];                                  // tables live inside slides
   const imageFiles = Object.keys(zip.files).filter(p => /^ppt\/media\//.test(p));
 
   const slideCount = slideFiles.length;
   const chartCount = chartFiles.length;
   const imageCount = imageFiles.length;
 
+  // ── Template structural rules ───────────────────────────────
+  if (slideCount < rule.slideCount.min) {
+    issues.push({ kind: 'slide-count-low', severity: 'major',
+      detail: `${slideCount} slides — template "${opts.templateName || 'default'}" expects ${rule.slideCount.min}–${rule.slideCount.max} (ideal ${rule.slideCount.ideal}).` });
+  }
+  if (slideCount > rule.slideCount.max) {
+    issues.push({ kind: 'slide-count-high', severity: 'minor',
+      detail: `${slideCount} slides — exceeds template max of ${rule.slideCount.max}.` });
+  }
+  if (rule.requireCharts && chartCount === 0) {
+    issues.push({ kind: 'no-charts', severity: 'major',
+      detail: `Template "${opts.templateName}" requires charts but the deck has none.` });
+  }
   if (slideCount === 0) {
     issues.push({ kind: 'parse-error', severity: 'blocker', detail: 'PPTX contains 0 slides.' });
-  }
-  if (slideCount > 0 && slideCount < 3) {
-    issues.push({ kind: 'slide-count-low', severity: 'major', detail: `Only ${slideCount} slide(s) — too short for any standard template.` });
-  }
-  if (slideCount >= 3 && chartCount === 0) {
-    issues.push({ kind: 'no-charts', severity: 'major', detail: 'Deck has ≥3 slides but no embedded charts at all.' });
   }
 
   // ── Per-slide scan ───────────────────────────────────────────
   let tableCount = 0;
+  const allTitleSizes: number[] = [];
+  const allBodySizes: number[]  = [];
+  const slideClassifications: Array<TemplateRule['expectedFlow'][number]> = [];
+
   for (let i = 0; i < slideFiles.length; i++) {
     const slideNum = i + 1;
-    const file = zip.files[slideFiles[i]];
-    const xml = await file.async('string');
-
-    // Count tables in this slide
+    const xml = await zip.files[slideFiles[i]].async('string');
     if (/<a:tbl\b/.test(xml)) tableCount++;
 
     const texts = textFromXml(xml);
-
-    // Title check — slide title is the first non-empty text in the slide
-    // EXCEPT we should ideally check the <p:title> placeholder specifically.
-    // Cheap approximation: the first text on the slide.
+    const shapes = extractShapes(xml);
     const firstText = texts[0] || '';
-    if (!firstText) {
-      // No text at all on a slide — only acceptable if it's image-only (rare in our templates)
-      if (!/p:pic/.test(xml)) {
-        issues.push({ slide: slideNum, kind: 'empty-title', severity: 'major', detail: 'Slide has no text and no image.' });
-      }
-    } else {
-      if (isPlaceholder(firstText)) {
-        issues.push({ slide: slideNum, kind: 'placeholder-text', severity: 'blocker', detail: `Placeholder text reached output: "${firstText}"`, evidence: firstText });
-      } else if (looksTruncated(firstText)) {
-        issues.push({ slide: slideNum, kind: 'truncated-title', severity: 'blocker', detail: `Title appears truncated mid-sentence: "${firstText}"`, evidence: firstText });
-      }
+
+    // Empty / placeholder / truncated title
+    if (!firstText && !/p:pic/.test(xml)) {
+      issues.push({ slide: slideNum, kind: 'empty-title', severity: 'major', detail: 'Slide has no text and no image.' });
+    } else if (firstText) {
+      if (isPlaceholder(firstText)) issues.push({ slide: slideNum, kind: 'placeholder-text', severity: 'blocker', detail: `Placeholder text in title: "${firstText}"`, evidence: firstText });
+      else if (looksTruncated(firstText)) issues.push({ slide: slideNum, kind: 'truncated-title', severity: 'blocker', detail: `Title appears truncated mid-sentence: "${firstText}"`, evidence: firstText });
+    }
+    for (const t of texts.slice(1)) {
+      if (isPlaceholder(t)) { issues.push({ slide: slideNum, kind: 'placeholder-text', severity: 'major', detail: `Body text contains placeholder: "${t.slice(0, 60)}"`, evidence: t }); break; }
     }
 
-    // Scan all text runs for placeholder leakage
-    for (const t of texts.slice(1)) {
-      if (isPlaceholder(t)) {
-        issues.push({ slide: slideNum, kind: 'placeholder-text', severity: 'major', detail: `Body text contains placeholder: "${t.slice(0, 60)}"`, evidence: t });
-        break;
+    // Font sizes — emit AT MOST one font-too-small + one font-too-large per
+    // slide so 30 axis labels on one slide don't flood the report. We track
+    // sizes for the cross-deck consistency check separately.
+    let flaggedSmall = false;
+    let flaggedLarge = false;
+    shapes.forEach((sh, idx) => {
+      if (sh.sz.length === 0) return;
+      // Skip tiny shapes (cx < 1 inch) — almost certainly axis/data labels
+      // inside chart frames, not real content text. PPTX inlines those.
+      if (sh.cx && sh.cx < 914400) {
+        (idx === 0 ? allTitleSizes : allBodySizes).push(...sh.sz);
+        return;
+      }
+      const targetMin = idx === 0 ? rule.titleSizeRange.min : rule.bodySizeRange.min;
+      const targetMax = idx === 0 ? rule.titleSizeRange.max : rule.bodySizeRange.max;
+      for (const sz of sh.sz) {
+        if (sz < targetMin && !flaggedSmall) {
+          issues.push({ slide: slideNum, kind: 'font-too-small', severity: 'minor', detail: `${idx === 0 ? 'Title' : 'Body'} font ${sz/100}pt is below template's ${targetMin/100}pt minimum.` });
+          flaggedSmall = true;
+        }
+        if (sz > targetMax && !flaggedLarge) {
+          issues.push({ slide: slideNum, kind: 'font-too-large', severity: 'minor', detail: `${idx === 0 ? 'Title' : 'Body'} font ${sz/100}pt is above template's ${targetMax/100}pt maximum.` });
+          flaggedLarge = true;
+        }
+      }
+      (idx === 0 ? allTitleSizes : allBodySizes).push(...sh.sz);
+
+      // Text-overflow estimate
+      const dominantSize = sh.sz[0];
+      if (likelyOverflows(sh.text, dominantSize, sh.cx, sh.cy)) {
+        issues.push({ slide: slideNum, kind: 'text-overflow', severity: 'major',
+          detail: `Shape text (${sh.text.length} chars at ${dominantSize/100}pt) likely overflows its ${Math.round((sh.cx||0)/914400*100)/100}\" × ${Math.round((sh.cy||0)/914400*100)/100}\" frame.` });
+      }
+    });
+
+    slideClassifications.push(classifySlide(firstText, texts, i, slideFiles.length));
+  }
+
+  // ── Font consistency across deck ──────────────────────────────
+  const distinctTitleSizes = new Set(allTitleSizes);
+  if (distinctTitleSizes.size > 3) {
+    issues.push({ kind: 'font-inconsistent', severity: 'minor',
+      detail: `${distinctTitleSizes.size} distinct title font sizes across deck — pick ≤ 2 for consistency.` });
+  }
+
+  // ── Slide flow check vs template ──────────────────────────────
+  if (rule.expectedFlow.length > 0 && templateMatched) {
+    for (let i = 0; i < Math.min(rule.expectedFlow.length, slideClassifications.length); i++) {
+      const expected = rule.expectedFlow[i];
+      const actual = slideClassifications[i];
+      if (expected && actual && expected !== actual && actual !== 'insight') {
+        issues.push({ slide: i + 1, kind: 'flow-out-of-order', severity: 'minor',
+          detail: `Slide ${i + 1} reads as "${actual}" but the template expects "${expected}" at this position.` });
       }
     }
   }
 
-  // ── Chart scan ───────────────────────────────────────────────
-  const palettes: string[] = [];
+  // ── Chart scan ─────────────────────────────────────────────────
+  const allPalettes: string[][] = [];
   for (const chartPath of chartFiles) {
     const xml = await zip.files[chartPath].async('string');
-
-    // Data presence: a chart needs at least one <c:val> with numeric points
     const valBlocks = xml.match(/<c:val>[\s\S]*?<\/c:val>/g) || [];
     const hasNumericData = valBlocks.some(b => /<c:v>\s*-?\d/.test(b));
     if (!hasNumericData) {
       issues.push({ kind: 'chart-no-data', severity: 'blocker', detail: `${chartPath.split('/').pop()} has no numeric data points.` });
     }
-
-    // Category labels
     const catBlocks = xml.match(/<c:cat>[\s\S]*?<\/c:cat>/g) || [];
-    const hasLabels = catBlocks.some(b => /<c:v>\S/.test(b));
-    if (!hasLabels && valBlocks.length > 0) {
+    const catTexts: string[] = [];
+    const catRe = /<c:v>([^<]+)<\/c:v>/g;
+    let m;
+    for (const cb of catBlocks) {
+      catRe.lastIndex = 0;
+      while ((m = catRe.exec(cb)) !== null) {
+        const t = m[1].trim();
+        if (t) catTexts.push(t);
+      }
+    }
+    if (valBlocks.length > 0 && catTexts.length === 0) {
       issues.push({ kind: 'chart-no-labels', severity: 'major', detail: `${chartPath.split('/').pop()} has data but no category labels.` });
     }
-
-    palettes.push(paletteFingerprint(xml));
+    // Bad axis label content — empty-string-only, "N/A", numeric noise
+    if (catTexts.length > 0 && catTexts.every(t => /^(n\/a|na|none|null|undefined|-)$/i.test(t))) {
+      issues.push({ kind: 'chart-bad-axis-label', severity: 'major',
+        detail: `${chartPath.split('/').pop()} labels are all placeholder values (${catTexts.slice(0, 3).join(', ')}).` });
+    }
+    allPalettes.push(paletteHexes(xml));
   }
 
-  // Palette consistency — flag if MORE than 2 distinct fingerprints across charts
-  const distinctPalettes = new Set(palettes.filter(Boolean));
-  if (distinctPalettes.size > 2) {
-    issues.push({
-      kind: 'mixed-palette',
-      severity: 'minor',
-      detail: `${distinctPalettes.size} distinct chart colour palettes across the deck — pick one.`,
-    });
+  // ── Palette consistency + brand-palette check ─────────────────
+  const usedHexes = new Set<string>();
+  allPalettes.forEach(p => p.forEach(h => usedHexes.add(h)));
+  const fingerprints = new Set(allPalettes.map(p => [...new Set(p)].sort().slice(0, 8).join('-')));
+  if (fingerprints.size > 2 && fingerprints.size > 1) {
+    issues.push({ kind: 'mixed-palette', severity: 'minor',
+      detail: `${fingerprints.size} distinct chart palettes across the deck — pick one.` });
+  }
+  if (rule.brandPalette.length > 0 && allPalettes.length > 0) {
+    const brandLower = rule.brandPalette.map(c => c.toLowerCase());
+    const brandUsed = brandLower.filter(c => usedHexes.has(c)).length;
+    const coverage = brandUsed / brandLower.length;
+    if (coverage < 0.34) {
+      issues.push({ kind: 'palette-off-brand', severity: 'major',
+        detail: `Only ${brandUsed}/${brandLower.length} template brand colours appear in chart fills. Charts may not look on-brand.` });
+    }
   }
 
-  // ── Worst severity ──────────────────────────────────────────
+  // ── Content-vs-deck cross-reference ───────────────────────────
+  // Only enforced for COMPREHENSIVE templates (deep-dive). Executive
+  // briefings intentionally summarise the top insights, so dropping
+  // 100+ cards from a 142-card analysis is by design — not a defect.
+  // For comprehensive templates we still cap at the top 5 missed to
+  // avoid wall-of-text reports.
+  if (opts.sourceCards && opts.sourceCards.length > 0 && rule.enforceComprehensive) {
+    const slideTitles: string[] = [];
+    for (let i = 0; i < slideFiles.length; i++) {
+      const xml = await zip.files[slideFiles[i]].async('string');
+      const ft = textFromXml(xml)[0] || '';
+      slideTitles.push(ft.toLowerCase());
+    }
+    const corpus = slideTitles.join(' | ');
+    const high = [...opts.sourceCards]
+      .filter(c => (c.conviction ?? 0) >= 85)
+      .sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
+    let flagged = 0;
+    for (const c of high) {
+      const anchor = c.title.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3).slice(0, 3).join(' ');
+      if (!anchor) continue;
+      if (!corpus.includes(anchor)) {
+        issues.push({
+          kind: 'dropped-high-conviction-insight',
+          severity: 'major',
+          detail: `High-conviction card "${c.title}" (conv ${c.conviction}) has no matching slide.`,
+          evidence: c.title,
+        });
+        flagged++;
+        if (flagged >= 5) break;
+      }
+    }
+  }
+
+  // ── Worst severity ────────────────────────────────────────────
   const rank = { blocker: 3, major: 2, minor: 1 };
   let worst: IssueSeverity | null = null;
   for (const i of issues) {
@@ -214,6 +364,8 @@ export async function inspectDeck(buffer: Buffer): Promise<InspectorReport> {
 
   return {
     ok: issues.filter(i => i.severity === 'blocker').length === 0,
+    templateName: opts.templateName ?? null,
+    templateMatched,
     slideCount, chartCount, tableCount, imageCount,
     issues,
     worstSeverity: worst,
