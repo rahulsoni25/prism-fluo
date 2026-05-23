@@ -2,19 +2,25 @@
 
 import React, { useState } from 'react';
 import TemplateGallery from './TemplateGallery';
+import { safeDownloadPresentation } from '@/lib/presentations/safe-download';
 
 export default function GenerateDeckModal({ analysisId, onClose, onSuccess }) {
   const [step, setStep]             = useState('gallery');
   const [deck, setDeck]             = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState('');
+  const [downloadError,  setDownloadError]  = useState(null);
 
   const handleSelectTemplate = (deckData) => { setDeck(deckData); setStep('success'); };
-  const handleStartOver      = () => { setStep('gallery'); setDeck(null); };
+  const handleStartOver      = () => { setStep('gallery'); setDeck(null); setDownloadError(null); };
 
   const handleDownload = async () => {
     setDownloading(true);
+    setDownloadError(null);
     try {
-      // Prefer inline base64 (no extra network round-trip, works even if DB insert failed)
+      // PATH A — inline base64. Most reliable, no network needed. Works even
+      // if the DB insert failed, because we have the bytes in memory from
+      // the generate response. No preflight needed — we ARE the bytes.
       if (deck?.pptxBase64) {
         const binary = atob(deck.pptxBase64);
         const bytes  = new Uint8Array(binary.length);
@@ -30,27 +36,26 @@ export default function GenerateDeckModal({ analysisId, onClose, onSuccess }) {
         URL.revokeObjectURL(url);
         return;
       }
-      // Fallback: fetch from DB-backed download route
-      if (deck?.downloadUrl) {
-        const res = await fetch(deck.downloadUrl);
-        if (res.ok) {
-          const blob = await res.blob();
-          const url  = URL.createObjectURL(blob);
-          const a    = document.createElement('a');
-          a.href     = url;
-          a.download = deck.filename || `${(deck.briefName || 'presentation').replace(/\s+/g,'_')}.pptx`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        } else {
-          alert('Download failed — please try generating the presentation again.');
+      // PATH B — server-stored PPTX (older deck, or page refreshed after generation).
+      // Runs the preflight + auto-heal agent first.
+      if (deck?.presentationId) {
+        const verdict = await safeDownloadPresentation(deck.presentationId, {
+          onStatus: setDownloadStatus,
+        });
+        if (verdict.kind === 'downloaded') return;
+        if (verdict.kind === 'regenerate') {
+          setDownloadError(`File needs regeneration: ${verdict.detail}`);
+          return;
         }
+        setDownloadError(verdict.message || 'Download failed.');
+        return;
       }
+      setDownloadError('No download source available for this deck. Try regenerating.');
     } catch (err) {
-      alert('Download failed — please try generating the presentation again.');
+      setDownloadError(`Download failed: ${err.message || err}`);
     } finally {
       setDownloading(false);
+      setDownloadStatus('');
     }
   };
 
@@ -81,7 +86,14 @@ export default function GenerateDeckModal({ analysisId, onClose, onSuccess }) {
           zIndex:10, flexShrink:0,
         }}>✕</button>
 
-        <div style={{ padding: step==='gallery' ? '32px 32px 28px' : '40px 40px 36px', paddingTop:32 }}>
+        {/* Padding uses individual properties (not shorthand) so React doesn't
+            warn about a paddingTop overriding the padding shorthand. */}
+        <div style={{
+          paddingTop:    32,
+          paddingRight:  step === 'gallery' ? 32 : 40,
+          paddingBottom: step === 'gallery' ? 28 : 36,
+          paddingLeft:   step === 'gallery' ? 32 : 40,
+        }}>
 
           {/* ── Gallery step ── */}
           {step === 'gallery' && (
@@ -152,9 +164,19 @@ export default function GenerateDeckModal({ analysisId, onClose, onSuccess }) {
                   {downloading ? (
                     <><span style={{ width:16, height:16, borderRadius:'50%',
                       border:'2px solid rgba(255,255,255,.4)', borderTopColor:'#fff',
-                      animation:'gdmspin .7s linear infinite', display:'inline-block' }} /> Downloading…</>
+                      animation:'gdmspin .7s linear infinite', display:'inline-block' }} /> {downloadStatus || 'Downloading…'}</>
                   ) : '⬇ Download PowerPoint'}
                 </button>
+
+                {downloadError && (
+                  <div style={{
+                    padding:'10px 14px', borderRadius:10,
+                    background:'#FEF2F2', border:'1px solid #FECACA',
+                    color:'#991B1B', fontSize:12.5, lineHeight:1.5,
+                  }}>
+                    ⚠ {downloadError}
+                  </div>
+                )}
 
                 {deck.gammaUrl && deck.gammaUrl !== '#' && (
                   <a href={deck.gammaUrl} target="_blank" rel="noopener noreferrer" style={{
