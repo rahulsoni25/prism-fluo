@@ -28,6 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/client';
 import { getSession } from '@/lib/auth/server';
+import { dualAgentVerify } from '@/lib/presentations/dual-agent-verify';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 10;
@@ -61,7 +62,7 @@ function buildFilename(brief: string, template: string): string {
 
 async function loadRow(id: string, userId: string) {
   const { rows } = await db.query(
-    `SELECT id, brief_name, template_name, status,
+    `SELECT id, brief_name, template_name, status, analysis_id,
             (pptx_data IS NOT NULL) AS has_data,
             octet_length(pptx_data) AS size_bytes,
             substring(pptx_data FROM 1 FOR 4) AS header
@@ -70,6 +71,16 @@ async function loadRow(id: string, userId: string) {
     [id, userId],
   );
   return rows[0] ?? null;
+}
+
+async function loadFullBytes(id: string, userId: string): Promise<{ buffer: Buffer; analysisId: string | null } | null> {
+  const { rows } = await db.query(
+    `SELECT pptx_data, analysis_id FROM presentations WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)`,
+    [id, userId],
+  );
+  if (rows.length === 0 || !rows[0].pptx_data) return null;
+  const buf = Buffer.isBuffer(rows[0].pptx_data) ? rows[0].pptx_data : Buffer.from(rows[0].pptx_data);
+  return { buffer: buf, analysisId: rows[0].analysis_id ?? null };
 }
 
 async function markFailed(id: string, reason: string) {
@@ -112,6 +123,59 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   })();
 
   if (fast.ready) {
+    // ── DUAL-AGENT VERIFICATION ───────────────────────────────────
+    // Visual Inspector + Content Council both must report clean.
+    // Runs in parallel — typical < 1 second extra.
+    const full = await loadFullBytes(id, session.userId);
+    if (full) {
+      const verdict = await dualAgentVerify(full.buffer, full.analysisId);
+      if (!verdict.ready) {
+        const blockers = [
+          ...verdict.visual.issues.filter(i => i.severity === 'blocker').map(i => `[visual/${i.kind}${i.slide ? `:slide${i.slide}` : ''}] ${i.detail}`),
+          ...(verdict.content?.cards ?? [])
+            .flatMap(c => c.findings.filter(f => f.verdict === 'confirmed' && f.severity === 'blocker'))
+            .map(f => `[content/${f.agent}/${f.field}] ${f.issue}`),
+        ].slice(0, 8);
+
+        return NextResponse.json({
+          ok: true, ready: false, pass: 'dual-agent',
+          reason: 'verification-failed',
+          detail: `Dual-agent verification blocked the download — ${verdict.combinedBlockers} blocker(s) found. Top: ${blockers.join(' | ')}`,
+          dualAgent: {
+            visualBlockers: verdict.visual.issues.filter(i => i.severity === 'blocker').length,
+            visualMajors:   verdict.visual.issues.filter(i => i.severity === 'major').length,
+            contentBlockers: verdict.content?.summary?.bySeverity?.blocker ?? 0,
+            contentMajors:   verdict.content?.summary?.bySeverity?.major ?? 0,
+            slideCount: verdict.visual.slideCount,
+            chartCount: verdict.visual.chartCount,
+            contentNote: verdict.contentNote,
+            sample: blockers,
+          },
+          elapsedMs: Date.now() - t0,
+        });
+      }
+
+      // Both agents clean → download allowed
+      return NextResponse.json({
+        ...fast,
+        pass: 'fast+dual-agent',
+        elapsedMs: Date.now() - t0,
+        dualAgent: {
+          visualClean: true,
+          contentClean: verdict.combinedBlockers === 0,
+          slideCount: verdict.visual.slideCount,
+          chartCount: verdict.visual.chartCount,
+          visualMajors:  verdict.visual.issues.filter(i => i.severity === 'major').length,
+          contentMajors: verdict.content?.summary?.bySeverity?.major ?? 0,
+          contentNote: verdict.contentNote,
+          inspectorElapsedMs: verdict.visual.elapsedMs,
+          totalElapsedMs:     verdict.elapsedMs,
+        },
+      });
+    }
+
+    // If we couldn't load bytes (shouldn't happen — fast pass already
+    // confirmed they exist) fall through to plain ready response.
     return NextResponse.json({ ...fast, pass: 'fast', elapsedMs: Date.now() - t0 });
   }
   if (fast.reason === 'not-found') {

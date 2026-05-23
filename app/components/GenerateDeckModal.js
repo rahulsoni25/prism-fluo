@@ -47,6 +47,16 @@ export default function GenerateDeckModal({ analysisId, onClose, onSuccess }) {
           setDownloadError(`File needs regeneration: ${verdict.detail}`);
           return;
         }
+        if (verdict.kind === 'verification-blocked') {
+          const da = verdict.dualAgent || {};
+          const lines = [
+            `Dual-agent verification blocked this download.`,
+            `Visual issues: ${da.visualBlockers || 0} blocker(s), ${da.visualMajors || 0} major.`,
+            `Content issues: ${da.contentBlockers || 0} blocker(s), ${da.contentMajors || 0} major.`,
+          ];
+          setDownloadError(lines.join(' '));
+          return;
+        }
         setDownloadError(verdict.message || 'Download failed.');
         return;
       }
