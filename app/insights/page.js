@@ -440,18 +440,28 @@ function computeMarketPyramid(brief) {
   let n = D.total_population;
   rows.push({ label: 'India population', count: n, pct: null, source: 'UN 2024' });
 
-  // Gender filter
-  const genderRaw = String(brief.gender || '').toLowerCase();
-  if (genderRaw.includes('female') && !genderRaw.includes('male')) {
+  // Normalise brief inputs:
+  //   • lowercase + trim
+  //   • en/em dashes → hyphen  (brief stores '18–24' but config uses '18-24')
+  //   • strip spaces in geo tokens  ('Tier 1' → 'tier1')
+  const normalise = (s) => String(s || '').toLowerCase().replace(/[–—]/g, '-').trim();
+  const stripSpace = (s) => normalise(s).replace(/\s+/g, '');
+
+  // Gender filter — exact token match, not substring (otherwise 'female'
+  // matches 'male' inside it and the wrong branch fires).
+  const genderTokens = normalise(brief.gender).split(/[,/\s]+/).filter(Boolean);
+  const wantsFemale = genderTokens.some(t => t === 'female' || t === 'women' || t === 'f');
+  const wantsMale   = genderTokens.some(t => t === 'male'   || t === 'men'   || t === 'm');
+  if (wantsFemale && !wantsMale) {
     n *= D.female_share;
     rows.push({ label: 'Women', count: n, pct: D.female_share, source: 'UN 2024' });
-  } else if (genderRaw.includes('male') && !genderRaw.includes('female')) {
+  } else if (wantsMale && !wantsFemale) {
     n *= D.male_share;
     rows.push({ label: 'Men',   count: n, pct: D.male_share, source: 'UN 2024' });
   }
 
-  // Age range
-  const ageRanges = String(brief.age_ranges || '').toLowerCase();
+  // Age range — normalise dash so '18–24' matches the config key '18-24'
+  const ageRanges = normalise(brief.age_ranges);
   let ageShare = 0;
   for (const [band, share] of Object.entries(D.age_share)) {
     if (ageRanges.includes(band) || ageRanges.includes(band.replace('-', ' to '))) {
@@ -459,10 +469,8 @@ function computeMarketPyramid(brief) {
     }
   }
   if (ageShare > 0) {
-    // Adult share = 1 - children share (~0.27 in India), used to normalise the % display
-    const fromAdults = ageShare;
-    n *= fromAdults;
-    rows.push({ label: `Aged ${ageRanges.slice(0, 24)}`, count: n, pct: fromAdults, source: 'India census 2024' });
+    n *= ageShare;
+    rows.push({ label: `Aged ${(brief.age_ranges || '').slice(0, 24)}`, count: n, pct: ageShare, source: 'India census 2024' });
   }
 
   // Internet + mobile
@@ -471,9 +479,10 @@ function computeMarketPyramid(brief) {
   n *= D.mobile_share_of_internet;
   rows.push({ label: 'On mobile (83% of online)', count: n, pct: D.mobile_share_of_internet, source: 'IAMAI 2024' });
 
-  // Geography
-  const geo = String(brief.geography || '').toLowerCase();
-  const matchedGeos = Object.keys(D.geo_share).filter(g => geo.includes(g));
+  // Geography — strip spaces so 'Tier 1' matches the config key 'tier1',
+  // and 'Metro Cities' still contains 'metro'.
+  const geoNoSpace = stripSpace(brief.geography);
+  const matchedGeos = Object.keys(D.geo_share).filter(g => geoNoSpace.includes(g));
   if (matchedGeos.length > 0) {
     const geoSum = matchedGeos.reduce((s, g) => s + D.geo_share[g], 0);
     n *= geoSum;
