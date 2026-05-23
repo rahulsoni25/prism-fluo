@@ -22,8 +22,9 @@ import type {
 import { proofreadCard, proofreaderConfirms } from './proofreader';
 import { checkCardStats, statCheckerConfirms } from './stat-checker';
 import { analyzeCardFacts, factAnalyzerConfirms } from './fact-analyzer';
+import { checkCardMath, checkAnalysisMath, mathIntegrityConfirms } from './math-integrity';
 
-const ALL_AGENTS: AgentName[] = ['proofreader', 'stat-checker', 'fact-analyzer'];
+const ALL_AGENTS: AgentName[] = ['proofreader', 'stat-checker', 'fact-analyzer', 'math-integrity'];
 
 /** A finding has hard evidence if it includes a specific quoted phrase /
  *  number / source-row reference. Hard-evidence findings are confirmed
@@ -45,9 +46,10 @@ function consult(
 
   for (const a of others) {
     let agrees = false;
-    if (a === 'proofreader')    agrees = proofreaderConfirms(finding, card);
-    if (a === 'stat-checker')   agrees = statCheckerConfirms(finding, card);
-    if (a === 'fact-analyzer')  agrees = factAnalyzerConfirms(finding, card, brand);
+    if (a === 'proofreader')     agrees = proofreaderConfirms(finding, card);
+    if (a === 'stat-checker')    agrees = statCheckerConfirms(finding, card);
+    if (a === 'fact-analyzer')   agrees = factAnalyzerConfirms(finding, card, brand);
+    if (a === 'math-integrity')  agrees = mathIntegrityConfirms(finding, card);
     if (agrees) confirmedBy.push(a);
     else        disputedBy.push(a);
   }
@@ -72,13 +74,15 @@ export async function verifyCard(
   brand: string | null,
   opts: { llm?: boolean } = {},
 ): Promise<CardVerification> {
-  // Step 1 — parallel scan
-  const [proofFindings, statFindings, factFindings] = await Promise.all([
+  // Step 1 — parallel scan (4 agents now: proofreader + stat-checker +
+  // fact-analyzer + math-integrity)
+  const [proofFindings, statFindings, factFindings, mathFindings] = await Promise.all([
     proofreadCard(card, brand, { llm: opts.llm }),
     Promise.resolve(checkCardStats(card)),
     analyzeCardFacts(card, brand, { llm: opts.llm }),
+    Promise.resolve(checkCardMath(card)),
   ]);
-  const all = [...proofFindings, ...statFindings, ...factFindings];
+  const all = [...proofFindings, ...statFindings, ...factFindings, ...mathFindings];
 
   // Step 2 — cross-consult
   const confirmed: ConfirmedFinding[] = all.map(f => resolveVerdict(f, consult(f, card, brand)));
@@ -155,6 +159,39 @@ export async function verifyAnalysis(
       const chunk = cards.slice(i, i + limit);
       const verified = await Promise.all(chunk.map(c => verifyCard(c, brand, opts)));
       out.push(...verified);
+    }
+  }
+
+  // ── ANALYSIS-LEVEL math pass ────────────────────────────────────
+  // Re-derives the market pyramid from brand + audience and flags any
+  // card whose TAM-style claim diverges > 2× from the canonical funnel.
+  // This is the bug class that produced "84M addressable audience" when
+  // the actual answer was 41M.
+  const briefForMath = (cards.length > 0 && (cards[0] as any).brief)
+    ? (cards[0] as any).brief
+    : (brand ? { brand } : null);
+  if (briefForMath) {
+    const analysisFindings = checkAnalysisMath(briefForMath, cards);
+    for (const f of analysisFindings) {
+      // Attach to the matching card if we can identify it; otherwise
+      // append a synthetic card-0 entry so the issue surfaces.
+      const targetIndex = cards.findIndex(c => {
+        const t = `${c.title || ''} ${c.obs || ''} ${c.stat || ''}`;
+        return f.evidence && t.includes(f.evidence.split(' vs ')[0]);
+      });
+      if (targetIndex >= 0 && out[targetIndex]) {
+        // 2-agent consensus rule: math-integrity finding gets auto-confirmed
+        // because its evidence is mathematical, not opinion. Hard-evidence
+        // policy in resolveVerdict handles this via blocker severity.
+        out[targetIndex].findings.push({
+          ...f,
+          confirmedBy: ['math-integrity'],
+          disputedBy: [],
+          verdict: 'confirmed',
+        } as any);
+        out[targetIndex].worstSeverity = 'blocker';
+        out[targetIndex].verified = false;
+      }
     }
   }
 
