@@ -37,6 +37,93 @@ function fmt(d: string) {
   return new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+interface ProbeStep { name: string; ok: boolean; elapsedMs: number; detail?: string; remediation?: string }
+interface ProbeResult { steps: ProbeStep[]; healthy: boolean; verdict: string }
+
+function ProbePanel() {
+  const [running, setRunning] = useState(false);
+  const [result,  setResult]  = useState<ProbeResult | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
+
+  const run = async () => {
+    setRunning(true); setError(null);
+    try {
+      const r = await fetch('/api/admin/openrouter-probe');
+      const d = await r.json();
+      if (!r.ok) { setError(d.error || `HTTP ${r.status}`); return; }
+      setResult(d);
+    } catch (err: any) { setError(err.message); }
+    finally { setRunning(false); }
+  };
+
+  return (
+    <div style={{ marginBottom: 24, background: '#fff', borderRadius: 14, padding: '18px 22px', boxShadow: '0 1px 3px rgba(0,0,0,.04)', border: '1px solid #E2E8F0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 14, fontWeight: 800, color: '#0F172A' }}>🔬 Live OpenRouter Probe</h2>
+          <p style={{ fontSize: 11.5, color: '#64748B', marginTop: 2 }}>End-to-end test: env → key shape → DNS → auth → chat completion. Identifies exactly which step fails.</p>
+        </div>
+        <button onClick={run} disabled={running} style={{
+          padding: '8px 16px', borderRadius: 10, border: 'none',
+          background: running ? '#94A3B8' : 'linear-gradient(135deg,#2563EB,#7C3AED)',
+          color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: running ? 'wait' : 'pointer',
+          fontFamily: 'inherit',
+        }}>
+          {running ? 'Probing…' : 'Run probe now'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ padding: '10px 14px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, color: '#991B1B', fontSize: 12 }}>
+          ⚠ {error}
+        </div>
+      )}
+
+      {result && (
+        <>
+          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8,
+            background: result.healthy ? '#ECFDF5' : '#FEF2F2',
+            border: `1px solid ${result.healthy ? '#A7F3D0' : '#FECACA'}`,
+            color: result.healthy ? '#065F46' : '#991B1B',
+            fontSize: 13, fontWeight: 700,
+          }}>
+            {result.healthy ? '✅ All systems go — OpenRouter is healthy and responding.' : `🚨 Verdict: ${result.verdict.replace(/-/g, ' ')}`}
+          </div>
+          {result.steps.map((s, i) => (
+            <div key={i} style={{
+              display: 'grid', gridTemplateColumns: '180px 1fr 80px', gap: 10,
+              padding: '10px 12px', marginBottom: 6, borderRadius: 8,
+              background: s.ok ? '#F8FAFC' : '#FEF2F2',
+              borderLeft: `3px solid ${s.ok ? '#10B981' : '#DC2626'}`,
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: s.ok ? '#065F46' : '#991B1B' }}>
+                {s.ok ? '✓' : '✗'} {s.name}
+              </span>
+              <span style={{ fontSize: 12, color: '#475569' }}>
+                {s.detail}
+                {s.remediation && (
+                  <div style={{ marginTop: 4, padding: '6px 8px', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, fontSize: 11.5, color: '#92400E' }}>
+                    <strong>→ Fix:</strong> {s.remediation}
+                  </div>
+                )}
+              </span>
+              <span style={{ fontSize: 10.5, color: '#94A3B8', textAlign: 'right' }}>
+                {s.elapsedMs > 0 ? `${s.elapsedMs}ms` : '—'}
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {!result && !error && !running && (
+        <div style={{ fontSize: 12, color: '#94A3B8', padding: '6px 0' }}>
+          Click "Run probe now" to get a definitive diagnosis. Takes ~5 seconds.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AiHealthPanel() {
   const router = useRouter();
   const [data,    setData]    = useState<AiHealth | null>(null);
@@ -94,6 +181,9 @@ export default function AiHealthPanel() {
         <p style={{ color: '#64748B', fontSize: 14, marginBottom: 24 }}>
           Live monitor for every LLM fallback in the system. Recorded by <code style={{ background: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>lib/ai/fallback-monitor</code>.
         </p>
+
+        {/* ── Live OpenRouter probe — definitive end-to-end diagnostic ── */}
+        <ProbePanel />
 
         {/* Actionable banner — fires when OpenRouter key is missing or empty.
             Single-click jump to the right Vercel screen to fix it. */}

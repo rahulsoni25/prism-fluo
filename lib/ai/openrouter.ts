@@ -350,8 +350,18 @@ export async function callOpenRouterText(
   //    tokens on bigger prompts without changing semantics.
   const trimmedPrompt = prompt.trim().replace(/\n{3,}/g, '\n\n');
 
-  for (let i = 0; i < TEXT_MODELS.length; i++) {
-    const model = TEXT_MODELS[i];
+  // Health-aware cascade — try models by recent success rate, skip
+  // models quarantined for >50% failure in the last 5 min (re-probed
+  // once every 5 min so they auto-recover).
+  const { sortByHealth, isQuarantined, recordSuccess, recordFailure } = await import('./model-health');
+  const ordered = sortByHealth(TEXT_MODELS);
+
+  for (let i = 0; i < ordered.length; i++) {
+    const model = ordered[i];
+    if (isQuarantined(model)) {
+      console.warn(`[OpenRouter] ${model} — quarantined, skipping`);
+      continue;
+    }
     try {
       const res = await fetch(OPENROUTER_URL, {
         method: 'POST',
@@ -374,6 +384,22 @@ export async function callOpenRouterText(
         const reason = `HTTP ${res.status}: ${errText.slice(0, 120)}`;
         console.warn(`[OpenRouter] ${model} — ${reason}`);
         failures.push(`${model}: ${reason}`);
+        recordFailure(model);
+        // Account-level failures (auth/credits) won't be fixed by trying
+        // other models — abort the cascade fast + raise loud alert.
+        if (res.status === 401 || res.status === 403 || res.status === 402) {
+          const { recordFallback } = await import('./fallback-monitor');
+          recordFallback({
+            kind: 'all-models-down',
+            severity: 'alert',
+            surface,
+            primaryModel,
+            attempts: i + 1,
+            errorMessage: `Account-level HTTP ${res.status} — key invalid / no credits / forbidden. Cascade aborted.`,
+            details: { firstFailure: reason },
+          });
+          throw new Error(`OpenRouter HTTP ${res.status} — see /admin/openrouter-probe for diagnosis.`);
+        }
         continue;
       }
 
@@ -382,10 +408,11 @@ export async function callOpenRouterText(
       if (!text) {
         console.warn(`[OpenRouter] ${model} — empty content`);
         failures.push(`${model}: empty response`);
+        recordFailure(model);
         continue;
       }
 
-      // Record fallback if cascade was needed
+      recordSuccess(model);
       if (i > 0) {
         const { recordFallback } = await import('./fallback-monitor');
         recordFallback({
@@ -404,6 +431,8 @@ export async function callOpenRouterText(
     } catch (err: any) {
       console.warn(`[OpenRouter] ${model} threw: ${err.message}`);
       failures.push(`${model}: ${err.message}`);
+      recordFailure(model);
+      if (err.message?.includes('/admin/openrouter-probe')) throw err;
     }
   }
 
