@@ -70,6 +70,8 @@ async function ensureSchema(): Promise<void> {
     db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS brief_id   UUID REFERENCES briefs(id)  ON DELETE SET NULL`),
     db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_hours  INTEGER`),
     db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMP WITH TIME ZONE`),
+    // Cross-council: stash the mapper verdict so verification can read it later
+    db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS mapper_verdict JSONB`),
   ]);
 
   // Create tool_data (depends on uploads existing — must run after ALTER TABLE above)
@@ -892,10 +894,11 @@ export async function handleUpload(
   // because the migration hasn't run yet), fall back to the minimal INSERT
   // that works on every schema version, then UPDATE optional columns.
   const fullIns = await db.query(
-    `INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at, file_hash)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO uploads (id, filename, brief_id, user_id, sla_hours, sla_due_at, file_hash, mapper_verdict)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (id) DO NOTHING`,
-    [uploadId, filename, briefId ?? null, userId ?? null, slaHours ?? null, slaDueAt ?? null, fileHash]
+    [uploadId, filename, briefId ?? null, userId ?? null, slaHours ?? null, slaDueAt ?? null, fileHash,
+     mapperSummary ? JSON.stringify(mapperSummary) : null]
   );
 
   if (!fullIns.rowCount) {

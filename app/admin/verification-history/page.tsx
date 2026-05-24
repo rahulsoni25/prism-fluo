@@ -90,6 +90,7 @@ export default function VerificationHistoryPage() {
           <Link href="/admin/audit-log"  style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Audit Log</Link>
           <Link href="/admin/ai-health"  style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ AI Health</Link>
           <Link href="/admin/mapper-history" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Mapper</Link>
+          <Link href="/admin/agents" style={{ marginLeft: 10, color: '#A5F3FC', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>★ Agents</Link>
         </div>
         <Link href="/dashboard" style={{ color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>← Back to app</Link>
       </div>

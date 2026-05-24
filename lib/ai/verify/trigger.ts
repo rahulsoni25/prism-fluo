@@ -61,7 +61,11 @@ export async function triggerCouncilForAnalysis(
   try {
     const { rows } = await db.query(
       `SELECT a.results_json, b.brand, b.gender, b.age_ranges, b.geography, b.market,
-              b.competitors, b.category, b.objective
+              b.competitors, b.category, b.objective,
+              -- Cross-council: pull the most recent mapper verdict for this brief
+              (SELECT u.mapper_verdict FROM uploads u
+                WHERE u.brief_id = a.brief_id AND u.mapper_verdict IS NOT NULL
+                ORDER BY u.created_at DESC LIMIT 1) AS mapper_verdict
          FROM analyses a
          LEFT JOIN briefs b ON b.id = a.brief_id
         WHERE a.id = $1`,
@@ -100,6 +104,21 @@ export async function triggerCouncilForAnalysis(
       toolLabel: c.toolLabel,
       ...(i === 0 ? { brief } : {}),
     }) as any);
+
+    // Cross-council intel: if Mapper graded the source as thin / image-only,
+    // log it so we can correlate weak verification scores with weak source files
+    // on the agents dashboard. Future: pass this into verifyAnalysis to soften
+    // FactAnalyzer findings when the source is known-thin.
+    const mapperVerdict: any = rows[0].mapper_verdict ?? null;
+    if (mapperVerdict && (mapperVerdict.blockers > 0 || mapperVerdict.majors > 0)) {
+      logger.info('verify:trigger:mapper_warning', {
+        analysisId, reason,
+        mapperGrade:    mapperVerdict.grade,
+        mapperBlockers: mapperVerdict.blockers,
+        mapperMajors:   mapperVerdict.majors,
+        mapperTopFinding: mapperVerdict.topFinding,
+      });
+    }
 
     const t0 = Date.now();
     const report = await verifyAnalysis(analysisId, cards, brand, { llm: opts.llm });
