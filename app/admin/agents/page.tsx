@@ -12,14 +12,17 @@ interface RecentItem {
 }
 
 interface Council {
+  id?: string;
   name: string;
   stage: string;
   emoji: string;
   agents: number;
   agentNames: string[];
+  description?: string;
   lifetime: Record<string, any>;
   recent: RecentItem[];
   link: string | null;
+  grade?: number | null;
 }
 
 interface Overview {
@@ -114,21 +117,16 @@ export default function AgentsOverviewPage() {
           ))}
         </div>
 
-        {/* ── Lifecycle diagram ───────────────────────────────── */}
+        {/* ── Lifecycle diagram (auto-built from registry) ────── */}
         <div style={{ background: '#fff', borderRadius: 14, padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,.04)', marginBottom: 28 }}>
           <h2 style={{ fontSize: 14, fontWeight: 800, color: '#0F172A', marginBottom: 14 }}>Brief lifecycle — who handles what</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-            {[
-              { step: 'UPLOAD',  council: 'Mapper',      desc: 'Compress + verify file integrity. Cross-talk: writes verdict to uploads.mapper_verdict for Verification to read later.' },
-              { step: 'ANALYZE', council: 'AI Health',   desc: 'Smart model cascade with quarantine + auto-recovery. Always-on, no per-request invocation.' },
-              { step: 'VERIFY',  council: 'Verification', desc: '5 agents check facts, math, stats, prose, coverage. Reads upstream Mapper verdict to weight findings.' },
-              { step: 'EXPORT',  council: 'Gatekeeper',   desc: 'Inspects PDF/Excel byte streams before download. Future: refuses to ship if Verification graded <7/10.' },
-            ].map((s, i) => (
-              <div key={s.step} style={{ position: 'relative', background: '#F8FAFC', borderRadius: 10, padding: '12px 14px' }}>
-                {i < 3 && <span style={{ position: 'absolute', right: -8, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 16, fontWeight: 900 }}>→</span>}
-                <div style={{ fontSize: 10, fontWeight: 800, color: '#7C3AED', letterSpacing: '.08em', marginBottom: 4 }}>{s.step}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>{s.council}</div>
-                <div style={{ fontSize: 11, color: '#64748B', lineHeight: 1.4 }}>{s.desc}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${data.councils.length}, 1fr)`, gap: 12 }}>
+            {data.councils.map((c, i) => (
+              <div key={c.name} style={{ position: 'relative', background: '#F8FAFC', borderRadius: 10, padding: '12px 14px' }}>
+                {i < data.councils.length - 1 && <span style={{ position: 'absolute', right: -8, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', fontSize: 16, fontWeight: 900 }}>→</span>}
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#7C3AED', letterSpacing: '.08em', marginBottom: 4 }}>{c.stage.toUpperCase()}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginBottom: 4 }}>{c.emoji} {c.name}</div>
+                <div style={{ fontSize: 11, color: '#64748B', lineHeight: 1.4 }}>{c.description || `${c.agents} agent(s)`}</div>
               </div>
             ))}
           </div>
