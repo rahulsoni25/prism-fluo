@@ -72,7 +72,7 @@ export const POST = async (req: NextRequest) => {
         // pathname is the blob path the client wants (e.g. "uploads/foo.pptx").
         // We don't restrict pathnames; just gate on extension + size + auth.
         const ext = pathname.split('.').pop()?.toLowerCase() ?? '';
-        if (!['xlsx', 'xls', 'csv', 'pdf', 'pptx', 'ppt'].includes(ext)) {
+        if (!['xlsx', 'xls', 'csv', 'pdf', 'pptx', 'ppt', 'png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
           throw new Error(`Unsupported file extension: .${ext}`);
         }
         return {

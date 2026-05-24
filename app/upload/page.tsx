@@ -317,6 +317,24 @@ function UploadDataInner() {
             `and restart the dev server.`,
           );
         }
+        // "Failed to fetch" / "NetworkError" on the direct PUT almost always means
+        // an ad-blocker or privacy extension is blocking blob.vercel-storage.com.
+        // We can't auto-fall-back to the server-side path for files > 4.5 MB on
+        // Vercel (platform body-size cap), so the only fix is to tell the user
+        // exactly what to do.
+        if (/failed to fetch|networkerror|load failed|err_network|fetch error/i.test(msg)) {
+          throw new Error(
+            `Direct blob upload was blocked by your browser. This usually means an ` +
+            `ad-blocker or privacy extension (uBlock, Brave Shields, Privacy Badger, ` +
+            `corporate firewall) is blocking blob.vercel-storage.com.\n\n` +
+            `Fix options:\n` +
+            `  1. Open this page in Incognito with extensions disabled, then retry.\n` +
+            `  2. Allow-list "*.vercel-storage.com" in your blocker.\n` +
+            `  3. Try a different network (mobile hotspot is a quick test).\n\n` +
+            `If none of those work, the file is too large for the server-side path ` +
+            `(${sizeMB.toFixed(1)} MB > 4.5 MB Vercel limit) — split or compress before upload.`,
+          );
+        }
         throw new Error(`Direct blob upload failed: ${msg}`);
       }
       upRes = await fetch('/api/upload', {
