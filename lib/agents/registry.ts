@@ -85,6 +85,24 @@ export interface CouncilDescriptor {
 
   /** Link to the council's own deep-dive admin page (or null). */
   link: string | null;
+
+  /**
+   * Behavior policy per the proactive-solve rule (see AGENTS.md).
+   * Councils MUST auto-recover from recoverable failures before surfacing
+   * them. Each council declares which auto-recovery strategies it owns so
+   * the dashboard can show "auto-resolves: retry, fallback, quarantine"
+   * and so missing strategies are visible at a glance.
+   */
+  autoRecover?: {
+    /** Retry the failed operation with the same args (transient failures). */
+    retry?:    boolean;
+    /** Fall back to a safe alternative (e.g. ship original on QA blocker). */
+    fallback?: boolean;
+    /** Take the failing resource out of rotation + auto-re-probe. */
+    quarantine?: boolean;
+    /** Route to an alternate provider/host (e.g. CloudConvert when Vercel Blob blocked). */
+    alternateRoute?: boolean;
+  };
 }
 
 // ── Registry ─────────────────────────────────────────────────────────────

@@ -55,6 +55,7 @@ export async function GET(_req: NextRequest) {
       recent:      snapshot.recent,
       link:        d.link,
       grade,
+      autoRecover: d.autoRecover ?? {},
     })),
   });
 }

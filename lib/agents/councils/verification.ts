@@ -11,6 +11,7 @@ registerCouncil({
   agentNames: ['ProofReader', 'StatChecker', 'FactAnalyzer', 'MathIntegrity', 'Coverage'],
   description: '5 agents check facts, math, stats, prose, coverage. Reads upstream Mapper verdict to weight findings.',
   link: '/admin/verification-history',
+  autoRecover: { retry: true, fallback: true },
 
   async run(args: { analysisId: string }): Promise<MasterCouncilVerdict> {
     const t0 = Date.now();

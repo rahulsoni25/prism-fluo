@@ -348,36 +348,71 @@ function UploadDataInner() {
             `and restart the dev server.`,
           );
         }
-        // "Failed to fetch" / "NetworkError" on the direct PUT almost always means
-        // an ad-blocker or privacy extension is blocking blob.vercel-storage.com.
-        // We can't auto-fall-back to the server-side path for files > 4.5 MB on
-        // Vercel (platform body-size cap), so the only fix is to tell the user
-        // exactly what to do.
+        // "Failed to fetch" / "NetworkError" → blob.vercel-storage.com blocked
+        // by an ad-blocker. AUTO-FALLBACK to CloudConvert proxy upload (different
+        // domain, almost never blocked, also compresses in-flight).
         if (/failed to fetch|networkerror|load failed|err_network|fetch error/i.test(msg)) {
-          throw new Error(
-            `Direct blob upload was blocked by your browser. This usually means an ` +
-            `ad-blocker or privacy extension (uBlock, Brave Shields, Privacy Badger, ` +
-            `corporate firewall) is blocking blob.vercel-storage.com.\n\n` +
-            `Fix options:\n` +
-            `  1. Open this page in Incognito with extensions disabled, then retry.\n` +
-            `  2. Allow-list "*.vercel-storage.com" in your blocker.\n` +
-            `  3. Try a different network (mobile hotspot is a quick test).\n\n` +
-            `If none of those work, the file is too large for the server-side path ` +
-            `(${sizeMB.toFixed(1)} MB > 4.5 MB Vercel limit) — split or compress before upload.`,
-          );
+          addLog(`⚠ Direct blob upload blocked by browser extension — auto-retrying via PRISM's CloudConvert fallback (different domain, often gets through blockers)…`);
+          try {
+            // Phase 1: get an upload URL on cloudconvert.com
+            const initRes = await fetch('/api/upload/via-cloudconvert', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: file.name }),
+            });
+            if (!initRes.ok) {
+              const e = await initRes.json().catch(() => ({}));
+              if (initRes.status === 503) {
+                throw new Error('CloudConvert fallback is not configured (CLOUDCONVERT_API_KEY missing on Vercel). Allow-list *.vercel-storage.com in your blocker as a workaround.');
+              }
+              throw new Error(e.message || `Fallback init failed (HTTP ${initRes.status})`);
+            }
+            const { jobId, uploadUrl, uploadParams, isPdf } = await initRes.json();
+
+            // Phase 2: client uploads directly to CC's domain
+            addLog(`📦 Streaming "${file.name}" via CloudConvert (${sizeMB.toFixed(1)} MB)…`);
+            const fd = new FormData();
+            for (const [k, v] of Object.entries(uploadParams || {})) fd.append(k, v as string);
+            fd.append('file', file);
+            const ccUpRes = await fetch(uploadUrl, { method: 'POST', body: fd });
+            if (!ccUpRes.ok) throw new Error(`CloudConvert upload failed (HTTP ${ccUpRes.status})`);
+
+            // Phase 3: tell our server to fetch + process the compressed result
+            addLog(`⏳ CloudConvert is compressing the PDF${isPdf ? '' : ' (passthrough only, not a PDF)'} — typically 30–60 s for 25 MB files…`);
+            upRes = await fetch('/api/upload/via-cloudconvert/finish', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ jobId, filename: file.name, briefId: briefId ?? null, slaHours: selectedSlaHours ?? null }),
+            });
+            // Skip the post-block flow below (upRes already set); fall through to the post-upload code path
+          } catch (fbErr: any) {
+            throw new Error(
+              `Direct blob upload was blocked AND CloudConvert fallback also failed (${fbErr?.message ?? fbErr}).\n\n` +
+              `Manual fixes:\n` +
+              `  1. Open this page in Incognito with all extensions disabled, then retry.\n` +
+              `  2. Allow-list "*.vercel-storage.com" in your blocker.\n` +
+              `  3. Compress the PDF first at /compress (uses CloudConvert too).`,
+            );
+          }
+        } else {
+          throw new Error(`Direct blob upload failed: ${msg}`);
         }
-        throw new Error(`Direct blob upload failed: ${msg}`);
       }
-      upRes = await fetch('/api/upload', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          blobUrl:  blob.url,
-          filename: file.name,
-          briefId:  briefId ?? null,
-          slaHours: selectedSlaHours ?? null,
-        }),
-      });
+      // If the catch-block above already set upRes via the CloudConvert fallback,
+      // skip the normal blob-URL POST. Otherwise the direct-blob upload succeeded
+      // and we now tell our server to fetch the blob.
+      if (blob && !upRes!) {
+        upRes = await fetch('/api/upload', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            blobUrl:  blob.url,
+            filename: file.name,
+            briefId:  briefId ?? null,
+            slaHours: selectedSlaHours ?? null,
+          }),
+        });
+      }
     }
 
     // Vercel's platform (nginx) returns "Request Entity Too Large" as plain text

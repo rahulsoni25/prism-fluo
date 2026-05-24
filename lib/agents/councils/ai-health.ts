@@ -10,6 +10,7 @@ registerCouncil({
   agentNames: ['Model-Health', 'Fallback-Monitor'],
   description: 'Smart model cascade with quarantine + auto-recovery. Always-on, no per-request invocation.',
   link: '/admin/ai-health',
+  autoRecover: { retry: true, fallback: true, quarantine: true, alternateRoute: true },
   // No `run` — always-on monitor, not a per-request council.
 
   async getSnapshot() {

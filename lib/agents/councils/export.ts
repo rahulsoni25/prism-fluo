@@ -10,6 +10,7 @@ registerCouncil({
   agentNames: ['PDF-Inspector', 'Excel-Inspector'],
   description: 'Inspects PDF/Excel byte streams before download. Future: refuses to ship if Verification graded <7/10.',
   link: null, // no own dashboard yet
+  autoRecover: { retry: true, fallback: true },
 
   async run(args: { buffer: Buffer; kind: 'pdf' | 'xlsx'; analysisId: string | null }): Promise<MasterCouncilVerdict> {
     const t0 = Date.now();

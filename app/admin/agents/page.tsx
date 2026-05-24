@@ -23,6 +23,7 @@ interface Council {
   recent: RecentItem[];
   link: string | null;
   grade?: number | null;
+  autoRecover?: { retry?: boolean; fallback?: boolean; quarantine?: boolean; alternateRoute?: boolean };
 }
 
 interface Overview {
@@ -160,11 +161,21 @@ function CouncilCard({ council: c }: { council: Council }) {
       </div>
 
       {/* Agent chips */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
         {c.agentNames.map(a => (
           <span key={a} style={{ fontSize: 10.5, padding: '2px 8px', background: '#F1F5F9', color: '#475569', borderRadius: 10, fontWeight: 600 }}>{a}</span>
         ))}
       </div>
+
+      {/* Auto-recovery badges (proactive-solve rule) */}
+      {c.autoRecover && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+          {c.autoRecover.retry          && <span style={{ fontSize: 9.5, padding: '2px 7px', background: '#ECFDF5', color: '#065F46', borderRadius: 10, fontWeight: 700, letterSpacing: '.04em' }}>🔁 auto-retry</span>}
+          {c.autoRecover.fallback       && <span style={{ fontSize: 9.5, padding: '2px 7px', background: '#ECFDF5', color: '#065F46', borderRadius: 10, fontWeight: 700, letterSpacing: '.04em' }}>↩ auto-fallback</span>}
+          {c.autoRecover.quarantine     && <span style={{ fontSize: 9.5, padding: '2px 7px', background: '#ECFDF5', color: '#065F46', borderRadius: 10, fontWeight: 700, letterSpacing: '.04em' }}>🚧 auto-quarantine</span>}
+          {c.autoRecover.alternateRoute && <span style={{ fontSize: 9.5, padding: '2px 7px', background: '#ECFDF5', color: '#065F46', borderRadius: 10, fontWeight: 700, letterSpacing: '.04em' }}>🔀 alternate-route</span>}
+        </div>
+      )}
 
       {/* Lifetime stats */}
       <div style={{ background: '#F8FAFC', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>

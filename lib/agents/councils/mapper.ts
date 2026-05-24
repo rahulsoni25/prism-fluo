@@ -12,6 +12,7 @@ registerCouncil({
   agentNames: ['Compressor', 'Mapper-QA', 'Senior-Audit', 'Client-Compressor', 'Client-QA'],
   description: 'Compress + verify file integrity. Runs in TWO places: client-side mini-council shrinks the file BEFORE upload (compressor + structural QA); server-side full council re-verifies after upload (compressor + text-match QA + senior audit).',
   link: '/admin/mapper-history',
+  autoRecover: { retry: true, fallback: true, alternateRoute: true },
 
   async run(args: { buffer: Buffer; filename: string; userId?: string | null }): Promise<MasterCouncilVerdict> {
     const t0 = Date.now();
