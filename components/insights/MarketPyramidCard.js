@@ -47,8 +47,19 @@ export default function MarketPyramidCard({ pyramid, categoryIntel, audienceDesc
       onMouseLeave={() => setShow(false)}
       style={{ position: 'relative', cursor: 'help', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
     >
-      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#9333EA', marginBottom: 6 }}>
-        Market Size
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#9333EA' }}>
+          Market Size
+        </div>
+        <span
+          title="Recomputed live from brief.gender · brief.age_ranges · brief.geography on every page load. Edits to those fields update this card immediately."
+          style={{
+            fontSize: 9, fontWeight: 800, letterSpacing: '.06em',
+            color: '#065F46', background: '#D1FAE5', borderRadius: 8,
+            padding: '1px 6px', cursor: 'help',
+          }}>
+          ● LIVE
+        </span>
       </div>
       <div style={{ fontSize: 24, lineHeight: 1.05, fontWeight: 800, color: '#0F172A', letterSpacing: '-.015em', marginBottom: 2 }}>
         {pyramid.tamFmt}

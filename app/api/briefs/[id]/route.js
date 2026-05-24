@@ -54,6 +54,18 @@ export async function PATCH(req, { params }) {
       );
     }
 
+    // ── Pre-flight: snapshot the OLD brief so we can detect which
+    //    analysis-affecting fields actually changed (vs metadata-only
+    //    updates like status flips that don't invalidate insights). ──
+    const oldRows = await db.query(
+      'SELECT * FROM briefs WHERE id = $1 AND user_id = $2',
+      [id, session.userId],
+    );
+    if (oldRows.rows.length === 0) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const oldBrief = oldRows.rows[0];
+
     const sets = fields.map((f, i) => `${f} = $${i + 1}`);
     const vals = fields.map(f => body[f]);
 
@@ -71,15 +83,42 @@ export async function PATCH(req, { params }) {
 
     cache.del(`dashboard:overview:${session.userId}`);
 
+    // ── Cross-talk: detect analysis-staleness ──────────────────────
+    // These brief fields are baked into the AI narrative + nuggets stored
+    // on the analysis. If any change AND there's a linked analysis, mark
+    // the analysis stale so the insights page can prompt regeneration.
+    // (The MarketPyramid card recomputes client-side from brief.* and is
+    //  always live — only the AI text is stale.)
+    const ANALYSIS_AFFECTING = [
+      'brand', 'category', 'objective',
+      'age_ranges', 'gender', 'sec', 'market', 'geography',
+      'competitors', 'insight_buckets',
+    ];
+    const changedAffecting = fields.filter(f =>
+      ANALYSIS_AFFECTING.includes(f) && String(body[f] ?? '') !== String(oldBrief[f] ?? '')
+    );
+    if (changedAffecting.length > 0 && rows[0].analysis_id) {
+      try {
+        // Auto-migrate the column on first use — safe to repeat.
+        await db.query(`ALTER TABLE analyses ADD COLUMN IF NOT EXISTS is_stale BOOLEAN DEFAULT false`);
+        await db.query(`ALTER TABLE analyses ADD COLUMN IF NOT EXISTS stale_reason TEXT`);
+        await db.query(
+          `UPDATE analyses SET is_stale = true, stale_reason = $1 WHERE id = $2`,
+          [`Brief edited: ${changedAffecting.join(', ')}`, rows[0].analysis_id],
+        );
+      } catch (err) {
+        // Best-effort — never block the PATCH on staleness marking
+        console.warn('[briefs:PATCH] stale-mark failed:', err.message);
+      }
+    }
+
     // If this PATCH flipped the brief to 'ready' AND a linked analysis
     // exists, ensure the 3-agent council has run against that analysis.
-    // ensureCouncilHasRun() is idempotent — it only fires if no report
-    // exists yet, so re-PATCHing the same brief never re-runs the council.
     if (rows[0].status === 'ready' && rows[0].analysis_id) {
       ensureCouncilHasRun(rows[0].analysis_id, 'briefs:PATCH→ready').catch(() => {});
     }
 
-    return NextResponse.json(rows[0]);
+    return NextResponse.json({ ...rows[0], analysisStaleFields: changedAffecting });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

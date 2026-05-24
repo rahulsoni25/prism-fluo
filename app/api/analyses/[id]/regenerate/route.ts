@@ -153,9 +153,17 @@ export async function POST(
     };
 
     // ── 5. Persist ─────────────────────────────────────────────────────
+    // Also clear is_stale / stale_reason — the analysis is now fresh.
+    // Ensure the columns exist (idempotent — same migration as briefs PATCH).
+    try {
+      await db.query(`ALTER TABLE analyses ADD COLUMN IF NOT EXISTS is_stale BOOLEAN DEFAULT false`);
+      await db.query(`ALTER TABLE analyses ADD COLUMN IF NOT EXISTS stale_reason TEXT`);
+    } catch { /* best-effort migration */ }
     await db.query(
       `UPDATE analyses
-          SET results_json = $1::jsonb
+          SET results_json = $1::jsonb,
+              is_stale     = false,
+              stale_reason = NULL
         WHERE id = $2 AND (user_id = $3 OR user_id IS NULL)`,
       [JSON.stringify(updatedResults), id, session.userId],
     );

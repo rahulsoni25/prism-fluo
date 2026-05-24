@@ -15,6 +15,7 @@ import StrategicBetCard from '@/components/insights/StrategicBetCard';
 import MarketPyramidCard from '@/components/insights/MarketPyramidCard';
 import ProofreadButton from '@/components/insights/ProofreadButton';
 import VerifiedBadge from '@/components/insights/VerifiedBadge';
+import StaleAnalysisBanner from '@/components/insights/StaleAnalysisBanner';
 import { fmtTs, timeAgo, parseRecommendation } from '@/lib/insights/helpers';
 import {
   BUCKET_META, BUCKET_TABS,
@@ -1679,6 +1680,14 @@ function AnalysisDetail({ id }) {
             <div style={{ marginTop: 10 }}>
               <VerifiedBadge analysisId={id} />
             </div>
+
+            {/* ── Stale-brief banner — AI text out-of-sync with current brief ── */}
+            {analysis.is_stale && (
+              <StaleAnalysisBanner
+                reason={analysis.stale_reason}
+                analysisId={id}
+              />
+            )}
 
             {analysis.brief?.sla_due_at && (
               <SlaStrip brief={analysis.brief} />
