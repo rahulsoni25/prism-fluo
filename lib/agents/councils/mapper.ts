@@ -9,8 +9,8 @@ registerCouncil({
   name: 'Mapper',
   emoji: '🗜',
   stage: 'upload',
-  agentNames: ['Compressor', 'Mapper-QA', 'Senior-Audit'],
-  description: 'Compress + verify file integrity. Cross-talk: writes verdict to uploads.mapper_verdict for Verification to read later.',
+  agentNames: ['Compressor', 'Mapper-QA', 'Senior-Audit', 'Client-Compressor', 'Client-QA'],
+  description: 'Compress + verify file integrity. Runs in TWO places: client-side mini-council shrinks the file BEFORE upload (compressor + structural QA); server-side full council re-verifies after upload (compressor + text-match QA + senior audit).',
   link: '/admin/mapper-history',
 
   async run(args: { buffer: Buffer; filename: string; userId?: string | null }): Promise<MasterCouncilVerdict> {

@@ -245,22 +245,29 @@ function UploadDataInner() {
       file = await stripPptxBloat(file);
     }
 
-    // ── Client-side Mapper compression ────────────────────────────
-    // Compress in the browser BEFORE upload so a 25 MB PDF becomes ~8 MB
-    // and the user's bandwidth wait is 3× shorter. The server-side council
-    // still runs mapper-qa + senior-audit on whatever lands, so a corrupted
-    // compress is caught and falls back gracefully.
+    // ── Client-side Mapper Council ────────────────────────────────
+    // Lightweight 2-agent council in the browser: compresses the file,
+    // then runs structural QA (page/slide/sheet/row counts) on the result.
+    // If QA finds a blocker, falls back to the original — never ships a
+    // corrupted compressed file. The server's full 3-agent council still
+    // runs after upload (including text-match QA via pdf-parse).
     try {
-      const { compressClientSide } = await import('@/lib/mapper/compressor-client');
-      const r = await compressClientSide(file);
-      if (r.reduced) {
-        const savedMB = (r.originalBytes - r.compressedBytes) / (1024 * 1024);
-        const pct = Math.round((1 - r.ratio) * 100);
-        addLog(`🗜 Mapper compressed "${file.name}" locally: ${(r.originalBytes / 1e6).toFixed(1)} MB → ${(r.compressedBytes / 1e6).toFixed(1)} MB (−${pct}%, saved ${savedMB.toFixed(1)} MB before upload)`);
-        file = r.file;
+      const { runClientCouncil } = await import('@/lib/mapper/client-council');
+      const v = await runClientCouncil(file);
+      if (v.reduced) {
+        const savedMB = (v.originalBytes - v.finalBytes) / (1024 * 1024);
+        const pct = Math.round((1 - v.finalBytes / v.originalBytes) * 100);
+        addLog(`🗜 Client council passed (${v.grade}/10): ${(v.originalBytes / 1e6).toFixed(1)} MB → ${(v.finalBytes / 1e6).toFixed(1)} MB (−${pct}%, saved ${savedMB.toFixed(1)} MB before upload)`);
+        file = v.file;
+      } else if (v.blockers.length > 0) {
+        // QA rejected the compression — original file used. Worth surfacing.
+        addLog(`⚠ Client council rejected compression: ${v.blockers[0]} — uploading original.`);
+      } else if (v.reason && !v.reason.startsWith('skip:below-threshold') && !v.reason.startsWith('skip:image')) {
+        // Show the reason when it's interesting (no-saving, error fallback, etc.)
+        addLog(`ℹ Client council: ${v.reason}`);
       }
     } catch (err: any) {
-      // Compression is opportunistic — never block the upload because it failed.
+      // Council is opportunistic — never block the upload because it failed.
       addLog(`⚠ Local compression skipped: ${err?.message ?? err}`);
     }
 
