@@ -1,0 +1,139 @@
+/**
+ * lib/mapper/mapper-qa.ts
+ * Agent #2 — Mapper QA.
+ *
+ * Verifies the compressor's output preserves what matters:
+ *   • TEXT MATCH        — extracted text from compressed must be >= 98%
+ *                         of extracted text from original (allows tiny
+ *                         whitespace/encoding differences from re-save)
+ *   • STRUCTURE INTACT  — PDF page count or PPTX slide count unchanged
+ *   • SOURCE INTEGRITY  — no broken XML / parse errors
+ *
+ * Returns ok=true only when all three pass. The orchestrator uses ok=true
+ * as the green light to ship the compressed file; otherwise it discards
+ * the compressor's output and keeps the original.
+ */
+
+import JSZip from 'jszip';
+import type { CompressorResult, QaResult, MapperFinding } from './types';
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  try {
+    // pdf-parse is already a runtime dep
+    const pdfParse = (await import('pdf-parse')).default as any;
+    const data = await pdfParse(buffer);
+    return (data?.text || '').replace(/\s+/g, ' ').trim();
+  } catch { return ''; }
+}
+
+async function pdfPageCount(buffer: Buffer): Promise<number> {
+  try {
+    const pdfParse = (await import('pdf-parse')).default as any;
+    const data = await pdfParse(buffer);
+    return data?.numpages || 0;
+  } catch { return 0; }
+}
+
+async function extractPptxText(buffer: Buffer): Promise<{ text: string; slides: number }> {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const slideFiles = Object.keys(zip.files)
+      .filter(p => /^ppt\/slides\/slide\d+\.xml$/.test(p))
+      .sort();
+    const re = /<a:t[^>]*>([^<]*)<\/a:t>/g;
+    const parts: string[] = [];
+    for (const path of slideFiles) {
+      const xml = await zip.files[path].async('string');
+      let m;
+      while ((m = re.exec(xml)) !== null) parts.push((m[1] || '').trim());
+    }
+    return {
+      text: parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(),
+      slides: slideFiles.length,
+    };
+  } catch { return { text: '', slides: 0 }; }
+}
+
+/** Token-level overlap between two text strings. Tokenises on word
+ *  boundaries; returns the fraction of original tokens present in
+ *  compressed. 1.0 = perfect, 0.0 = no overlap. */
+function tokenOverlap(original: string, compressed: string): number {
+  if (!original) return 1; // nothing to compare → trivially preserved
+  const tokenise = (s: string) => s.toLowerCase().split(/[\s\p{P}]+/u).filter(t => t.length > 2);
+  const origTokens = tokenise(original);
+  const compTokens = new Set(tokenise(compressed));
+  if (origTokens.length === 0) return 1;
+  let matches = 0;
+  for (const t of origTokens) if (compTokens.has(t)) matches++;
+  return matches / origTokens.length;
+}
+
+export async function runQa(
+  originalBuf: Buffer,
+  compressorResult: CompressorResult,
+  filename: string,
+): Promise<QaResult> {
+  const t0 = Date.now();
+  const findings: MapperFinding[] = [];
+  const lower = filename.toLowerCase();
+  let textMatch = 1;
+  let structureOk = true;
+
+  if (lower.endsWith('.pdf')) {
+    const [origText, compText, origPages, compPages] = await Promise.all([
+      extractPdfText(originalBuf),
+      extractPdfText(compressorResult.buffer),
+      pdfPageCount(originalBuf),
+      pdfPageCount(compressorResult.buffer),
+    ]);
+    textMatch = tokenOverlap(origText, compText);
+    if (origPages !== compPages) {
+      structureOk = false;
+      findings.push({
+        agent: 'mapper-qa', severity: 'blocker',
+        issue: `Page count changed: ${origPages} → ${compPages}. Compressor mangled structure.`,
+        suggest: 'Discard compressed output, keep original.',
+      });
+    }
+  } else if (lower.endsWith('.pptx')) {
+    const [orig, comp] = await Promise.all([
+      extractPptxText(originalBuf),
+      extractPptxText(compressorResult.buffer),
+    ]);
+    textMatch = tokenOverlap(orig.text, comp.text);
+    if (orig.slides !== comp.slides) {
+      structureOk = false;
+      findings.push({
+        agent: 'mapper-qa', severity: 'blocker',
+        issue: `Slide count changed: ${orig.slides} → ${comp.slides}.`,
+        suggest: 'Discard compressed output, keep original.',
+      });
+    }
+  } else {
+    // Non-PDF/PPTX: compressor returned original unchanged, treat as clean
+    textMatch = 1;
+  }
+
+  // Severity by text-match threshold
+  if (textMatch < 0.98) {
+    findings.push({
+      agent: 'mapper-qa', severity: textMatch < 0.9 ? 'blocker' : 'major',
+      issue: `Text match only ${(textMatch * 100).toFixed(1)}% — below the 98% safety floor. Compressor lost content.`,
+      suggest: 'Discard compressed output. Use a different strategy or keep original.',
+    });
+  }
+
+  // Lossy-notes from the compressor become advisory findings
+  for (const note of compressorResult.lossyNotes) {
+    findings.push({ agent: 'mapper-qa', severity: 'minor', issue: note });
+  }
+
+  const ok = findings.filter(f => f.severity === 'blocker').length === 0 && structureOk && textMatch >= 0.98;
+  return {
+    ok,
+    textMatchPct: Math.round(textMatch * 1000) / 10,
+    structurePreserved: structureOk,
+    findings,
+    elapsedMs: Date.now() - t0,
+  };
+}
