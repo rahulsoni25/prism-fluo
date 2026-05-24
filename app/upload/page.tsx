@@ -263,11 +263,10 @@ function UploadDataInner() {
         // QA rejected the compression — original file used. Worth surfacing.
         addLog(`⚠ Client council rejected compression: ${v.blockers[0]} — uploading original.`);
       } else if (v.reason === 'already-optimized:lossless-compression-cannot-help') {
-        // Image-dense / pre-optimized file. Tell the user honestly and offer
-        // an actionable workaround instead of silently wasting their wait.
+        // Image-dense / pre-optimized file. Point user at PRISM's own /compress tool.
         const sizeMB = (v.originalBytes / 1e6).toFixed(1);
         addLog(`⚠ This ${sizeMB} MB file is already well-optimized — lossless compression won't help (images dominate the size).`);
-        addLog(`💡 To upload faster next time: pre-compress with iLovePDF (https://www.ilovepdf.com/compress_pdf) or Smallpdf — they re-encode embedded images and typically cut size by 60–90%.`);
+        addLog(`💡 For a 60–80% smaller upload, use PRISM's image-re-encoding compressor at /compress, then re-upload here.`);
       } else if (v.reason && !v.reason.startsWith('skip:below-threshold') && !v.reason.startsWith('skip:image')) {
         // Show the reason when it's interesting (no-saving, error fallback, etc.)
         addLog(`ℹ Client council: ${v.reason}`);
