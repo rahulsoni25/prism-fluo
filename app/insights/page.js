@@ -1810,11 +1810,12 @@ function AnalysisDetail({ id }) {
         return (
           <div style={{
             maxWidth: 1200, margin: '0 auto', padding: '12px 24px 0',
-            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            justifyContent: 'flex-start',
             fontFamily: 'Inter, system-ui, sans-serif',
           }} className="no-print">
-            {/* Search */}
-            <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: 360 }}>
+            {/* Search — fixed width so it doesn't push everything else onto its own row */}
+            <div style={{ position: 'relative', width: 320, flexShrink: 0 }}>
               <input
                 type="search"
                 value={cardSearch}
@@ -1825,7 +1826,7 @@ function AnalysisDetail({ id }) {
                   width: '100%', padding: '8px 30px 8px 32px', fontSize: 12.5,
                   border: '1px solid #CBD5E1', borderRadius: 8,
                   background: '#fff', color: '#0F172A', outline: 'none',
-                  fontFamily: 'inherit',
+                  fontFamily: 'inherit', boxSizing: 'border-box',
                 }}
               />
               <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#94A3B8', pointerEvents: 'none' }}>🔍</span>
@@ -1839,20 +1840,36 @@ function AnalysisDetail({ id }) {
               )}
             </div>
 
-            {/* Granular bucket filter */}
+            {/* Granular bucket filter — auto-switches to the parent tab where the selected sub-bucket lives */}
             {granularsPresent.length > 1 && (
               <select
                 value={granularFilter}
-                onChange={e => setGranularFilter(e.target.value)}
+                onChange={e => {
+                  const v = e.target.value;
+                  setGranularFilter(v);
+                  if (v !== 'all') {
+                    const parent = granularToParent(v);
+                    if (parent && parent !== currentBucket) setActiveBucket(parent);
+                  }
+                }}
                 aria-label="Filter by granular bucket"
                 style={{
+                  width: 180, flexShrink: 0,
                   padding: '7px 10px', fontSize: 12, fontWeight: 600,
                   border: '1px solid #CBD5E1', borderRadius: 8,
                   background: '#fff', color: '#475569',
                   cursor: 'pointer', fontFamily: 'inherit',
                 }}>
                 <option value="all">All sub-buckets</option>
-                {granularsPresent.map(g => <option key={g} value={g}>{g.toUpperCase()}</option>)}
+                {granularsPresent.map(g => {
+                  const parent = granularToParent(g);
+                  // Show "(in Commerce)" hint so user understands tab will switch
+                  return (
+                    <option key={g} value={g}>
+                      {g.toUpperCase()}{parent && parent !== g ? ` — in ${parent.charAt(0).toUpperCase() + parent.slice(1)}` : ''}
+                    </option>
+                  );
+                })}
               </select>
             )}
 
@@ -1862,6 +1879,7 @@ function AnalysisDetail({ id }) {
               onChange={e => setMinConfidence(Number(e.target.value))}
               aria-label="Minimum confidence"
               style={{
+                width: 150, flexShrink: 0,
                 padding: '7px 10px', fontSize: 12, fontWeight: 600,
                 border: '1px solid #CBD5E1', borderRadius: 8,
                 background: '#fff', color: '#475569',
@@ -1878,6 +1896,7 @@ function AnalysisDetail({ id }) {
                 type="button"
                 onClick={() => { setCardSearch(''); setGranularFilter('all'); setMinConfidence(0); }}
                 style={{
+                  flexShrink: 0,
                   padding: '6px 12px', fontSize: 11.5, fontWeight: 700,
                   border: '1px solid #FCA5A5', borderRadius: 8,
                   background: '#FEF2F2', color: '#991B1B',
@@ -1949,23 +1968,46 @@ function AnalysisDetail({ id }) {
               </div>
             </div>
 
-            {sectionCharts.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>
-                  {(cardSearch || granularFilter !== 'all' || minConfidence > 0) ? '🔍' : '📊'}
+            {sectionCharts.length === 0 ? (() => {
+              const filtersActive = cardSearch || granularFilter !== 'all' || minConfidence > 0;
+              // If user picked a granular bucket but is on the wrong parent tab, name the right one
+              const granularParent = granularFilter !== 'all' ? granularToParent(granularFilter) : null;
+              const wrongTabHint = granularParent && granularParent !== bucketKey
+                ? `"${granularFilter.toUpperCase()}" insights live in the ${granularParent.charAt(0).toUpperCase() + granularParent.slice(1)} tab.`
+                : null;
+              return (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>
+                    {filtersActive ? '🔍' : '📊'}
+                  </div>
+                  <div style={{ fontSize: 14 }}>
+                    {filtersActive
+                      ? 'No insights match the current filters.'
+                      : 'No insights in this category for this dataset.'}
+                  </div>
+                  <div style={{ fontSize: 12, marginTop: 6 }}>
+                    {wrongTabHint
+                      ? wrongTabHint
+                      : filtersActive
+                        ? 'Try removing a filter, lowering the confidence floor, or switching tabs.'
+                        : 'Switch to another tab or upload a richer dataset to populate this section.'}
+                  </div>
+                  {wrongTabHint && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveBucket(granularParent)}
+                      style={{
+                        marginTop: 14, padding: '7px 16px',
+                        background: '#2563EB', color: '#fff', fontWeight: 700,
+                        fontSize: 12, border: 'none', borderRadius: 8,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}>
+                      → Switch to {granularParent.charAt(0).toUpperCase() + granularParent.slice(1)} tab
+                    </button>
+                  )}
                 </div>
-                <div style={{ fontSize: 14 }}>
-                  {(cardSearch || granularFilter !== 'all' || minConfidence > 0)
-                    ? 'No insights match the current filters.'
-                    : 'No insights in this category for this dataset.'}
-                </div>
-                <div style={{ fontSize: 12, marginTop: 6 }}>
-                  {(cardSearch || granularFilter !== 'all' || minConfidence > 0)
-                    ? 'Try removing a filter, lowering the confidence floor, or switching tabs.'
-                    : 'Switch to another tab or upload a richer dataset to populate this section.'}
-                </div>
-              </div>
-            ) : (
+              );
+            })() : (
               <div className="insights-grid">
                 {sectionCharts.map((chart, i) => {
                   const confidence = chart.conviction ?? (78 + (i * 3) % 15);
