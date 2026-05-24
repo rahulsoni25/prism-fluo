@@ -40,6 +40,7 @@ import { parsePdf }          from '@/lib/pdf/parser';
 import { extractPptxText, extractPptxStructured } from '@/lib/pptx/parser';
 
 import { runMapperCouncil } from '@/lib/mapper/orchestrator';
+import { recordMapperRun }  from '@/lib/mapper/persistence';
 
 import type { UploadSummary, SheetMeta, SheetType } from '@/types/dataset';
 
@@ -763,6 +764,8 @@ export async function handleUpload(
       blockers:   verdict.findings.filter(f => f.severity === 'blocker').length,
       majors:     verdict.findings.filter(f => f.severity === 'major').length,
     });
+    // Best-effort persist — never await behind the upload's critical path
+    recordMapperRun(filename, verdict, userId).catch(() => { /* logged inside */ });
   } catch (err: any) {
     // Council is advisory — never block an upload because the mapper crashed
     logger.warn('mapper:council_failed', { filename, error: err.message });
