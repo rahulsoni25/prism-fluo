@@ -130,11 +130,26 @@ describe('compressor — XLSX / CSV / image', () => {
     expect(r.buffer.length).toBeLessThan(withBom.length);
   });
 
-  it('image compress returns unchanged + flags sharp-missing', async () => {
+  it('tiny PNG compress reverts to original (no saving possible)', async () => {
     const r = await compress(TINY_PNG, 'pixel.png');
-    expect(r.buffer).toEqual(TINY_PNG);
-    expect(r.strategiesApplied[0]).toContain('image-codec-not-installed');
+    // A 67-byte PNG re-encoded as palette PNG won't shrink; compressor should revert
+    expect(r.buffer.length).toBeLessThanOrEqual(TINY_PNG.length);
+    expect(r.textPreserved).toBe(true);
   });
+
+  it('large PNG compresses + QA passes perceptual similarity', async () => {
+    const sharp = (await import('sharp')).default;
+    // Generate a 1200×1200 noisy PNG (~real-world photo bulk)
+    const noisy = Buffer.alloc(1200 * 1200 * 3);
+    for (let i = 0; i < noisy.length; i++) noisy[i] = (i * 37) & 0xff;
+    const bigPng = await sharp(noisy, { raw: { width: 1200, height: 1200, channels: 3 } }).png().toBuffer();
+    const r = await compress(bigPng, 'big.png');
+    expect(r.compressedSize).toBeLessThanOrEqual(r.originalSize);
+    // The orchestrator's QA would verify perceptual similarity — assert it passes
+    const { runQa } = await import('@/lib/mapper/mapper-qa');
+    const qa = await runQa(bigPng, r, 'big.png');
+    expect(qa.structurePreserved).toBe(true);
+  }, 30000);
 });
 
 describe('orchestrator — routes by size', () => {

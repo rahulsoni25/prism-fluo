@@ -240,6 +240,90 @@ async function compressCsv(buffer: Buffer): Promise<CompressorResult> {
   };
 }
 
+// ── Image ────────────────────────────────────────────────────────────────
+
+async function compressImage(buffer: Buffer, filename: string): Promise<CompressorResult> {
+  const t0 = Date.now();
+  const strategiesApplied: string[] = [];
+  const lossyNotes: string[] = [];
+  const lower = filename.toLowerCase();
+
+  let sharp: any;
+  try { sharp = (await import('sharp')).default; }
+  catch (err: any) {
+    return {
+      originalSize: buffer.length, compressedSize: buffer.length, ratio: 1,
+      buffer, strategiesApplied: ['skip:sharp-load-failed'], textPreserved: true,
+      lossyNotes: [`sharp failed to load (${err.message}). Image returned unchanged.`],
+      elapsedMs: Date.now() - t0,
+    };
+  }
+
+  try {
+    const pipeline = sharp(buffer, { failOn: 'none' }).rotate(); // honour EXIF rotation
+    const meta = await sharp(buffer).metadata();
+    // Cap longest edge at 2400px — keeps detail for slide-deck use, sheds bulk
+    const maxEdge = 2400;
+    if ((meta.width || 0) > maxEdge || (meta.height || 0) > maxEdge) {
+      pipeline.resize({ width: maxEdge, height: maxEdge, fit: 'inside', withoutEnlargement: true });
+      strategiesApplied.push(`resize:max-${maxEdge}px`);
+    }
+
+    let outBuf: Buffer;
+    if (lower.endsWith('.png')) {
+      outBuf = await pipeline.png({ compressionLevel: 9, palette: true }).toBuffer();
+      strategiesApplied.push('png-palette-quantise');
+      lossyNotes.push('PNG re-encoded with palette quantisation (256 colours). Visually near-identical for photos/charts; flat-colour graphics unaffected.');
+    } else if (lower.endsWith('.webp')) {
+      outBuf = await pipeline.webp({ quality: 85, effort: 6 }).toBuffer();
+      strategiesApplied.push('webp-q85');
+      lossyNotes.push('WebP re-encoded at quality 85.');
+    } else if (lower.endsWith('.gif')) {
+      // sharp can re-encode static GIFs but loses animation; play safe — pass through.
+      return {
+        originalSize: buffer.length, compressedSize: buffer.length, ratio: 1,
+        buffer, strategiesApplied: ['skip:gif-animation-preserve'], textPreserved: true,
+        lossyNotes: ['GIF returned unchanged to preserve any animation frames.'],
+        elapsedMs: Date.now() - t0,
+      };
+    } else {
+      // jpg / jpeg
+      outBuf = await pipeline.jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+      strategiesApplied.push('jpeg-q85-mozjpeg');
+      lossyNotes.push('JPEG re-encoded at quality 85 with mozjpeg. Pixel-perfect to the human eye.');
+    }
+
+    // Never ship a LARGER file — if re-encode bloated it (rare with small inputs), keep original
+    if (outBuf.length >= buffer.length) {
+      return {
+        originalSize: buffer.length, compressedSize: buffer.length, ratio: 1,
+        buffer, strategiesApplied: [...strategiesApplied, 'revert:no-saving'],
+        textPreserved: true,
+        lossyNotes: ['Re-encoded output was larger than original — kept original.'],
+        elapsedMs: Date.now() - t0,
+      };
+    }
+
+    if (outBuf.length > TEN_MB) {
+      lossyNotes.push(`Still ${(outBuf.length / 1024 / 1024).toFixed(1)} MB after re-encode. Consider exporting at a lower resolution.`);
+    }
+
+    return {
+      originalSize: buffer.length, compressedSize: outBuf.length,
+      ratio: outBuf.length / buffer.length, buffer: outBuf,
+      strategiesApplied, textPreserved: true, lossyNotes,
+      elapsedMs: Date.now() - t0,
+    };
+  } catch (err: any) {
+    return {
+      originalSize: buffer.length, compressedSize: buffer.length, ratio: 1,
+      buffer, strategiesApplied: ['skip:sharp-error'], textPreserved: true,
+      lossyNotes: [`sharp could not process image (${err.message}). Returning original.`],
+      elapsedMs: Date.now() - t0,
+    };
+  }
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────────
 
 export async function compress(buffer: Buffer, filename: string): Promise<CompressorResult> {
@@ -249,17 +333,7 @@ export async function compress(buffer: Buffer, filename: string): Promise<Compre
     case 'pptx': return compressPptx(buffer);
     case 'xlsx': return compressXlsx(buffer);
     case 'csv':  return compressCsv(buffer);
-    case 'image': {
-      // Image re-encoding needs `sharp` (native binary, not yet installed).
-      // For now: return unchanged + advisory note. Audit + QA still run.
-      return {
-        originalSize: buffer.length, compressedSize: buffer.length, ratio: 1,
-        buffer, strategiesApplied: ['skip:image-codec-not-installed'],
-        textPreserved: true,
-        lossyNotes: ['Image compression requires the `sharp` package — not currently installed. File returned unchanged.'],
-        elapsedMs: 0,
-      };
-    }
+    case 'image': return compressImage(buffer, filename);
     default: {
       return {
         originalSize: buffer.length, compressedSize: buffer.length, ratio: 1,

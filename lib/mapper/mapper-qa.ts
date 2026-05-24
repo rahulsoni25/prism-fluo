@@ -58,6 +58,35 @@ async function extractXlsxText(buffer: Buffer): Promise<{ text: string; sheets: 
   } catch { return { text: '', sheets: 0 }; }
 }
 
+/** Compute a 64-bit average-hash (aHash) of an image: resize to 8×8 grayscale,
+ *  pixel > mean → 1. Hamming distance between two hashes ≈ perceptual distance. */
+async function aHash(buffer: Buffer): Promise<bigint | null> {
+  try {
+    const sharp = (await import('sharp')).default;
+    const { data } = await sharp(buffer, { failOn: 'none' })
+      .resize(8, 8, { fit: 'fill' })
+      .grayscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let sum = 0;
+    for (let i = 0; i < 64; i++) sum += data[i];
+    const mean = sum / 64;
+    let h = 0n;
+    for (let i = 0; i < 64; i++) if (data[i] > mean) h |= (1n << BigInt(i));
+    return h;
+  } catch { return null; }
+}
+
+async function imageSimilarity(a: Buffer, b: Buffer): Promise<{ similar: boolean; similarity: number; reason: string }> {
+  const [ha, hb] = await Promise.all([aHash(a), aHash(b)]);
+  if (ha === null || hb === null) return { similar: false, similarity: 0, reason: 'one image failed to decode' };
+  let diff = 0n; let x = ha ^ hb;
+  while (x) { diff += x & 1n; x >>= 1n; }
+  const similarity = 1 - Number(diff) / 64;
+  // 0.95 threshold = up to ~3 bits differ — typical for q85 JPEG re-encode
+  return { similar: similarity >= 0.95, similarity, reason: `${diff} bits differ (of 64)` };
+}
+
 function csvShape(buffer: Buffer): { rows: number; cols: number; text: string } {
   let text = buffer.toString('utf8');
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
@@ -174,18 +203,20 @@ export async function runQa(
       });
     }
   } else if (/\.(png|jpe?g|webp|gif)$/.test(lower)) {
-    // Image: until `sharp` lands, compressor returns the original unchanged.
-    // QA's job here is to assert bit-identity (so we don't silently swap).
-    const same = originalBuf.length === compressorResult.buffer.length
+    textMatch = 1; // images have no text
+    // If compressor passed through unchanged, nothing to verify
+    const unchanged = originalBuf.length === compressorResult.buffer.length
       && originalBuf.equals(compressorResult.buffer);
-    textMatch = 1; // images have no text to compare
-    if (!same) {
-      structureOk = false;
-      findings.push({
-        agent: 'mapper-qa', severity: 'blocker',
-        issue: 'Image bytes changed but compressor reported no re-encode strategy. Refusing to ship.',
-        suggest: 'Discard compressed output, keep original.',
-      });
+    if (!unchanged) {
+      const { similar, similarity, reason } = await imageSimilarity(originalBuf, compressorResult.buffer);
+      if (!similar) {
+        structureOk = false;
+        findings.push({
+          agent: 'mapper-qa', severity: 'blocker',
+          issue: `Image perceptual similarity only ${(similarity * 100).toFixed(1)}% — re-encode lost visible detail (${reason}).`,
+          suggest: 'Discard compressed output, keep original.',
+        });
+      }
     }
   } else {
     textMatch = 1;
