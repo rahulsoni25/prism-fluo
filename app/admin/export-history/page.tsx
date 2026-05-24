@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import HistoryControls, { filterByRange, rangeCounts } from '@/components/admin/HistoryControls';
 
 interface Run {
   id: string;
@@ -45,6 +46,7 @@ export default function ExportHistoryPage() {
   const [data,    setData]    = useState<History | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter,  setFilter]  = useState<'all' | 'allow' | 'ask' | 'block'>('all');
+  const [range,   setRange]   = useState<'24h' | '7d' | '30d' | '90d' | 'all'>('all');
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -63,8 +65,10 @@ export default function ExportHistoryPage() {
   if (loading) return <div style={{ minHeight: '100vh', background: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', fontSize: 15 }}>Loading export history…</div>;
   if (!data)   return null;
 
-  const visible = filter === 'all' ? data.recentRuns : data.recentRuns.filter(r => r.action === filter);
+  const rangeFiltered: Run[] = filterByRange(data.recentRuns, range, 'createdAt');
+  const visible = filter === 'all' ? rangeFiltered : rangeFiltered.filter(r => r.action === filter);
   const maxTrend = Math.max(1, ...data.trend30d.map(d => d.runs));
+  const counts = rangeCounts(data.recentRuns, 'createdAt');
 
   return (
     <div style={{ minHeight: '100vh', background: '#F0F4FF', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -143,6 +147,14 @@ export default function ExportHistoryPage() {
             </div>
           </div>
         )}
+
+        <HistoryControls
+          range={range}
+          onRange={(r: any) => setRange(r)}
+          rows={visible}
+          filename="prism-export-history"
+          counts={counts}
+        />
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <h2 style={{ fontSize: 16, fontWeight: 800, color: '#0F172A' }}>Recent exports</h2>

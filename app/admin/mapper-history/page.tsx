@@ -1,7 +1,8 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import HistoryControls, { filterByRange, rangeCounts } from '@/components/admin/HistoryControls';
 
 interface Run {
   id:            string;
@@ -70,6 +71,7 @@ export default function MapperHistoryPage() {
   const [data,    setData]    = useState<History | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter,  setFilter]  = useState<'all' | 'compressed' | 'ready' | 'blocked'>('all');
+  const [range,   setRange]   = useState<'24h' | '7d' | '30d' | '90d' | 'all'>('all');
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -89,13 +91,16 @@ export default function MapperHistoryPage() {
   if (!data)   return null;
 
   const maxTrend = Math.max(1, ...data.trend30d.map(d => d.runs));
-  const visibleRuns = data.recentRuns.filter(r => {
+  // Apply date range first, then the verdict filter
+  const rangeFilteredRuns: Run[] = filterByRange(data.recentRuns, range, 'createdAt');
+  const visibleRuns = rangeFilteredRuns.filter(r => {
     if (filter === 'all') return true;
     if (filter === 'compressed') return r.originalBytes !== r.finalBytes;
     if (filter === 'ready')      return r.ready;
     if (filter === 'blocked')    return r.blockers > 0;
     return true;
   });
+  const counts = rangeCounts(data.recentRuns, 'createdAt');
 
   return (
     <div style={{ minHeight: '100vh', background: '#F0F4FF', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -190,7 +195,16 @@ export default function MapperHistoryPage() {
           </div>
         )}
 
-        {/* Filter + recent runs */}
+        {/* Date range + CSV export */}
+        <HistoryControls
+          range={range}
+          onRange={(r: any) => setRange(r)}
+          rows={visibleRuns}
+          filename="prism-mapper-history"
+          counts={counts}
+        />
+
+        {/* Verdict filter + recent runs */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <h2 style={{ fontSize: 16, fontWeight: 800, color: '#0F172A' }}>Recent runs</h2>
           <div style={{ display: 'flex', gap: 6 }}>

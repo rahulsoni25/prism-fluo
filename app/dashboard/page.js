@@ -46,6 +46,7 @@ function buildTags(brief) {
 export default function Dashboard() {
   const router = useRouter();
   const [filter, setFilter]   = useState('All Briefs');
+  const [search, setSearch]   = useState('');           // text search across brand/category/objective
   const [briefs, setBriefs]   = useState([]);
   const [stats, setStats]     = useState({ total: 0, ready: 0, processing: 0, waiting: 0, draft: 0 });
   const [loading, setLoading] = useState(true);
@@ -100,8 +101,16 @@ export default function Dashboard() {
   };
 
   const filtered = briefs.filter(b => {
-    if (filter === 'All Briefs') return true;
-    return b.status === FILTER_TO_STATUS[filter];
+    // Status filter
+    if (filter !== 'All Briefs' && b.status !== FILTER_TO_STATUS[filter]) return false;
+    // Text search (case-insensitive) across brand + category + objective + background
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      const hay = [b.brand, b.category, b.objective, b.background, b.market, b.geography]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
   });
 
   return (
@@ -155,6 +164,45 @@ export default function Dashboard() {
               briefs.find(b => b.status === 'ready')?.brand ?? ''
             }
           />
+
+          {/* Search bar — case-insensitive across brand/category/objective/background/market */}
+          <div style={{ position: 'relative', maxWidth: 480, marginBottom: 12 }}>
+            <input
+              type="search"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search briefs by brand, category, objective…"
+              aria-label="Search briefs"
+              style={{
+                width: '100%',
+                padding: '10px 14px 10px 38px',
+                fontSize: 13,
+                border: '1px solid #CBD5E1',
+                borderRadius: 10,
+                background: '#fff',
+                color: '#0F172A',
+                outline: 'none',
+                fontFamily: 'inherit',
+                transition: 'border-color .15s, box-shadow .15s',
+              }}
+              onFocus={(e) => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,.12)'; }}
+              onBlur={(e)  => { e.target.style.borderColor = '#CBD5E1'; e.target.style.boxShadow = 'none'; }}
+            />
+            <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#94A3B8', pointerEvents: 'none' }}>🔍</span>
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                style={{
+                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                  border: 'none', background: '#F1F5F9', color: '#475569',
+                  width: 20, height: 20, borderRadius: 10, cursor: 'pointer',
+                  fontSize: 12, fontWeight: 700, lineHeight: 1, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>×</button>
+            )}
+          </div>
 
           <div className="filter-bar">
             {FILTERS.map(f => {
@@ -218,12 +266,16 @@ export default function Dashboard() {
                 textAlign: 'center',
                 color: 'var(--muted)',
               }}>
-                <div style={{ fontSize: '40px', marginBottom: '12px' }}>📋</div>
+                <div style={{ fontSize: '40px', marginBottom: '12px' }}>{search ? '🔍' : '📋'}</div>
                 <div style={{ fontWeight: 700, fontSize: '16px', marginBottom: '8px' }}>
-                  {filter === 'All Briefs' ? 'No briefs yet' : `No ${filter.toLowerCase()} briefs`}
+                  {search
+                    ? `No briefs match "${search}"`
+                    : filter === 'All Briefs' ? 'No briefs yet' : `No ${filter.toLowerCase()} briefs`}
                 </div>
                 <div style={{ fontSize: '13px', marginBottom: '16px' }}>
-                  Create your first insights brief to get started.
+                  {search
+                    ? 'Try a shorter or different term, or clear the search.'
+                    : 'Create your first insights brief to get started.'}
                 </div>
                 <button className="btn btn-primary" onClick={() => router.push('/brief/new')}>
                   + New Brief

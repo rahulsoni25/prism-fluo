@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import HistoryControls, { filterByRange, rangeCounts } from '@/components/admin/HistoryControls';
 
 interface RecentRun {
   analysisId:      string;
@@ -49,6 +50,7 @@ export default function VerificationHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [me,      setMe]      = useState<any>(null);
   const [filter,  setFilter]  = useState<'all' | 'block' | 'review' | 'clean'>('all');
+  const [range,   setRange]   = useState<'24h' | '7d' | '30d' | '90d' | 'all'>('all');
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -69,7 +71,9 @@ export default function VerificationHistoryPage() {
   if (!data)   return null;
 
   const maxTrend = Math.max(1, ...data.trend30d.map(d => d.findings));
-  const visibleRuns = filter === 'all' ? data.recentRuns : data.recentRuns.filter(r => r.verdict === filter);
+  const rangeFilteredVerifyRuns: RecentRun[] = filterByRange(data.recentRuns, range, 'generatedAt');
+  const visibleRuns = filter === 'all' ? rangeFilteredVerifyRuns : rangeFilteredVerifyRuns.filter(r => r.verdict === filter);
+  const verifyCounts = rangeCounts(data.recentRuns, 'generatedAt');
 
   return (
     <div style={{ minHeight: '100vh', background: '#F0F4FF', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -187,6 +191,15 @@ export default function VerificationHistoryPage() {
             </div>
           </div>
         )}
+
+        {/* ── Date range + CSV ───────────────────────────────────── */}
+        <HistoryControls
+          range={range}
+          onRange={(r: any) => setRange(r)}
+          rows={visibleRuns}
+          filename="prism-verification-history"
+          counts={verifyCounts}
+        />
 
         {/* ── Verdict filter ─────────────────────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
