@@ -1390,6 +1390,9 @@ function AnalysisDetail({ id }) {
   const [showDeckModal, setShowDeckModal] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [sortDir,      setSortDir]      = useState('desc'); // 'desc' = high→low confidence
+  const [cardSearch,   setCardSearch]   = useState('');     // text search across card title/obs/stat/rec
+  const [minConfidence, setMinConfidence] = useState(0);    // 0/70/80/90 confidence floor
+  const [granularFilter, setGranularFilter] = useState('all'); // 'all' or one of the 9 granular buckets
 
   useEffect(() => {
     fetch(`/api/analyses/${id}`)
@@ -1795,6 +1798,98 @@ function AnalysisDetail({ id }) {
         </div>
       </div>
 
+      {/* ── Card search + filter strip (hidden when printing) ──
+          Search across all card text, narrow by granular bucket, set a
+          confidence floor. Filters apply to whichever tab is active. */}
+      {!printing && (() => {
+        // Set of granular buckets that actually appear in this analysis
+        const granularsPresent = Array.from(new Set(
+          Object.values(bucketedCharts).flat().map(c => c.granularBucket).filter(Boolean),
+        )).sort();
+        const activeFilters = (cardSearch ? 1 : 0) + (granularFilter !== 'all' ? 1 : 0) + (minConfidence > 0 ? 1 : 0);
+        return (
+          <div style={{
+            maxWidth: 1200, margin: '0 auto', padding: '12px 24px 0',
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            fontFamily: 'Inter, system-ui, sans-serif',
+          }} className="no-print">
+            {/* Search */}
+            <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: 360 }}>
+              <input
+                type="search"
+                value={cardSearch}
+                onChange={e => setCardSearch(e.target.value)}
+                placeholder="Search insights — title, observation, stat…"
+                aria-label="Search insights"
+                style={{
+                  width: '100%', padding: '8px 30px 8px 32px', fontSize: 12.5,
+                  border: '1px solid #CBD5E1', borderRadius: 8,
+                  background: '#fff', color: '#0F172A', outline: 'none',
+                  fontFamily: 'inherit',
+                }}
+              />
+              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#94A3B8', pointerEvents: 'none' }}>🔍</span>
+              {cardSearch && (
+                <button type="button" onClick={() => setCardSearch('')} aria-label="Clear" style={{
+                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                  border: 'none', background: '#F1F5F9', color: '#475569',
+                  width: 18, height: 18, borderRadius: 9, cursor: 'pointer',
+                  fontSize: 11, fontWeight: 700, lineHeight: 1, padding: 0,
+                }}>×</button>
+              )}
+            </div>
+
+            {/* Granular bucket filter */}
+            {granularsPresent.length > 1 && (
+              <select
+                value={granularFilter}
+                onChange={e => setGranularFilter(e.target.value)}
+                aria-label="Filter by granular bucket"
+                style={{
+                  padding: '7px 10px', fontSize: 12, fontWeight: 600,
+                  border: '1px solid #CBD5E1', borderRadius: 8,
+                  background: '#fff', color: '#475569',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                <option value="all">All sub-buckets</option>
+                {granularsPresent.map(g => <option key={g} value={g}>{g.toUpperCase()}</option>)}
+              </select>
+            )}
+
+            {/* Confidence floor */}
+            <select
+              value={minConfidence}
+              onChange={e => setMinConfidence(Number(e.target.value))}
+              aria-label="Minimum confidence"
+              style={{
+                padding: '7px 10px', fontSize: 12, fontWeight: 600,
+                border: '1px solid #CBD5E1', borderRadius: 8,
+                background: '#fff', color: '#475569',
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+              <option value={0}>Any confidence</option>
+              <option value={70}>≥ 70%</option>
+              <option value={80}>≥ 80%</option>
+              <option value={90}>≥ 90%</option>
+            </select>
+
+            {activeFilters > 0 && (
+              <button
+                type="button"
+                onClick={() => { setCardSearch(''); setGranularFilter('all'); setMinConfidence(0); }}
+                style={{
+                  padding: '6px 12px', fontSize: 11.5, fontWeight: 700,
+                  border: '1px solid #FCA5A5', borderRadius: 8,
+                  background: '#FEF2F2', color: '#991B1B',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                Clear filters ({activeFilters})
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── Body ──
           When printing, render every non-empty bucket stacked so the print
           dialog produces a complete report. When not printing, render only
@@ -1810,8 +1905,19 @@ function AnalysisDetail({ id }) {
         // so the visible "% confidence" badge always matches sort order.
         const synth = (i) => 78 + (i * 3) % 15;
         const score = (c, i) => (c.conviction != null ? Number(c.conviction) : synth(i));
+        // Apply: granular bucket filter → confidence floor → text search → sort
+        const cardSearchLower = cardSearch.trim().toLowerCase();
         const sectionCharts = rawCharts
           .map((c, i) => ({ c, s: score(c, i) }))
+          .filter(({ c, s }) => {
+            if (granularFilter !== 'all' && c.granularBucket !== granularFilter) return false;
+            if (minConfidence > 0 && s < minConfidence) return false;
+            if (cardSearchLower) {
+              const hay = [c.title, c.obs, c.stat, c.rec, c.toolLabel].filter(Boolean).join(' ').toLowerCase();
+              if (!hay.includes(cardSearchLower)) return false;
+            }
+            return true;
+          })
           .sort((a, b) => sortDir === 'desc' ? b.s - a.s : a.s - b.s)
           .map(x => x.c);
         return (
@@ -1845,10 +1951,18 @@ function AnalysisDetail({ id }) {
 
             {sectionCharts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--muted)' }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
-                <div style={{ fontSize: 14 }}>No insights in this category for this dataset.</div>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>
+                  {(cardSearch || granularFilter !== 'all' || minConfidence > 0) ? '🔍' : '📊'}
+                </div>
+                <div style={{ fontSize: 14 }}>
+                  {(cardSearch || granularFilter !== 'all' || minConfidence > 0)
+                    ? 'No insights match the current filters.'
+                    : 'No insights in this category for this dataset.'}
+                </div>
                 <div style={{ fontSize: 12, marginTop: 6 }}>
-                  Switch to another tab or upload a richer dataset to populate this section.
+                  {(cardSearch || granularFilter !== 'all' || minConfidence > 0)
+                    ? 'Try removing a filter, lowering the confidence floor, or switching tabs.'
+                    : 'Switch to another tab or upload a richer dataset to populate this section.'}
                 </div>
               </div>
             ) : (
