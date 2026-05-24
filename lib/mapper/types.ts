@@ -3,7 +3,7 @@
  * Shared types for the Data Mapper agent council.
  */
 
-export type FileKind = 'pdf' | 'pptx' | 'xlsx' | 'csv' | 'other';
+export type FileKind = 'pdf' | 'pptx' | 'xlsx' | 'csv' | 'image' | 'other';
 export type AgentName = 'compressor' | 'mapper-qa' | 'senior-audit';
 export type Severity = 'blocker' | 'major' | 'minor';
 

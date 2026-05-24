@@ -36,6 +36,7 @@ function detectKind(filename: string): FileKind {
   if (lower.endsWith('.pptx')) return 'pptx';
   if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) return 'xlsx';
   if (lower.endsWith('.csv'))  return 'csv';
+  if (/\.(png|jpe?g|webp|gif)$/.test(lower)) return 'image';
   return 'other';
 }
 
@@ -162,6 +163,83 @@ async function compressPptx(buffer: Buffer): Promise<CompressorResult> {
   };
 }
 
+// ── XLSX ─────────────────────────────────────────────────────────────────
+
+async function compressXlsx(buffer: Buffer): Promise<CompressorResult> {
+  const t0 = Date.now();
+  const strategiesApplied: string[] = [];
+  const lossyNotes: string[] = [];
+
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(buffer);
+  } catch (err: any) {
+    return {
+      originalSize: buffer.length, compressedSize: buffer.length, ratio: 1,
+      buffer, strategiesApplied: ['skip:unparseable'], textPreserved: true,
+      lossyNotes: [`Could not parse XLSX (${err.message}). Returning original.`],
+      elapsedMs: Date.now() - t0,
+    };
+  }
+
+  // Strip workbook thumbnail + printer settings (lossless, tiny)
+  for (const path of Object.keys(zip.files)) {
+    if (path === 'docProps/thumbnail.jpeg' || /^xl\/printerSettings\//.test(path)) {
+      zip.remove(path);
+      strategiesApplied.push(`strip:${path}`);
+    }
+  }
+
+  // Re-zip with max DEFLATE — XLSX is XML-heavy, level 9 typically saves 10-25%
+  const outBuf = Buffer.from(await zip.generateAsync({
+    type: 'nodebuffer',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 9 },
+  }));
+  strategiesApplied.push('max-deflate');
+
+  if (outBuf.length > TEN_MB) {
+    lossyNotes.push(`Compressed to ${(outBuf.length / 1024 / 1024).toFixed(1)} MB — still above 10 MB. Likely many sheets or embedded images. Consider splitting into multiple workbooks.`);
+  }
+
+  return {
+    originalSize: buffer.length, compressedSize: outBuf.length,
+    ratio: outBuf.length / buffer.length, buffer: outBuf,
+    strategiesApplied, textPreserved: true, lossyNotes,
+    elapsedMs: Date.now() - t0,
+  };
+}
+
+// ── CSV ──────────────────────────────────────────────────────────────────
+
+async function compressCsv(buffer: Buffer): Promise<CompressorResult> {
+  const t0 = Date.now();
+  const strategiesApplied: string[] = [];
+
+  let text = buffer.toString('utf8');
+  // Strip UTF-8 BOM (3 bytes saved + parsers behave better)
+  if (text.charCodeAt(0) === 0xFEFF) { text = text.slice(1); strategiesApplied.push('strip-bom'); }
+  // Normalise CRLF → LF (halves the count of these bytes)
+  const before = text.length;
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (text.length !== before) strategiesApplied.push('normalise-newlines');
+  // Drop trailing whitespace on each line + drop empty trailing lines
+  text = text.split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').replace(/\n+$/, '\n');
+  strategiesApplied.push('trim-trailing-ws');
+
+  const outBuf = Buffer.from(text, 'utf8');
+  return {
+    originalSize: buffer.length, compressedSize: outBuf.length,
+    ratio: outBuf.length / buffer.length, buffer: outBuf,
+    strategiesApplied,
+    textPreserved: true, // we only strip BOM + normalise whitespace; data unchanged
+    lossyNotes: outBuf.length > TEN_MB
+      ? [`Still ${(outBuf.length / 1024 / 1024).toFixed(1)} MB — CSV compression is intentionally conservative. Consider splitting the file or gzipping at the transport layer.`]
+      : [],
+    elapsedMs: Date.now() - t0,
+  };
+}
+
 // ── Dispatcher ────────────────────────────────────────────────────────────
 
 export async function compress(buffer: Buffer, filename: string): Promise<CompressorResult> {
@@ -169,8 +247,20 @@ export async function compress(buffer: Buffer, filename: string): Promise<Compre
   switch (kind) {
     case 'pdf':  return compressPdf(buffer);
     case 'pptx': return compressPptx(buffer);
+    case 'xlsx': return compressXlsx(buffer);
+    case 'csv':  return compressCsv(buffer);
+    case 'image': {
+      // Image re-encoding needs `sharp` (native binary, not yet installed).
+      // For now: return unchanged + advisory note. Audit + QA still run.
+      return {
+        originalSize: buffer.length, compressedSize: buffer.length, ratio: 1,
+        buffer, strategiesApplied: ['skip:image-codec-not-installed'],
+        textPreserved: true,
+        lossyNotes: ['Image compression requires the `sharp` package — not currently installed. File returned unchanged.'],
+        elapsedMs: 0,
+      };
+    }
     default: {
-      // Don't touch xlsx/csv/other — risk > reward
       return {
         originalSize: buffer.length, compressedSize: buffer.length, ratio: 1,
         buffer, strategiesApplied: ['skip:not-compressible-format'],

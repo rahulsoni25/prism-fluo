@@ -34,6 +34,43 @@ async function pdfPageCount(buffer: Buffer): Promise<number> {
   } catch { return 0; }
 }
 
+async function extractXlsxText(buffer: Buffer): Promise<{ text: string; sheets: number }> {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const sheetFiles = Object.keys(zip.files).filter(p => /^xl\/worksheets\/sheet\d+\.xml$/.test(p));
+    const parts: string[] = [];
+    // sharedStrings holds most cell text in XLSX
+    if (zip.files['xl/sharedStrings.xml']) {
+      const xml = await zip.files['xl/sharedStrings.xml'].async('string');
+      const re = /<t[^>]*>([^<]*)<\/t>/g;
+      let m; while ((m = re.exec(xml)) !== null) parts.push((m[1] || '').trim());
+    }
+    // Inline strings + numeric cells live in sheet XML
+    const cellRe = /<(?:t|v)[^>]*>([^<]*)<\/(?:t|v)>/g;
+    for (const path of sheetFiles) {
+      const xml = await zip.files[path].async('string');
+      let m; while ((m = cellRe.exec(xml)) !== null) parts.push((m[1] || '').trim());
+    }
+    return {
+      text: parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(),
+      sheets: sheetFiles.length,
+    };
+  } catch { return { text: '', sheets: 0 }; }
+}
+
+function csvShape(buffer: Buffer): { rows: number; cols: number; text: string } {
+  let text = buffer.toString('utf8');
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.length > 0);
+  // Naive column count: max comma-separated fields in first 100 lines
+  let cols = 0;
+  for (const l of lines.slice(0, 100)) {
+    const c = l.split(',').length;
+    if (c > cols) cols = c;
+  }
+  return { rows: lines.length, cols, text: text.replace(/\s+/g, ' ').trim() };
+}
+
 async function extractPptxText(buffer: Buffer): Promise<{ text: string; slides: number }> {
   try {
     const zip = await JSZip.loadAsync(buffer);
@@ -109,8 +146,48 @@ export async function runQa(
         suggest: 'Discard compressed output, keep original.',
       });
     }
+  } else if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+    const [orig, comp] = await Promise.all([
+      extractXlsxText(originalBuf),
+      extractXlsxText(compressorResult.buffer),
+    ]);
+    textMatch = tokenOverlap(orig.text, comp.text);
+    if (orig.sheets !== comp.sheets) {
+      structureOk = false;
+      findings.push({
+        agent: 'mapper-qa', severity: 'blocker',
+        issue: `Sheet count changed: ${orig.sheets} → ${comp.sheets}.`,
+        suggest: 'Discard compressed output, keep original.',
+      });
+    }
+  } else if (lower.endsWith('.csv')) {
+    const orig = csvShape(originalBuf);
+    const comp = csvShape(compressorResult.buffer);
+    textMatch = tokenOverlap(orig.text, comp.text);
+    // Row delta ≤ 1 allowed (trailing-blank-line normalisation)
+    if (Math.abs(orig.rows - comp.rows) > 1 || orig.cols !== comp.cols) {
+      structureOk = false;
+      findings.push({
+        agent: 'mapper-qa', severity: 'blocker',
+        issue: `CSV shape changed: ${orig.rows}×${orig.cols} → ${comp.rows}×${comp.cols}.`,
+        suggest: 'Discard compressed output, keep original.',
+      });
+    }
+  } else if (/\.(png|jpe?g|webp|gif)$/.test(lower)) {
+    // Image: until `sharp` lands, compressor returns the original unchanged.
+    // QA's job here is to assert bit-identity (so we don't silently swap).
+    const same = originalBuf.length === compressorResult.buffer.length
+      && originalBuf.equals(compressorResult.buffer);
+    textMatch = 1; // images have no text to compare
+    if (!same) {
+      structureOk = false;
+      findings.push({
+        agent: 'mapper-qa', severity: 'blocker',
+        issue: 'Image bytes changed but compressor reported no re-encode strategy. Refusing to ship.',
+        suggest: 'Discard compressed output, keep original.',
+      });
+    }
   } else {
-    // Non-PDF/PPTX: compressor returned original unchanged, treat as clean
     textMatch = 1;
   }
 

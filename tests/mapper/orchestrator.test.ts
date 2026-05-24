@@ -70,9 +70,70 @@ describe('compressor — preserves text', () => {
   });
 
   it('skips compression for unknown formats', async () => {
-    const r = await compress(Buffer.from('hello'), 'data.csv');
+    const r = await compress(Buffer.from('hello'), 'data.bin');
     expect(r.strategiesApplied[0]).toContain('skip');
     expect(r.buffer).toEqual(Buffer.from('hello'));
+  });
+});
+
+async function makeTinyXlsx(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>');
+  zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+  zip.file('xl/worksheets/sheet1.xml', '<?xml version="1.0"?><worksheet><sheetData><row><c><v>42</v></c><c t="inlineStr"><is><t>Revenue</t></is></c></row></sheetData></worksheet>');
+  zip.file('xl/sharedStrings.xml', '<?xml version="1.0"?><sst><si><t>Hello PRISM xlsx</t></si></sst>');
+  return Buffer.from(await zip.generateAsync({ type: 'nodebuffer' }));
+}
+
+const TINY_CSV = Buffer.from('name,price,stock\nApple,99,12\nBanana,49,30\nCherry,199,5\n', 'utf8');
+// 1x1 transparent PNG
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+
+describe('senior-audit — XLSX / CSV / image', () => {
+  it('passes a tiny valid XLSX', async () => {
+    const buf = await makeTinyXlsx();
+    const r = await runSeniorAudit(buf, 'test.xlsx');
+    expect(r.findings.filter(f => f.severity === 'blocker').length).toBe(0);
+  });
+
+  it('flags a CSV with only a header', async () => {
+    const r = await runSeniorAudit(Buffer.from('a,b,c\n'), 'thin.csv');
+    expect(r.ok).toBe(false);
+  });
+
+  it('passes a real PNG', async () => {
+    const r = await runSeniorAudit(TINY_PNG, 'pixel.png');
+    expect(r.ok).toBe(true);
+  });
+
+  it('flags PNG-named file with JPEG bytes', async () => {
+    const fakePng = Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF]), Buffer.alloc(300, 0)]);
+    const r = await runSeniorAudit(fakePng, 'photo.png');
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe('compressor — XLSX / CSV / image', () => {
+  it('XLSX compress preserves sheets + text', async () => {
+    const original = await makeTinyXlsx();
+    const r = await compress(original, 'test.xlsx');
+    expect(r.textPreserved).toBe(true);
+    const reZip = await JSZip.loadAsync(r.buffer);
+    expect(Object.keys(reZip.files).some(p => /^xl\/worksheets\/sheet\d+\.xml$/.test(p))).toBe(true);
+  });
+
+  it('CSV compress strips BOM + normalises newlines', async () => {
+    const withBom = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from('a,b\r\n1,2\r\n', 'utf8')]);
+    const r = await compress(withBom, 'data.csv');
+    expect(r.strategiesApplied).toContain('strip-bom');
+    expect(r.strategiesApplied).toContain('normalise-newlines');
+    expect(r.buffer.length).toBeLessThan(withBom.length);
+  });
+
+  it('image compress returns unchanged + flags sharp-missing', async () => {
+    const r = await compress(TINY_PNG, 'pixel.png');
+    expect(r.buffer).toEqual(TINY_PNG);
+    expect(r.strategiesApplied[0]).toContain('image-codec-not-installed');
   });
 });
 

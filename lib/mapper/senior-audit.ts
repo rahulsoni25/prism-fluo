@@ -24,7 +24,10 @@ async function auditOnce(buffer: Buffer, filename: string): Promise<MapperFindin
   const findings: MapperFinding[] = [];
   const lower = filename.toLowerCase();
 
-  if (buffer.length < 256) {
+  const isImage = /\.(png|jpe?g|webp|gif)$/.test(lower);
+  // Images can legitimately be tiny (favicons, sprites); apply 32-byte floor
+  const minBytes = isImage ? 32 : 256;
+  if (buffer.length < minBytes) {
     findings.push({
       agent: 'senior-audit', severity: 'blocker',
       issue: `File is only ${buffer.length} bytes — too small to be a real document.`,
@@ -76,8 +79,40 @@ async function auditOnce(buffer: Buffer, filename: string): Promise<MapperFindin
     } catch (err: any) {
       findings.push({ agent: 'senior-audit', severity: 'blocker', issue: `XLSX parse error: ${err.message}` });
     }
+  } else if (lower.endsWith('.csv')) {
+    let text = buffer.toString('utf8');
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.length > 0);
+    if (lines.length < 2) {
+      findings.push({ agent: 'senior-audit', severity: 'blocker', issue: `CSV has only ${lines.length} line(s) — need at least header + 1 data row.` });
+    } else {
+      const headerCols = lines[0].split(',').length;
+      if (headerCols < 2) {
+        findings.push({ agent: 'senior-audit', severity: 'major', issue: `CSV header has only ${headerCols} column(s) — file may not be comma-delimited.`, suggest: 'Check for tab/semicolon delimiter and re-save as comma-separated.' });
+      }
+      // Sample 50 rows for consistent column count
+      let inconsistent = 0;
+      for (const l of lines.slice(1, 51)) if (l.split(',').length !== headerCols) inconsistent++;
+      if (inconsistent > 5) {
+        findings.push({ agent: 'senior-audit', severity: 'major', issue: `${inconsistent}/50 sampled rows have a different column count than the header. CSV likely malformed.` });
+      }
+    }
+  } else if (/\.(png|jpe?g|webp|gif)$/.test(lower)) {
+    // Magic-byte check — ensures the extension matches the actual format
+    const head = buffer.slice(0, 12);
+    const isPng  = head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4E && head[3] === 0x47;
+    const isJpeg = head[0] === 0xFF && head[1] === 0xD8 && head[2] === 0xFF;
+    const isGif  = head.slice(0, 3).toString('ascii') === 'GIF';
+    const isWebp = head.slice(0, 4).toString('ascii') === 'RIFF' && head.slice(8, 12).toString('ascii') === 'WEBP';
+    const ok = (lower.endsWith('.png') && isPng)
+      || (/\.jpe?g$/.test(lower) && isJpeg)
+      || (lower.endsWith('.gif') && isGif)
+      || (lower.endsWith('.webp') && isWebp);
+    if (!ok) {
+      findings.push({ agent: 'senior-audit', severity: 'blocker', issue: `Image header doesn't match extension — file may be renamed or corrupted.` });
+    }
   }
-  // CSV / other: trust the upstream parser
+  // other: trust the upstream parser
 
   return findings;
 }
