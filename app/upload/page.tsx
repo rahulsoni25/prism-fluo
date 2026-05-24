@@ -245,6 +245,25 @@ function UploadDataInner() {
       file = await stripPptxBloat(file);
     }
 
+    // ── Client-side Mapper compression ────────────────────────────
+    // Compress in the browser BEFORE upload so a 25 MB PDF becomes ~8 MB
+    // and the user's bandwidth wait is 3× shorter. The server-side council
+    // still runs mapper-qa + senior-audit on whatever lands, so a corrupted
+    // compress is caught and falls back gracefully.
+    try {
+      const { compressClientSide } = await import('@/lib/mapper/compressor-client');
+      const r = await compressClientSide(file);
+      if (r.reduced) {
+        const savedMB = (r.originalBytes - r.compressedBytes) / (1024 * 1024);
+        const pct = Math.round((1 - r.ratio) * 100);
+        addLog(`🗜 Mapper compressed "${file.name}" locally: ${(r.originalBytes / 1e6).toFixed(1)} MB → ${(r.compressedBytes / 1e6).toFixed(1)} MB (−${pct}%, saved ${savedMB.toFixed(1)} MB before upload)`);
+        file = r.file;
+      }
+    } catch (err: any) {
+      // Compression is opportunistic — never block the upload because it failed.
+      addLog(`⚠ Local compression skipped: ${err?.message ?? err}`);
+    }
+
     // ── Upload strategy ────────────────────────────────────────────
     // Files ≤ 4 MB go via legacy multipart — fewer round trips, no
     // dependency on a Vercel Blob store. Files > 4 MB exceed Vercel's
