@@ -744,28 +744,51 @@ export async function handleUpload(
   // losslessly. Only swap to the compressed buffer when the council grades
   // it 10/10 (ready=true) — otherwise we use the original.
   //
-  // Runs BEFORE dedup so the SHA-256 reflects the bytes we'll actually
-  // process; two large source PDFs that compress to the same output will
-  // dedup correctly.
+  // Hard-capped at 20 s so a hung pdf-parse never blocks the upload route
+  // (Vercel's maxDuration is 60 s — we leave the rest for downstream parse/insert).
   let mappedBuffer = buffer;
+  let mapperSummary: UploadSummary['mapper'] | undefined;
   try {
-    const verdict = await runMapperCouncil(buffer, filename);
-    if (verdict.ready && verdict.finalBuffer !== buffer) {
-      mappedBuffer = verdict.finalBuffer;
+    const COUNCIL_TIMEOUT_MS = 20_000;
+    const timeoutP = new Promise<null>(resolve => setTimeout(() => resolve(null), COUNCIL_TIMEOUT_MS));
+    const verdict = await Promise.race([runMapperCouncil(buffer, filename), timeoutP]);
+
+    if (!verdict) {
+      logger.warn('mapper:council_timeout', { filename, timeoutMs: COUNCIL_TIMEOUT_MS });
+    } else {
+      if (verdict.ready && verdict.finalBuffer !== buffer) {
+        mappedBuffer = verdict.finalBuffer;
+      }
+      const blockers = verdict.findings.filter(f => f.severity === 'blocker').length;
+      const majors   = verdict.findings.filter(f => f.severity === 'major').length;
+      const minors   = verdict.findings.filter(f => f.severity === 'minor').length;
+      const topF     = verdict.findings.find(f => f.severity === 'blocker')
+                    ?? verdict.findings.find(f => f.severity === 'major');
+
+      logger.info('mapper:council', {
+        filename,
+        originalMB: (buffer.length / 1024 / 1024).toFixed(2),
+        finalMB:    (mappedBuffer.length / 1024 / 1024).toFixed(2),
+        grade:      verdict.grade,
+        ready:      verdict.ready,
+        attempts:   verdict.attempts,
+        elapsedMs:  verdict.elapsedMs,
+        blockers, majors,
+      });
+      // Best-effort persist — never await behind the upload's critical path
+      recordMapperRun(filename, verdict, userId).catch(() => { /* logged inside */ });
+
+      mapperSummary = {
+        grade:         verdict.grade,
+        ready:         verdict.ready,
+        originalBytes: buffer.length,
+        finalBytes:    mappedBuffer.length,
+        attempts:      verdict.attempts,
+        elapsedMs:     verdict.elapsedMs,
+        blockers, majors, minors,
+        topFinding:    topF ? `${topF.issue}${topF.suggest ? ` (${topF.suggest})` : ''}` : undefined,
+      };
     }
-    logger.info('mapper:council', {
-      filename,
-      originalMB: (buffer.length / 1024 / 1024).toFixed(2),
-      finalMB:    (mappedBuffer.length / 1024 / 1024).toFixed(2),
-      grade:      verdict.grade,
-      ready:      verdict.ready,
-      attempts:   verdict.attempts,
-      elapsedMs:  verdict.elapsedMs,
-      blockers:   verdict.findings.filter(f => f.severity === 'blocker').length,
-      majors:     verdict.findings.filter(f => f.severity === 'major').length,
-    });
-    // Best-effort persist — never await behind the upload's critical path
-    recordMapperRun(filename, verdict, userId).catch(() => { /* logged inside */ });
   } catch (err: any) {
     // Council is advisory — never block an upload because the mapper crashed
     logger.warn('mapper:council_failed', { filename, error: err.message });
@@ -849,6 +872,7 @@ export async function handleUpload(
         sheets,
         deduplicated: true,
         existingAnalysisId: existingAnalysisId ?? undefined,
+        mapper: mapperSummary,
       };
     }
   }
@@ -950,5 +974,5 @@ export async function handleUpload(
     uploadId, filename, briefId: briefId ?? null, sheets: sheetsMeta.length, ms: Date.now() - t0,
   });
 
-  return { uploadId, sheets: sheetsMeta, rawText };
+  return { uploadId, sheets: sheetsMeta, rawText, mapper: mapperSummary };
 }

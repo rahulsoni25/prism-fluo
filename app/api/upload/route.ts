@@ -24,7 +24,7 @@ import { getSession } from '@/lib/auth/server';
 
 export const maxDuration = 60; // seconds
 
-const ALLOWED_EXT = ['xlsx', 'xls', 'csv', 'pdf', 'pptx', 'ppt'];
+const ALLOWED_EXT = ['xlsx', 'xls', 'csv', 'pdf', 'pptx', 'ppt', 'png', 'jpg', 'jpeg', 'webp', 'gif'];
 
 export const POST = async (req: NextRequest) => {
   const t0 = Date.now();
@@ -92,6 +92,7 @@ export const POST = async (req: NextRequest) => {
         rawText:      summary.rawText ?? null,
         deduplicated:       summary.deduplicated       ?? false,
         existingAnalysisId: summary.existingAnalysisId ?? null,
+        mapper:             summary.mapper             ?? null,
       });
     }
 
@@ -168,6 +169,7 @@ export const POST = async (req: NextRequest) => {
         rawText:      summary.rawText ?? null,
         deduplicated:       summary.deduplicated       ?? false,
         existingAnalysisId: summary.existingAnalysisId ?? null,
+        mapper:             summary.mapper             ?? null,
       });
     }
 
@@ -225,6 +227,7 @@ export const POST = async (req: NextRequest) => {
       sheets:       summary.sheets,
       rawText:      summary.rawText ?? null,
       deduplicated: summary.deduplicated ?? false,
+      mapper:       summary.mapper ?? null,
     });
 
   } catch (err: any) {

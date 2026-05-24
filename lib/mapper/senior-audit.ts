@@ -18,6 +18,7 @@
  */
 
 import JSZip from 'jszip';
+import { parsePdfOnce } from './parse-cache';
 import type { SeniorAuditResult, MapperFinding } from './types';
 
 async function auditOnce(buffer: Buffer, filename: string): Promise<MapperFinding[]> {
@@ -41,9 +42,7 @@ async function auditOnce(buffer: Buffer, filename: string): Promise<MapperFindin
       return findings;
     }
     try {
-      const pdfParse = (await import('pdf-parse')).default as any;
-      let data: any = null;
-      try { data = await pdfParse(buffer); } catch { /* parse warnings → treat as soft */ }
+      const data = await parsePdfOnce(buffer);
       const numpages = data?.numpages ?? 0;
       if (data && numpages === 0) {
         findings.push({ agent: 'senior-audit', severity: 'blocker', issue: 'PDF reports 0 pages.' });

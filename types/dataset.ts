@@ -14,6 +14,21 @@ export interface UploadSummary {
    *  straight to /insights?id=... instead of re-calling /api/ai/analyze-data
    *  (which would burn another Gemini quota for no new value). */
   existingAnalysisId?: string;
+  /** Data Mapper Council verdict — populated when the council ran. Lets the
+   *  upload UI show compression savings and any blockers/warnings. */
+  mapper?: {
+    grade:         number;
+    ready:         boolean;
+    originalBytes: number;
+    finalBytes:    number;
+    attempts:      number;
+    elapsedMs:     number;
+    blockers:      number;
+    majors:        number;
+    minors:        number;
+    /** Plain-language top finding to show the user (first blocker or first major). */
+    topFinding?:   string;
+  };
 }
 
 export interface SheetMeta {

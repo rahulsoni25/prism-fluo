@@ -16,15 +16,11 @@ export async function parsePdf(
   filename: string,
   buffer: Buffer
 ): Promise<{ sheetName: string; rows: PdfRow[] }[]> {
-  let pdfParse: any;
-  try {
-    pdfParse = (await import('pdf-parse')).default;
-  } catch {
-    console.warn('[PDF] pdf-parse not available');
-    return [];
-  }
-
-  const data = await pdfParse(buffer);
+  // Use the mapper's parse cache so we don't re-parse a buffer the council
+  // already parsed during senior-audit / mapper-qa.
+  const { parsePdfOnce } = await import('@/lib/mapper/parse-cache');
+  const data = await parsePdfOnce(buffer);
+  if (!data) { console.warn('[PDF] pdf-parse failed or unavailable'); return []; }
   const text = data.text || '';
   const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
 

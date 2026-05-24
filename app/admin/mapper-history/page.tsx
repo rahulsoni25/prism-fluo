@@ -47,6 +47,17 @@ function fmtDate(d: string): string {
   return new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+/** Mask the middle of a filename so over-shoulder glances don't leak client
+ *  names. e.g. Sargam_Detergent_Q4_brief.pdf → Sargam_D…rief.pdf */
+function maskFilename(name: string): string {
+  if (name.length <= 24) return name;
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 ? name.slice(dot) : '';
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  if (stem.length <= 16) return name;
+  return `${stem.slice(0, 8)}…${stem.slice(-4)}${ext}`;
+}
+
 function gradeColor(g: number): string {
   if (g >= 10) return '#059669';
   if (g >= 8)  return '#65A30D';
@@ -224,9 +235,9 @@ export default function MapperHistoryPage() {
                   return (
                     <tr key={r.id} style={{ borderTop: '1px solid #F1F5F9' }}>
                       <td style={{ padding: '10px 14px', color: '#475569', whiteSpace: 'nowrap' }}>{fmtDate(r.createdAt)}</td>
-                      <td style={{ padding: '10px 14px', color: '#0F172A', fontWeight: 600 }}>
+                      <td style={{ padding: '10px 14px', color: '#0F172A', fontWeight: 600 }} title={r.filename}>
                         <span style={{ marginRight: 6 }}>{KIND_LABEL[r.kind] || '📁'}</span>
-                        {r.filename}
+                        {maskFilename(r.filename)}
                       </td>
                       <td style={{ padding: '10px 14px', textAlign: 'right', color: '#475569' }}>
                         {fmtBytes(r.originalBytes)} → {fmtBytes(r.finalBytes)}

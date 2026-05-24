@@ -15,23 +15,17 @@
  */
 
 import JSZip from 'jszip';
+import { parsePdfOnce } from './parse-cache';
 import type { CompressorResult, QaResult, MapperFinding } from './types';
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  try {
-    // pdf-parse is already a runtime dep
-    const pdfParse = (await import('pdf-parse')).default as any;
-    const data = await pdfParse(buffer);
-    return (data?.text || '').replace(/\s+/g, ' ').trim();
-  } catch { return ''; }
+  const data = await parsePdfOnce(buffer);
+  return (data?.text || '').replace(/\s+/g, ' ').trim();
 }
 
 async function pdfPageCount(buffer: Buffer): Promise<number> {
-  try {
-    const pdfParse = (await import('pdf-parse')).default as any;
-    const data = await pdfParse(buffer);
-    return data?.numpages || 0;
-  } catch { return 0; }
+  const data = await parsePdfOnce(buffer);
+  return data?.numpages || 0;
 }
 
 async function extractXlsxText(buffer: Buffer): Promise<{ text: string; sheets: number }> {

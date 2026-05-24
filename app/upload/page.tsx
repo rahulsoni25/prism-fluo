@@ -349,9 +349,22 @@ function UploadDataInner() {
     }
     const summary = await upRes.json();
 
-    const { uploadId, sheets, rawText, deduplicated, existingAnalysisId } = summary;
+    const { uploadId, sheets, rawText, deduplicated, existingAnalysisId, mapper } = summary;
     if (deduplicated) {
       addLog(`♻️ "${file.name}" matches a recent upload — reusing existing parse`);
+    }
+
+    // ── Mapper Council verdict surface ─────────────────────────────
+    // Show savings on a successful compress, or a warning if the council
+    // flagged a blocker/major (e.g. image-only PDF that AI will struggle with).
+    if (mapper) {
+      const savedMB = (mapper.originalBytes - mapper.finalBytes) / (1024 * 1024);
+      if (mapper.ready && savedMB > 0.1) {
+        addLog(`🗜 Council compressed "${file.name}" by ${savedMB.toFixed(1)} MB (grade ${mapper.grade}/10).`);
+      } else if (mapper.blockers > 0 || mapper.majors > 0) {
+        const icon = mapper.blockers > 0 ? '⛔' : '⚠️';
+        addLog(`${icon} Council flagged "${file.name}": ${mapper.topFinding || `${mapper.blockers} blocker(s), ${mapper.majors} major(s)`}`);
+      }
     }
 
     // FAST PATH: dedup hit AND a pre-existing analysis is on file. We do NOT

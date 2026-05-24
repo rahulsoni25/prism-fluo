@@ -53,12 +53,24 @@ function detectKind(filename: string): string {
   return 'other';
 }
 
+/** Probabilistic retention: ~1% of recordMapperRun calls also delete rows
+ *  older than 90 days. Avoids running a cron job for a low-traffic table. */
+async function maybeRunRetention(): Promise<void> {
+  if (Math.random() > 0.01) return;
+  try {
+    await db.query(`DELETE FROM mapper_runs WHERE created_at < NOW() - INTERVAL '90 days'`);
+  } catch (err: any) {
+    logger.warn('mapper:retention_failed', { error: err.message });
+  }
+}
+
 export async function recordMapperRun(
   filename: string,
   verdict: MapperVerdict,
   userId: string | null | undefined,
 ): Promise<void> {
   await ensureMapperSchema();
+  await maybeRunRetention();
   try {
     const blockers = verdict.findings.filter(f => f.severity === 'blocker').length;
     const majors   = verdict.findings.filter(f => f.severity === 'major').length;
