@@ -1451,18 +1451,26 @@ ${THREE_LENS_RUBRIC}
 
 ${CONVICTION_GRADING}
 
-━━ BUCKET ASSIGNMENT ━━
-Spread your 20 cards across the most relevant buckets from the 9 below. NEVER assign more than 5 cards to any single bucket.
-• content       — media consumption, streaming, devices, screen time, gaming, podcasts, OTT, social feeds, listing quality, titles, A+ content, images.
-• commerce      — purchase intent, BSR/ranking, units sold, revenue, conversion, discount behaviour, subscription, loyalty, consumer confidence, financial attitudes.
-• communication — brand awareness, brand trust, brand perception, reviews, ratings, ad recall, influencer reach, NPS, word of mouth, media channel preference.
-• culture       — demographics, lifestyle, values, attitudes, health, fitness, food, travel, fashion, sustainability, community, education, identity signals.
-• channel       — marketing channel mix (paid/owned/earned), channel ROI, attribution, media allocation, channel reach and frequency.
-• media         — media planning, media spend, media investment, ad placements, media mix modelling, platform-level media performance.
-• creative      — creative asset performance, ad creative testing, copy performance, visual identity, creative formats, A/B test results.
-• pricing       — price elasticity, price point optimisation, premium vs value positioning, pricing perception, willingness to pay, discount strategy.
-• search        — keyword research, search volume trends, organic vs paid search, SEO rankings, search intent, keyword gaps, bid strategy.
-RULE: price/rank/sales data → commerce or pricing. brand/review/rating → communication. keyword/SEO data → search. channel attribution → channel. creative testing → creative. Do NOT default everything to content.
+━━ BUCKET ASSIGNMENT (variable-axis, NOT narrative) ━━
+TAG BY THE MEASURED VARIABLE — what the data literally counts — not by the story the card tells. Spread your 20 cards across the most relevant buckets. NEVER assign more than 5 cards to any single bucket.
+• content       — SUBJECT-MATTER demand: topics, themes, genres, listing titles, A+ content, what the audience is INTERESTED IN (not which vehicle they use). Examples: most-searched topics, theme clusters, headline tests.
+• commerce      — PURCHASE-ACT axis: purchase intent, BSR/ranking, units sold, revenue, conversion, basket, subscription, loyalty, financial attitudes, competitive shelf position.
+• communication — VERBAL-MESSAGE axis: brand awareness, trust, perception, reviews, ratings, ad recall, NPS, word of mouth, brand SOV, claims that land.
+• culture       — IDENTITY axis: demographics, values, attitudes, lifestyle, beliefs, self-perception, social/cultural trends. WHO they ARE, not what they consume.
+• channel       — BRAND-touchpoint axis: how the BRAND reaches/sells (DTC vs retail vs marketplace, paid/owned/earned, attribution, path-to-purchase).
+• media         — CONSUMPTION-vehicle axis: HER media diet — platforms, devices, screen time, gaming, podcasts, OTT, accounts followed, streaming patterns, time spent on platforms. "Accounts she follows" is ALWAYS media (not culture).
+• creative      — VISUAL-execution axis: creative asset performance, ad copy/visual A/B tests, design cues, formats (non-verbal craft).
+• pricing       — PRICE-value axis only: elasticity, WTP, premium vs value, discount response. Not "competition" — that's commerce.
+• search        — ACTIVE-QUERY axis: keyword research, search volume, query trends, organic vs paid search, SEO rankings, search intent. SEARCH OVERRIDES everything — if the variable is an active query, it's search regardless of subject.
+
+TIEBREAKER RULES:
+• CULTURE vs MEDIA — "who she IS" = culture. "what she CONSUMES / who she FOLLOWS" = media.
+• CONTENT vs MEDIA — the TOPIC = content. The VEHICLE/platform/format = media.
+• CHANNEL vs MEDIA — her passive consumption diet = media. The BRAND's route / touchpoint = channel.
+• PRICING vs COMMERCE — price/value/discount = pricing. Everything else in the buying journey = commerce.
+• SEARCH vs ANY — active query / research / discovery → search.
+
+RULE: price/rank/sales → commerce or pricing per axis. brand/review/rating → communication. keyword/SEO/search → search. media-consumption habits → media (NOT content, NOT culture). channel attribution → channel. creative testing → creative.
 
 ━━ CARD FORMAT ━━
 
@@ -1683,15 +1691,14 @@ ${STORYTELLING_DISCIPLINE}
 
 ${ANTI_HALLUCINATION}
 
-━━ BUCKET MAPPING ━━
-Each card must carry a \`bucket\` field (one of: content/commerce/communication/culture/channel/media/creative/pricing/search) AND a \`layer\` field (1-8).
-- Layer 1 (Volume), Layer 2 (Intent) → bucket: 'search'
-- Layer 3 (Themes), Layer 6 long-tail SEO → bucket: 'content'
-- Layer 4 (Competition × Cost), Layer 8 budget → bucket: 'pricing'
-- Layer 6 quick wins / rising stars → bucket: 'commerce'
-- Layer 5 (Trend & Seasonality) → bucket: 'culture'
-- Layer 7 Brand SOV / competitor-steal → bucket: 'communication'
-- Layer 8 match-type / campaign blueprint → bucket: 'media'
+━━ BUCKET MAPPING (variable-axis, NOT narrative) ━━
+Each card must carry a \`bucket\` field (one of: content/commerce/communication/culture/channel/media/creative/pricing/search) AND a \`layer\` field (1-8). TAG BY THE MEASURED VARIABLE, not by the headline framing. The Search-vs-Any rule overrides everything else: if the variable is an active query / look-up / research action, the bucket is 'search' regardless of the subject.
+- Layer 1 (Volume), Layer 2 (Intent), Layer 5 (Trend & Seasonality of queries) → bucket: 'search'  // ALL query-variables → search, per Search-vs-Any rule
+- Layer 3 (Themes), Layer 6 long-tail SEO themes → bucket: 'content'  // subject-matter demand
+- Layer 4 (Competition × Cost), Layer 6 quick wins / rising stars → bucket: 'commerce'  // purchase signals + competitive shelf position
+- Layer 4 CPC distribution / WTP signals / discount strategy → bucket: 'pricing'  // price-value axis only
+- Layer 7 Brand SOV / competitor-steal → bucket: 'communication'  // brand-messaging share-of-voice
+- Layer 8 match-type / campaign blueprint / budget split → bucket: 'media'  // media-planning/vehicle axis
 
 ━━ THREE LENSES — MANDATORY ━━
 Every card must serve ONE of three audiences. Each card carries a \`lens\` field.
@@ -1882,17 +1889,17 @@ Write 8 PRISM insight cards spread across the most relevant buckets (Content · 
 Each card must answer: "So what does this mean for the brand's strategy?"
 Use ONLY the numbers and themes above — no invented statistics.
 
-━━ BUCKET ASSIGNMENT FOR SOCIAL DATA ━━
-Use the most relevant buckets from the 9 below. No more than 3 cards per bucket.
-• content       — content formats/themes driving conversation, most-shared content types
-• commerce      — purchase intent signals, product mentions, price/availability chatter
-• communication — brand tone, crisis signals, negative theme management, positive amplification
-• culture       — who is talking, lifestyle themes, identity signals in language
-• channel       — which channels generate most conversation, cross-channel sentiment patterns
-• media         — media mentions, earned media signals, media coverage themes in conversation
-• creative      — messaging that resonates or falls flat, creative angles appearing in conversation
-• pricing       — price chatter, value perception signals, discount/deal mentions
-• search        — top search terms mentioned, keyword themes in organic conversation
+━━ BUCKET ASSIGNMENT FOR SOCIAL DATA (variable-axis, NOT narrative) ━━
+TAG BY THE MEASURED VARIABLE. The SEARCH-vs-ANY rule overrides everything — if the variable is an active query, it's 'search' regardless of subject. No more than 3 cards per bucket.
+• content       — TOPIC THEMES being discussed (subject demand). NOT "content formats" — those are media.
+• commerce      — purchase intent signals, product mentions, basket-related chatter
+• communication — brand tone, claims, crisis signals, message resonance, share-of-voice
+• culture       — WHO is talking, identity signals in language, lifestyle values surfaced (not consumption habits — those are media)
+• channel       — which BRAND-OWNED channels generate the conversation, cross-channel attribution
+• media         — which PLATFORMS / accounts / creators are referenced, content-format mentions (Reels, Stories, podcasts)
+• creative      — visual angles, design cues, ad-creative execution appearing in conversation
+• pricing       — price chatter, value perception, discount/deal mentions only
+• search        — search terms mentioned, query themes in organic conversation, "how do I" / "where to buy" patterns
 
 ${STORYTELLING_DISCIPLINE}
 
@@ -2508,6 +2515,7 @@ export interface ChartSpecInput {
   obs?:       string;
   rec?:       string;
   conviction?: number;
+  bucket?:    string;          // read at line 2683 in the obs/rec prompt
 }
 
 export async function enhanceInsightTitles(

@@ -15,9 +15,13 @@ import {
   PARENT_BUCKET_META,
   PARENT_BUCKET_TABS,
   assignChartsToParentBuckets,
+  // spec-aligned per-variable engine (Option B)
+  classifyByVariable,
+  resolveCardBucket,
   // legacy exports MUST still exist
   BUCKET_META,
   BUCKET_TABS,
+  DOMAIN_TO_BUCKET,
   assignChartsToBuckets,
 } from '@/lib/insights/buckets';
 
@@ -129,5 +133,143 @@ describe('4Cs roll-up — assignChartsToParentBuckets', () => {
     const out = assignChartsToParentBuckets(charts, 'content');
     const total = Object.values(out).reduce((s, arr) => s + arr.length, 0);
     expect(total).toBe(charts.length);
+  });
+});
+
+describe('per-variable classifier (Option B — spec-aligned)', () => {
+  // Search-vs-Any rule cases
+  it.each([
+    ['Search volume jumped 32% YoY',                  'search'],
+    ['Monthly searches for "running shoes" hit 450K', 'search'],
+    ['Top keyword gap: "trail running"',              'search'],
+    ['Google Trends shows rising query for X',        'search'],
+    ['SEO ranking position dropped to 7',             'search'],
+    ['Query intent split: 80% commercial',            'search'],
+  ])('SEARCH variable: %s → search', (title, expected) => {
+    expect(classifyByVariable({ title } as any)).toBe(expected);
+  });
+
+  // Culture-vs-Media tiebreaker
+  it.each([
+    ['Accounts followed by audience: avg 142',          'media'],
+    ['Time spent on Instagram: 78 min/day',             'media'],
+    ['OTT streaming hours per week: 14',                'media'],
+    ['Podcast listening accounts followed',             'media'],
+    ['Devices used per household: 3.2',                 'media'],
+  ])('MEDIA variable: %s → media', (title) => {
+    expect(classifyByVariable({ title } as any)).toBe('media');
+  });
+
+  // Identity-axis cases stay culture
+  it.each([
+    ['Sustainability values index: 72',                 'culture'],
+    ['Demographics: 18-24 female metro',                'culture'],
+    ['Lifestyle attitudes toward fitness',              'culture'],
+  ])('CULTURE variable: %s → culture', (title) => {
+    expect(classifyByVariable({ title } as any)).toBe('culture');
+  });
+
+  // Communication axis
+  it.each([
+    ['Brand awareness lifted 8 points',                 'communication'],
+    ['Review sentiment trended negative in Q2',         'communication'],
+    ['Ad recall scored 64%',                            'communication'],
+    ['Net Promoter Score (NPS) declined',               'communication'],
+  ])('COMMUNICATION variable: %s → communication', (title) => {
+    expect(classifyByVariable({ title } as any)).toBe('communication');
+  });
+
+  // Commerce axis
+  it.each([
+    ['BSR rank improved to #142',                       'commerce'],
+    ['Conversion rate hit 4.2%',                        'commerce'],
+    ['Cart abandonment 68%',                            'commerce'],
+    ['Competitor steal opportunity: 1.2M units',        'commerce'],
+  ])('COMMERCE variable: %s → commerce', (title) => {
+    expect(classifyByVariable({ title } as any)).toBe('commerce');
+  });
+
+  // Pricing axis (narrow — only true price-value variables)
+  it.each([
+    ['Price sensitivity index for 18-24',               'pricing'],
+    ['Willingness to pay above ₹599',                   'pricing'],
+    ['Discount response curve',                         'pricing'],
+  ])('PRICING variable: %s → pricing', (title) => {
+    expect(classifyByVariable({ title } as any)).toBe('pricing');
+  });
+
+  it('returns null when no rule matches', () => {
+    expect(classifyByVariable({ title: 'Random thing nobody mentioned' } as any)).toBeNull();
+    expect(classifyByVariable({} as any)).toBeNull();
+    expect(classifyByVariable(null as any)).toBeNull();
+  });
+
+  it('inspects toolLabel + stat in addition to title', () => {
+    const c = { title: 'Sportswear scene', toolLabel: 'GWI accounts followed', stat: '14 follows/week' };
+    expect(classifyByVariable(c as any)).toBe('media');
+  });
+});
+
+describe('resolveCardBucket priority chain', () => {
+  it('explicit chart.bucket wins over rule-based classification', () => {
+    const c = { bucket: 'culture', title: 'Search volume by brand' };
+    expect(resolveCardBucket(c, 'keywords')).toBe('culture');
+  });
+
+  it('falls through to classifyByVariable when bucket is missing', () => {
+    const c = { title: 'Monthly search volume for X' };
+    expect(resolveCardBucket(c, 'keywords')).toBe('search');
+  });
+
+  it('falls through to domain when variable rules return null', () => {
+    const c = { title: 'Some untaggable analysis card' };
+    expect(resolveCardBucket(c, 'gwi')).toBe('culture');
+    expect(resolveCardBucket(c, 'keywords')).toBe('search');  // spec-fixed domain default
+    expect(resolveCardBucket(c, 'trends')).toBe('search');    // spec-fixed domain default
+  });
+
+  it('defaults to content when nothing matches', () => {
+    expect(resolveCardBucket({ title: 'Untaggable' }, 'unknown-domain')).toBe('content');
+  });
+
+  it('rejects invalid bucket and falls through to next step', () => {
+    const c = { bucket: 'bogus', title: 'Monthly search volume' };
+    expect(resolveCardBucket(c, 'keywords')).toBe('search');  // classifyByVariable saves it
+  });
+});
+
+describe('spec-aligned DOMAIN_TO_BUCKET — regression guards', () => {
+  it('keywords domain defaults to search (was commerce — spec violation fixed)', () => {
+    expect(DOMAIN_TO_BUCKET.keywords).toBe('search');
+  });
+
+  it('trends domain defaults to search (was culture — spec violation fixed)', () => {
+    expect(DOMAIN_TO_BUCKET.trends).toBe('search');
+  });
+
+  it('search & seo domain defaults to search (was commerce)', () => {
+    expect(DOMAIN_TO_BUCKET['search & seo']).toBe('search');
+  });
+
+  it('gwi still defaults to culture (refined per-card by classifyByVariable)', () => {
+    expect(DOMAIN_TO_BUCKET.gwi).toBe('culture');
+  });
+});
+
+describe('assignChartsToParentBuckets — Option B end-to-end', () => {
+  it('a keyword-style card with no explicit bucket lands in Commerce tab (via search→commerce rollup)', () => {
+    const charts = [{ title: 'Monthly search volume for "running shoes" hit 450K' }];
+    const out = assignChartsToParentBuckets(charts as any, 'culture'); // wrong domain hint
+    expect(out.commerce.length).toBe(1);     // search rolled up into Commerce parent
+    expect(out.commerce[0].granularBucket).toBe('search');
+    expect(out.culture.length).toBe(0);
+  });
+
+  it('an accounts-followed card lands in Culture tab (via media→culture rollup) even when tagged "culture"', () => {
+    const charts = [{ bucket: 'culture', title: 'Accounts followed by audience: avg 142' }];
+    const out = assignChartsToParentBuckets(charts as any, 'gwi');
+    // bucket field takes priority over classifier — so it stays culture
+    expect(out.culture.length).toBe(1);
+    expect(out.culture[0].granularBucket).toBe('culture');
   });
 });
