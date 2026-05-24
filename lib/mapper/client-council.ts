@@ -148,6 +148,23 @@ export async function runClientCouncil(file: File): Promise<ClientCouncilVerdict
     };
   }
 
+  // 2b. Smart-skip: if the saving is tiny (<5% AND <500 KB), the file is
+  //     already well-optimized (typically image-dense PDFs where pdf-lib
+  //     can't re-encode the embedded images). Wasting 1-2s of CPU + a
+  //     QA round-trip for marginal savings is worse than just uploading.
+  //     Emit a special reason so the UI can suggest external tools.
+  const savedBytes = result.originalBytes - result.compressedBytes;
+  const savedPct   = savedBytes / result.originalBytes;
+  if (savedPct < 0.05 && savedBytes < 500 * 1024) {
+    return {
+      file,                                           // original — not compressed file
+      grade: null, ready: true, reduced: false,
+      originalBytes: result.originalBytes, finalBytes: result.originalBytes,
+      strategy: result.strategy, blockers: [],
+      reason: 'already-optimized:lossless-compression-cannot-help',
+    };
+  }
+
   // 3. QA the compressed bytes against the original
   let qa: { ok: boolean; blockers: string[] };
   try {
