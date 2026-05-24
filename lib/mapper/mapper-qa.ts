@@ -58,9 +58,10 @@ async function extractXlsxText(buffer: Buffer): Promise<{ text: string; sheets: 
   } catch { return { text: '', sheets: 0 }; }
 }
 
-/** Compute a 64-bit average-hash (aHash) of an image: resize to 8×8 grayscale,
- *  pixel > mean → 1. Hamming distance between two hashes ≈ perceptual distance. */
-async function aHash(buffer: Buffer): Promise<bigint | null> {
+/** Compute a 64-bit average-hash (aHash) of an image as a Uint8Array of 64 bits
+ *  (one bit per byte for simplicity — avoids BigInt for older TS targets).
+ *  Resize to 8×8 grayscale, pixel > mean → 1. */
+async function aHash(buffer: Buffer): Promise<Uint8Array | null> {
   try {
     const sharp = (await import('sharp')).default;
     const { data } = await sharp(buffer, { failOn: 'none' })
@@ -71,18 +72,18 @@ async function aHash(buffer: Buffer): Promise<bigint | null> {
     let sum = 0;
     for (let i = 0; i < 64; i++) sum += data[i];
     const mean = sum / 64;
-    let h = 0n;
-    for (let i = 0; i < 64; i++) if (data[i] > mean) h |= (1n << BigInt(i));
-    return h;
+    const bits = new Uint8Array(64);
+    for (let i = 0; i < 64; i++) bits[i] = data[i] > mean ? 1 : 0;
+    return bits;
   } catch { return null; }
 }
 
 async function imageSimilarity(a: Buffer, b: Buffer): Promise<{ similar: boolean; similarity: number; reason: string }> {
   const [ha, hb] = await Promise.all([aHash(a), aHash(b)]);
   if (ha === null || hb === null) return { similar: false, similarity: 0, reason: 'one image failed to decode' };
-  let diff = 0n; let x = ha ^ hb;
-  while (x) { diff += x & 1n; x >>= 1n; }
-  const similarity = 1 - Number(diff) / 64;
+  let diff = 0;
+  for (let i = 0; i < 64; i++) if (ha[i] !== hb[i]) diff++;
+  const similarity = 1 - diff / 64;
   // 0.95 threshold = up to ~3 bits differ — typical for q85 JPEG re-encode
   return { similar: similarity >= 0.95, similarity, reason: `${diff} bits differ (of 64)` };
 }

@@ -39,6 +39,8 @@ import { parseGenericSheet } from '@/lib/generic/parser';
 import { parsePdf }          from '@/lib/pdf/parser';
 import { extractPptxText, extractPptxStructured } from '@/lib/pptx/parser';
 
+import { runMapperCouncil } from '@/lib/mapper/orchestrator';
+
 import type { UploadSummary, SheetMeta, SheetType } from '@/types/dataset';
 
 // ── Auto-migration (runs once per cold start) ─────────────────
@@ -734,6 +736,38 @@ export async function handleUpload(
   // Ensure schema is up to date before any DB operations
   await ensureSchema();
   await ensureDedupSchema();
+
+  // ── −1. Data Mapper Council ────────────────────────────────────
+  // Three agents (compressor / mapper-qa / senior-audit) decide whether the
+  // file is shippable as-is, and if it's ≥10 MB whether they can compress it
+  // losslessly. Only swap to the compressed buffer when the council grades
+  // it 10/10 (ready=true) — otherwise we use the original.
+  //
+  // Runs BEFORE dedup so the SHA-256 reflects the bytes we'll actually
+  // process; two large source PDFs that compress to the same output will
+  // dedup correctly.
+  let mappedBuffer = buffer;
+  try {
+    const verdict = await runMapperCouncil(buffer, filename);
+    if (verdict.ready && verdict.finalBuffer !== buffer) {
+      mappedBuffer = verdict.finalBuffer;
+    }
+    logger.info('mapper:council', {
+      filename,
+      originalMB: (buffer.length / 1024 / 1024).toFixed(2),
+      finalMB:    (mappedBuffer.length / 1024 / 1024).toFixed(2),
+      grade:      verdict.grade,
+      ready:      verdict.ready,
+      attempts:   verdict.attempts,
+      elapsedMs:  verdict.elapsedMs,
+      blockers:   verdict.findings.filter(f => f.severity === 'blocker').length,
+      majors:     verdict.findings.filter(f => f.severity === 'major').length,
+    });
+  } catch (err: any) {
+    // Council is advisory — never block an upload because the mapper crashed
+    logger.warn('mapper:council_failed', { filename, error: err.message });
+  }
+  buffer = mappedBuffer;
 
   // ── 0. Content-hash dedup ──────────────────────────────────────
   // Compute SHA-256 of the file bytes. If this user already uploaded
