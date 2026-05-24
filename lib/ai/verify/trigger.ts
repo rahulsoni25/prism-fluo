@@ -105,10 +105,11 @@ export async function triggerCouncilForAnalysis(
       ...(i === 0 ? { brief } : {}),
     }) as any);
 
-    // Cross-council intel: if Mapper graded the source as thin / image-only,
-    // log it so we can correlate weak verification scores with weak source files
-    // on the agents dashboard. Future: pass this into verifyAnalysis to soften
-    // FactAnalyzer findings when the source is known-thin.
+    // Cross-council intel: pull the Mapper verdict and pass it into
+    // verifyAnalysis so FactAnalyzer + Coverage severities can be softened
+    // when the source was genuinely thin (scanned PDF, image-only, etc.).
+    // The downgrade attaches a mapperContext note to every affected finding
+    // so the dashboard explains WHY the grade softened.
     const mapperVerdict: any = rows[0].mapper_verdict ?? null;
     if (mapperVerdict && (mapperVerdict.blockers > 0 || mapperVerdict.majors > 0)) {
       logger.info('verify:trigger:mapper_warning', {
@@ -121,7 +122,14 @@ export async function triggerCouncilForAnalysis(
     }
 
     const t0 = Date.now();
-    const report = await verifyAnalysis(analysisId, cards, brand, { llm: opts.llm });
+    const report = await verifyAnalysis(analysisId, cards, brand, {
+      llm: opts.llm,
+      mapperVerdict: mapperVerdict ? {
+        blockers:   mapperVerdict.blockers ?? 0,
+        majors:     mapperVerdict.majors   ?? 0,
+        topFinding: mapperVerdict.topFinding,
+      } : null,
+    });
     const feedback = buildGeminiFeedback(report);
     await storeReport(analysisId, report, opts.llm ? 'rules+llm' : 'rules-only', feedback);
 

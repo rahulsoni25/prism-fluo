@@ -90,7 +90,7 @@ export async function dualAgentVerifyExport(
   buffer: Buffer,
   format: ExportFormat,
   analysisId: string | null,
-  opts: { minPages?: number } = {},
+  opts: { minPages?: number; userId?: string | null } = {},
 ): Promise<ExportVerdict> {
   const t0 = Date.now();
   const [content, sourceCards] = await Promise.all([
@@ -113,6 +113,25 @@ export async function dualAgentVerifyExport(
   const contentMajors     = content?.summary?.bySeverity?.major ?? 0;
   const recoverableBlockers = inspector.issues.filter(i => i.severity === 'blocker' && i.recoverable === true).length;
 
+  const elapsedMs = Date.now() - t0;
+
+  // Best-effort persist for the /admin/export-history dashboard
+  try {
+    const { recordExportRun } = await import('./persistence');
+    recordExportRun({
+      analysisId,
+      format,
+      action: decision.action as 'allow' | 'ask' | 'block',
+      confidence: decision.confidence,
+      bytes: buffer.length,
+      inspectorBlockers, inspectorMajors,
+      contentBlockers, contentMajors,
+      reasoning: decision.reasoning,
+      elapsedMs,
+      userId: opts.userId ?? null,
+    }).catch(() => { /* logged inside */ });
+  } catch { /* persistence module load failed — non-fatal */ }
+
   return {
     ready: decision.action === 'allow',
     format, action: decision.action, confidence: decision.confidence, reasoning: decision.reasoning,
@@ -120,6 +139,6 @@ export async function dualAgentVerifyExport(
     combinedBlockers: inspectorBlockers + contentBlockers,
     combinedMajors:   inspectorMajors + contentMajors,
     recoverableBlockers,
-    elapsedMs: Date.now() - t0,
+    elapsedMs,
   };
 }

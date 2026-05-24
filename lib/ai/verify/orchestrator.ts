@@ -124,7 +124,17 @@ export async function verifyAnalysis(
   analysisId: string,
   cards: CardInput[],
   brand: string | null,
-  opts: { llm?: boolean; concurrency?: number } = {},
+  opts: {
+    llm?: boolean;
+    concurrency?: number;
+    /** Cross-talk: Mapper Council's verdict on the source file. When the
+     *  source is flagged as thin / image-only / scanned, downstream
+     *  FactAnalyzer + Coverage findings get downgraded one severity tier
+     *  (blocker→major, major→minor) because thin-text input genuinely
+     *  limits what the AI could extract — the verification council
+     *  shouldn't punish the AI for the source's limitations. */
+    mapperVerdict?: { blockers: number; majors: number; topFinding?: string } | null;
+  } = {},
 ): Promise<VerificationReport> {
   const limit = Math.max(1, opts.concurrency ?? 8);
   const out: CardVerification[] = [];
@@ -218,6 +228,42 @@ export async function verifyAnalysis(
     }
   }
 
+  // ── CROSS-TALK: Mapper Council severity downgrade ──
+  // If the source file was flagged thin/scanned/image-only, demote
+  // FactAnalyzer + Coverage findings by one severity tier and tag them
+  // with a `mapperContext` note so the dashboard explains why the grade
+  // softened. Math/Stat/Proofreader findings are untouched — those still
+  // reflect AI mistakes regardless of source quality.
+  const mapperWeakSource = !!(opts.mapperVerdict && (
+    opts.mapperVerdict.blockers > 0 ||
+    /scan|image-only|extractable|thin|ocr/i.test(opts.mapperVerdict.topFinding ?? '')
+  ));
+  let mapperDowngrades = 0;
+  if (mapperWeakSource) {
+    const DOWNGRADE = { blocker: 'major', major: 'minor', minor: 'minor' } as const;
+    const SOFTENABLE_AGENTS = new Set(['fact-analyzer', 'coverage', 'fact_analyzer']);
+    for (const card of out) {
+      for (const f of card.findings as any[]) {
+        const agents: string[] = Array.isArray(f.confirmedBy) ? f.confirmedBy : [];
+        const fromSofteningAgent = agents.some(a => SOFTENABLE_AGENTS.has(a));
+        if (fromSofteningAgent && f.severity && DOWNGRADE[f.severity as keyof typeof DOWNGRADE]) {
+          const next = DOWNGRADE[f.severity as keyof typeof DOWNGRADE];
+          if (next !== f.severity) {
+            f.severity = next;
+            f.mapperContext = `Severity softened: source file was flagged by Mapper as thin/scanned (${opts.mapperVerdict?.topFinding ?? 'limited extractable text'}).`;
+            mapperDowngrades++;
+          }
+        }
+      }
+      // Recompute worst severity after downgrades
+      const sevs = (card.findings as any[]).map(f => f.severity);
+      card.worstSeverity = sevs.includes('blocker') ? 'blocker'
+                         : sevs.includes('major')   ? 'major'
+                         : sevs.includes('minor')   ? 'minor' : undefined;
+      card.verified = !card.findings.some((f: any) => f.severity === 'blocker' || f.severity === 'major');
+    }
+  }
+
   // Summary
   const cardsWithIssues = out.filter(c => !c.verified).length;
   const allConfirmed    = out.flatMap(c => c.findings).filter(f => f.verdict === 'confirmed');
@@ -238,7 +284,8 @@ export async function verifyAnalysis(
       confirmedFindings: allConfirmed.length,
       disputedFindings: out.flatMap(c => c.findings).filter(f => f.verdict === 'disputed').length,
       bySeverity,
-    },
+      ...(mapperWeakSource ? { mapperDowngrades, mapperContext: 'Source file flagged thin/scanned by Mapper — fact/coverage severities softened.' } : {}),
+    } as any,
     cards: out,
   };
 }

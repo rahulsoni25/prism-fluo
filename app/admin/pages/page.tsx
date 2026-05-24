@@ -131,6 +131,7 @@ export default function AdminPagesPanel() {
           <Link href="/admin/ai-health" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ AI Health</Link>
           <Link href="/admin/verification-history" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Verification</Link>
           <Link href="/admin/mapper-history" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Mapper</Link>
+          <Link href="/admin/export-history" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Exports</Link>
           <Link href="/admin/agents" style={{ marginLeft: 10, color: '#A5F3FC', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>★ Agents</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
