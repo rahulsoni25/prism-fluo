@@ -1756,7 +1756,25 @@ function AnalysisDetail({ id }) {
                   />
                 )}
                 {topBets.slice(0, marketPyramid ? 2 : 3).map((b, i) => (
-                  <StrategicBetCard key={i} bet={b} />
+                  <StrategicBetCard
+                    key={i}
+                    bet={b}
+                    onJumpToBucket={(bucketKey) => {
+                      // bet.bucketKey is the GRANULAR bucket (creative, search, etc.)
+                      // Switch to its 4Cs parent tab + scope the filter to that granular
+                      const parent = granularToParent(bucketKey);
+                      setActiveBucket(parent);
+                      setGranularFilter(bucketKey);
+                      // Clear other narrowing filters so the related cards are visible
+                      setCardSearch('');
+                      setMinConfidence(0);
+                      // Scroll the cards into view after the React re-render
+                      setTimeout(() => {
+                        const el = document.querySelector('.insights-body');
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 60);
+                    }}
+                  />
                 ))}
               </aside>
             )}

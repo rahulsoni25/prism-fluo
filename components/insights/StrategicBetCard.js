@@ -8,7 +8,7 @@ import { parseRecommendation } from '@/lib/insights/helpers';
  * the supporting stat. Hover reveals the full play, why it matters,
  * related findings, and source attribution.
  */
-export default function StrategicBetCard({ bet }) {
+export default function StrategicBetCard({ bet, onJumpToBucket }) {
   const [show, setShow] = useState(false);
   const recParts = parseRecommendation(bet.fullRec);
 
@@ -44,9 +44,34 @@ export default function StrategicBetCard({ bet }) {
           </div>
         )}
         {bet.relatedTotal > 0 && (
-          <div style={{ fontSize: 10.5, color: '#0891B2', marginTop: 8, fontWeight: 600, letterSpacing: '.02em' }}>
-            + {bet.relatedTotal} more finding{bet.relatedTotal === 1 ? '' : 's'} in {bet.bucketLabel.toLowerCase()} bucket →
-          </div>
+          onJumpToBucket && bet.bucketKey ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                // Stop the hover-card toggle from firing when we click the link
+                e.stopPropagation();
+                onJumpToBucket(bet.bucketKey);
+              }}
+              style={{
+                fontSize: 10.5, color: '#0891B2', marginTop: 8,
+                fontWeight: 600, letterSpacing: '.02em',
+                background: 'transparent', border: 'none',
+                padding: 0, cursor: 'pointer', textAlign: 'left',
+                fontFamily: 'inherit', textDecoration: 'underline',
+                textDecorationColor: 'rgba(8,145,178,.35)',
+                textUnderlineOffset: 3,
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.color = '#0E7490'; e.currentTarget.style.textDecorationColor = '#0E7490'; }}
+              onMouseOut={(e)  => { e.currentTarget.style.color = '#0891B2'; e.currentTarget.style.textDecorationColor = 'rgba(8,145,178,.35)'; }}
+              aria-label={`Jump to ${bet.bucketLabel} bucket`}
+            >
+              + {bet.relatedTotal} more finding{bet.relatedTotal === 1 ? '' : 's'} in {bet.bucketLabel.toLowerCase()} bucket →
+            </button>
+          ) : (
+            <div style={{ fontSize: 10.5, color: '#0891B2', marginTop: 8, fontWeight: 600, letterSpacing: '.02em' }}>
+              + {bet.relatedTotal} more finding{bet.relatedTotal === 1 ? '' : 's'} in {bet.bucketLabel.toLowerCase()} bucket →
+            </div>
+          )
         )}
       </div>
 
