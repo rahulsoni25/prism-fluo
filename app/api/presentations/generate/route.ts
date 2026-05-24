@@ -98,10 +98,19 @@ function extractChartArrays(c: RawChart): {
   return {};
 }
 
-/** Build PillarData for a given bucket from the raw charts array */
+/** Build PillarData for a given bucket from the raw charts array.
+ *  Uses the 4Cs roll-up so cards tagged with the 5 granular buckets
+ *  (creative/media/channel/pricing/search) still land in the right parent
+ *  pillar instead of getting dropped from the export. */
+const PPTX_GRANULAR_TO_PARENT: Record<string, PrismBucket> = {
+  content: 'content',
+  commerce: 'commerce', channel: 'commerce', pricing: 'commerce', search: 'commerce',
+  communication: 'communication', creative: 'communication',
+  culture: 'culture', media: 'culture',
+};
 function buildPillar(charts: RawChart[], bucket: PrismBucket): PillarData {
   const insights: InsightCard[] = charts
-    .filter(c => c.bucket === bucket)
+    .filter(c => (PPTX_GRANULAR_TO_PARENT[c.bucket as string] || c.bucket) === bucket)
     .map(c => {
       const { labels, values, values2 } = extractChartArrays(c);
       return {

@@ -19,8 +19,10 @@ import StaleAnalysisBanner from '@/components/insights/StaleAnalysisBanner';
 import { fmtTs, timeAgo, parseRecommendation } from '@/lib/insights/helpers';
 import {
   BUCKET_META, BUCKET_TABS,
+  PARENT_BUCKET_META, PARENT_BUCKET_TABS,
   SOURCE_BADGE_MAP, DOMAIN_TO_BUCKET,
-  assignChartsToBuckets, FLOAT_PHASE,
+  assignChartsToBuckets, assignChartsToParentBuckets,
+  granularToParent, FLOAT_PHASE,
 } from '@/lib/insights/buckets';
 import {
   ChartBar, ChartLine, ChartPie, ChartDoughnut, ChartScatter, ChartHBar,
@@ -1487,8 +1489,13 @@ function AnalysisDetail({ id }) {
   const sourceBadge   = SOURCE_BADGE_MAP[domain] || domain.toUpperCase();
   const primaryBucket = DOMAIN_TO_BUCKET[domain] || 'content';
 
-  const bucketedCharts = assignChartsToBuckets(charts, primaryBucket);
-  const currentBucket  = activeBucket || primaryBucket;
+  // 4Cs UI roll-up: collapses the 9 granular buckets into 4 parent tabs
+  // (Content / Commerce / Communication / Culture) while preserving each
+  // card's granular bucket via card.granularBucket for the sub-pill.
+  // Internal taxonomy stays 9-wide — only the UI groups to 4.
+  const parentPrimary  = granularToParent(primaryBucket);
+  const bucketedCharts = assignChartsToParentBuckets(charts, primaryBucket);
+  const currentBucket  = activeBucket || parentPrimary;
 
   // Top 3 audience-A vs audience-B gaps for the Executive Summary stat strip.
   // Only fires on 2-audience reports — single-audience cards have one dataset
@@ -1772,7 +1779,7 @@ function AnalysisDetail({ id }) {
       <div className="insights-tabs-wrap">
         <div className="bucket-tabs-bar">
           <div className="bucket-tabs">
-            {BUCKET_TABS.filter(b => (bucketedCharts[b.key] || []).length > 0).map(b => (
+            {PARENT_BUCKET_TABS.filter(b => (bucketedCharts[b.key] || []).length > 0).map(b => (
               <button
                 key={b.key}
                 className={`bucket-tab ${currentBucket === b.key ? 'active' : ''}`}
@@ -1793,10 +1800,10 @@ function AnalysisDetail({ id }) {
           dialog produces a complete report. When not printing, render only
           the active bucket (the regular tabbed UX). */}
       {(printing
-          ? BUCKET_TABS.map(t => t.key).filter(k => (bucketedCharts[k] || []).length > 0)
+          ? PARENT_BUCKET_TABS.map(t => t.key).filter(k => (bucketedCharts[k] || []).length > 0)
           : [currentBucket]
       ).map((bucketKey) => {
-        const sectionMeta   = BUCKET_META[bucketKey];
+        const sectionMeta   = PARENT_BUCKET_META[bucketKey] || BUCKET_META[bucketKey];
         const rawCharts     = bucketedCharts[bucketKey] || [];
         // Sort by conviction (a.k.a. confidence score). Missing conviction
         // values fall back to the same 78–92 synthetic ramp the card UI uses,
@@ -1855,6 +1862,21 @@ function AnalysisDetail({ id }) {
                         <span className="ic-source">{cardSource}</span>
                         <ConfidenceBadge confidence={confidence} />
                       </div>
+                      {/* Granular sub-bucket pill — shows the precise 9-lane
+                          classification (e.g. SEARCH, CREATIVE, MEDIA) when
+                          it differs from the parent tab. Lets power users see
+                          the precision without cluttering the default UI. */}
+                      {chart.granularBucket && chart.granularBucket !== currentBucket && (
+                        <div style={{
+                          display: 'inline-block', fontSize: 9.5, fontWeight: 800,
+                          letterSpacing: '.08em', textTransform: 'uppercase',
+                          color: '#7C3AED', background: '#F5F3FF',
+                          border: '1px solid #DDD6FE', borderRadius: 6,
+                          padding: '2px 7px', marginBottom: 8, marginTop: -2,
+                        }}>
+                          {chart.granularBucket}
+                        </div>
+                      )}
                       <div className="ic-title">{chart.title}</div>
                       {chartHasContent(chart.computedChartData) && (
                         <div className="chart-wrap">
