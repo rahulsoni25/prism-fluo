@@ -463,7 +463,8 @@ async function handleExcelUpload(
       // Fall through — workbook will have 0 worksheets → raw CSV fallback kicks in
     }
   } else {
-    await workbook.xlsx.load(buffer);
+    // ExcelJS typings predate Node 22's Buffer<ArrayBufferLike> generic
+    await workbook.xlsx.load(buffer as any);
   }
 
   const sheetsMeta: SheetMeta[] = [];
@@ -952,7 +953,7 @@ export async function handleUpload(
         // Best-effort: read all cells as tab-separated text
         try {
           const wb2 = new ExcelJS.Workbook();
-          await wb2.xlsx.load(buffer);
+          await wb2.xlsx.load(buffer as any); // ExcelJS typing vs Node 22 Buffer<ArrayBufferLike>
           const lines: string[] = [];
           wb2.worksheets.forEach(ws => {
             ws.eachRow({ includeEmpty: false }, row => {

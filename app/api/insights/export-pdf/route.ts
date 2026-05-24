@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     // Return PDF file
     const filename = `${briefName.replace(/\s+/g, '_')}_insights_${date.replace(/\s+/g, '_')}.pdf`;
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
     // Return PDF file
     const filename = `${briefName.replace(/\s+/g, '_')}_insights_${date.replace(/\s+/g, '_')}.pdf`;
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,

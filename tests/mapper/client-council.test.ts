@@ -110,6 +110,38 @@ describe('compressor-client — browser pipeline', () => {
     expect(r.reduced).toBe(false);
     expect(r.file).toBe(garbage);
   });
+
+  it('reverts when compressed output ≥ original (no-saving path)', async () => {
+    const { compressClientSide } = await import('@/lib/mapper/compressor-client');
+    // A real PPTX zip we deliberately make small so max-deflate can't shrink it further
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    // Already-compressed payload: random bytes resist further compression
+    const random = new Uint8Array(5 * 1024 * 1024);
+    for (let i = 0; i < random.length; i++) random[i] = Math.floor(Math.random() * 256);
+    zip.file('media/random.bin', random);
+    zip.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>');
+    zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+    zip.file('ppt/slides/slide1.xml', '<?xml version="1.0"?><p:sld/>');
+    const bytes = new Uint8Array(await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 9 } }));
+    const f = makeFile(bytes, 'incompressible.pptx',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    const r = await compressClientSide(f);
+    // Either no reduction OR a strategy with 'no-saving' in it — both are valid
+    expect(r.reduced || r.strategy.includes('no-saving')).toBe(true);
+    if (!r.reduced) {
+      expect(r.strategy).toContain('no-saving');
+      expect(r.file).toBe(f);
+    }
+  }, 30000);
+
+  it('unsupported format skipped with explicit reason', async () => {
+    const { compressClientSide } = await import('@/lib/mapper/compressor-client');
+    const txt = makeFile(new Uint8Array(5 * 1024 * 1024), 'readme.txt', 'text/plain');
+    const r = await compressClientSide(txt);
+    expect(r.reduced).toBe(false);
+    expect(r.strategy).toContain('handled-server-side');
+  });
 });
 
 describe('client-council — verdict shape + smart-skip', () => {

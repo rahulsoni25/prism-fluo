@@ -92,7 +92,7 @@ async function markFailed(id: string, reason: string) {
   } catch { /* swallow */ }
 }
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const t0 = Date.now();
   const { id } = await ctx.params;
   const session = await getSession();
