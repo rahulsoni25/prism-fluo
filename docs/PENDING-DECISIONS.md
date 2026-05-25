@@ -5,6 +5,23 @@ read this at the start of any agent/insight-related work.
 
 ---
 
+## 🚧 Live Google Trends panel (HIDDEN on dashboard)
+
+**Status:** Hidden behind `false /* SHOW_TRENDS_PANEL */` in app/dashboard/page.js.
+**Reason:** Data wasn't grounded — surfaced "indicative trend · live data syncing"
+  language without a verified Trends API. Pulled until we wire a real source.
+**To re-enable:** Flip the constant to `true`. Component code in
+  `components/TrendPanel.jsx` is untouched and still works.
+**To do before re-enabling:**
+  • Wire a real Trends data source (options: paid Google Trends API,
+    Glimpse, in-house cache via scheduled puppeteer, or third-party
+    enrichment SaaS)
+  • Make the "Indicative trend" copy match the actual source's freshness
+  • Add a verified-source badge so users know where the numbers come from
+  • Re-add tests for the rendered panel state
+
+---
+
 ## 🏷 PRISM Insight Classifier (9-bucket spec)
 
 **Status:** Spec written, feasibility assessed, NOT implemented.

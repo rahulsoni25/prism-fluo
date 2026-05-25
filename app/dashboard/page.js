@@ -154,16 +154,22 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* ── Live Google Trends Panel ─────────────────────────── */}
-          <TrendPanel
-            defaultKeyword={
-              // Pre-fill with first ready brief's brand, or leave blank for manual search
-              briefs.find(b => b.status === 'ready')?.brand ?? ''
-            }
-            brandContext={
-              briefs.find(b => b.status === 'ready')?.brand ?? ''
-            }
-          />
+          {/* ── Live Google Trends Panel ──────────────────────────
+              HIDDEN — surfaced indicative data that wasn't grounded in
+              a verified Trends API; pulling until we wire a real source
+              (paid Trends API or in-house cache). The component is still
+              imported + functional; flip SHOW_TRENDS_PANEL to true to
+              re-enable when ready. No code deleted, no state lost. */}
+          {false /* SHOW_TRENDS_PANEL */ && (
+            <TrendPanel
+              defaultKeyword={
+                briefs.find(b => b.status === 'ready')?.brand ?? ''
+              }
+              brandContext={
+                briefs.find(b => b.status === 'ready')?.brand ?? ''
+              }
+            />
+          )}
 
           {/* Search bar — case-insensitive across brand/category/objective/background/market */}
           <div style={{ position: 'relative', maxWidth: 480, marginBottom: 12 }}>
