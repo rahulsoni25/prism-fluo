@@ -3,7 +3,7 @@
  * Shared types for the three-agent insight verification council.
  */
 
-export type AgentName = 'proofreader' | 'stat-checker' | 'fact-analyzer' | 'math-integrity' | 'coverage';
+export type AgentName = 'proofreader' | 'stat-checker' | 'fact-analyzer' | 'math-integrity' | 'coverage' | 'brand-isolation';
 export type Severity  = 'blocker' | 'major' | 'minor';
 export type Field     = 'title' | 'obs' | 'stat' | 'rec';
 export type Verdict   = 'confirmed' | 'disputed' | 'clean';
@@ -17,6 +17,17 @@ export interface Finding {
   /** Hard evidence — a number/quote/source row reference. When present,
    *  the orchestrator weights this finding heavily even on disagreement. */
   evidence?: string;
+  /** Optional rule identifier — used by BrandIsolation (and any future
+   *  agent with multiple distinct rules) so consumers can branch on the
+   *  specific failure mode without parsing the issue text. */
+  rule?: string;
+  /** Optional target card index — used by analysis-level agents
+   *  (BrandIsolation, Coverage) to route a finding to a specific card
+   *  rather than always attaching to card 0. */
+  card_index?: number;
+  /** Optional mapper context — softened-by-mapper findings include this
+   *  note so the dashboard can explain WHY the severity was lowered. */
+  mapperContext?: string;
 }
 
 /** A finding after the cross-confirmation pass — keeps the originator and

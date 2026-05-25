@@ -55,6 +55,21 @@ export interface PendingTask {
 export const PENDING_TASKS: PendingTask[] = [
   // ── HIGH ────────────────────────────────────────────────────────────
   {
+    id:            'brand-isolation-guard',
+    title:         'Brand-isolation guard — foreign-brand / placeholder leaks',
+    emoji:         '🛡',
+    category:      'hidden-feature',
+    criticality:   'high',
+    dateDiscussed: '2026-05-25',
+    context:       'User raised credibility risk: nuggets across briefs could leak foreign brand names ("Ghadi" appearing in a "Sargam" deck) — would kill the product if a client spotted it. Audit found Gemini few-shot examples in prompts contained branded text (Ghadi Detergent Female 2) that Gemini sometimes copied verbatim. Shipped Option C (defense in depth): patched prompts to BrandX placeholders + added BrandIsolation as a 6th verification agent.',
+    status:        'resolved',
+    resolvedDate:  '2026-05-25',
+    resolution:    '(1) Sanitized lib/ai/gemini.ts prompt examples — replaced "Ghadi Detergent Female 2" with "BrandX" placeholders + added explicit BRAND ISOLATION instruction block telling Gemini foreign brands from examples are teaching shapes only, never to copy. (2) Built lib/ai/verify/brand-isolation.ts — 6th verification agent with 5 rules: foreign-brand-leak (blocker, curated list of 18 brands), placeholder-leak (blocker, catches unsubstituted BrandX/${brand}/{BRAND} etc), brand-never-mentioned (major), brand-mention-thin (minor, <25% of cards cite brand), plus happy-path zero-findings. (3) Wired into orchestrator as analysis-level pass that fires FIRST (before math) so reputation-critical blockers surface immediately. (4) Crucially: brand-isolation findings are NEVER softened by the Mapper thin-source downgrade — they stay full-severity regardless of source quality. (5) 12 new tests across all rules. (6) Verification council descriptor updated from 5 to 6 agents.',
+    effort:        'Estimated 9 hrs (3 patches + 6 agent build), actual ~4 hrs',
+    whereInCode:   'lib/ai/gemini.ts (prompt sanitization) · lib/ai/verify/brand-isolation.ts (new agent) · lib/ai/verify/orchestrator.ts (analysis-level wiring) · lib/ai/verify/types.ts (AgentName enum) · lib/agents/councils/verification.ts (registry)',
+    doc:           'docs/HIDDEN-FEATURES.md',
+  },
+  {
     id:            'brief-merge-tier2',
     title:         'Multi-upload per brief — append + merge with supersede',
     emoji:         '📚',

@@ -24,8 +24,9 @@ import { checkCardStats, statCheckerConfirms } from './stat-checker';
 import { analyzeCardFacts, factAnalyzerConfirms } from './fact-analyzer';
 import { checkCardMath, checkAnalysisMath, mathIntegrityConfirms } from './math-integrity';
 import { checkCoverage, coverageConfirms } from './coverage';
+import { checkBrandIsolation } from './brand-isolation';
 
-const ALL_AGENTS: AgentName[] = ['proofreader', 'stat-checker', 'fact-analyzer', 'math-integrity', 'coverage'];
+const ALL_AGENTS: AgentName[] = ['proofreader', 'stat-checker', 'fact-analyzer', 'math-integrity', 'coverage', 'brand-isolation'];
 
 /** A finding has hard evidence if it includes a specific quoted phrase /
  *  number / source-row reference. Hard-evidence findings are confirmed
@@ -174,6 +175,41 @@ export async function verifyAnalysis(
     }
   }
 
+  // ── ANALYSIS-LEVEL brand-isolation pass ─────────────────────────
+  // Runs FIRST among analysis-level checks because its blocker findings
+  // (foreign brand leak / placeholder leak) are the most reputation-
+  // damaging if shipped. Doesn't depend on briefForMath being present —
+  // even brand-only briefs benefit.
+  {
+    const briefForBrand = (cards.length > 0 && (cards[0] as any).brief)
+      ? (cards[0] as any).brief
+      : (brand ? { brand } : null);
+    const brandReport = checkBrandIsolation({
+      cards,
+      briefBrand:       briefForBrand?.brand ?? brand,
+      briefCompetitors: briefForBrand?.competitors ?? null,
+    });
+    for (const f of brandReport.findings) {
+      const targetIdx = (f as any).card_index ?? 0;
+      const target = out[targetIdx] ?? out[0];
+      if (target) {
+        target.findings.push({
+          ...f,
+          confirmedBy: ['brand-isolation'],
+          disputedBy: [],
+          verdict: 'confirmed',
+        } as any);
+        if (f.severity === 'blocker') {
+          target.worstSeverity = 'blocker';
+          target.verified = false;
+        } else if (f.severity === 'major' && target.worstSeverity !== 'blocker') {
+          target.worstSeverity = 'major';
+          target.verified = false;
+        }
+      }
+    }
+  }
+
   // ── ANALYSIS-LEVEL math pass ────────────────────────────────────
   // Re-derives the market pyramid from brand + audience and flags any
   // card whose TAM-style claim diverges > 2× from the canonical funnel.
@@ -241,6 +277,10 @@ export async function verifyAnalysis(
   let mapperDowngrades = 0;
   if (mapperWeakSource) {
     const DOWNGRADE = { blocker: 'major', major: 'minor', minor: 'minor' } as const;
+    // BrandIsolation findings are NEVER softened — a foreign brand name leaking
+    // is reputation-critical regardless of how thin the source data was. Math
+    // and stat-checker findings also stay full-severity. Only fact-analyzer
+    // and coverage soften because their findings depend on source richness.
     const SOFTENABLE_AGENTS = new Set(['fact-analyzer', 'coverage', 'fact_analyzer']);
     for (const card of out) {
       for (const f of card.findings as any[]) {

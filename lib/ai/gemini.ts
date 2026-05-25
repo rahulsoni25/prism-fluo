@@ -505,9 +505,12 @@ Every block must read like a strategist explaining the audience to a creative di
 
 THE OPENING MOVE — never begin an Observation with:
 ✗ "The data shows that…"
-✗ "'Ghadi Detergent Female 2' demonstrates / engages / shows…"
-✗ "The 'Ghadi Detergent Female 2' audience…"
+✗ "'{BRAND_AUDIENCE}' demonstrates / engages / shows…"   (replace with the actual brand from the brief; never copy this placeholder verbatim)
+✗ "The '{BRAND_AUDIENCE}' audience…"
 ✗ "Interestingly," / "Notably," / "It is important to note,"
+
+BRAND ISOLATION (CRITICAL):
+The ONLY brand name that may appear in any output is the EXACT brand provided in the brief (brief.brand) — or competitor names if the brief explicitly lists them. Never use brand names from these examples (Ghadi, Sargam, Ariel, Surf Excel, etc.) — they are TEACHING SHAPES, not content to copy. If you write "Ghadi" or any other foreign brand into a recommendation/observation for a different brief, the BrandIsolation verification agent will flag it as a blocker.
 
 Instead open with the HUMAN or the MOMENT. The data point is the punchline, not the lead.
 
@@ -571,12 +574,12 @@ DATA POINT: 46% Female 2 shop online vs 33% Female (+13 pts gap on online shoppi
 
 ✗ DECK-SPEAK:
 TITLE: "Female 2 Lead in Online Shopping by 13 Points"
-OBS: "'Ghadi Detergent Female 2' demonstrates significantly higher online shopping behaviour, with 46.3% reporting online shopping compared to 33.3% for Female. This indicates a strong digital commerce inclination requiring focused e-commerce strategy."
+OBS: "'BrandX Female 2' demonstrates significantly higher online shopping behaviour, with 46.3% reporting online shopping compared to 33.3% for Female. This indicates a strong digital commerce inclination requiring focused e-commerce strategy."
 REC: CREATIVE: Develop compelling e-commerce content. BRAND: Establish digital accessibility. MEDIA: Drive traffic to e-commerce platforms.
 
 ✓ STRATEGIST (the bar):
 TITLE: "She's Already on Blinkit by the Time Your Cricket Ad Loads"
-OBS: 46% of Ghadi Female 2 buys detergent online — and the choice happens in the four seconds it takes Blinkit to suggest a re-order. By the time your demo finishes loading on Hotstar, she's already swiped past it.
+OBS: 46% of BrandX Female 2 buys the category online — and the choice happens in the four seconds it takes Blinkit to suggest a re-order. By the time your demo finishes loading on Hotstar, she's already swiped past it.   // NOTE: replace BrandX with brief.brand verbatim
 REC: CREATIVE: Kill the 30-sec demo film. Make a 9-second product card sized for the Blinkit grid.
 BRAND: Drop "heritage of trust". Lead with "always in the basket, never the brief".
 MEDIA: Cut FMCG TV by half. Redirect to Blinkit / BigBasket / Amazon Pantry category sponsorships in metros.
@@ -603,7 +606,7 @@ DATA POINT: Female 2 uses 5+ social platforms (25.9%) vs Female (17.X%)
 
 ✗ DECK-SPEAK:
 TITLE: "Female 2 Juggle More Platforms, Female Keep It Simple"
-OBS: "The 'Ghadi Detergent Female 2' audience engages with significantly more social media services, with 25.9% using 5 or more platforms compared to just 17.X% for Female."
+OBS: "The 'BrandX Female 2' audience engages with significantly more social media services, with 25.9% using 5 or more platforms compared to just 17.X% for Female."
 REC: CREATIVE: Design adaptable content formats that thrive across diverse social ecosystems.
 
 ✓ STRATEGIST:
@@ -652,7 +655,7 @@ Sentence 1 (the evidence): name the exact audience using the BRIEF's brand + dem
 Sentence 2 (the so-what): name the strategic implication for the brand — the gap, tension, or opportunity that the Recommendation will address. End on "therefore" / "which means" / "the brand should" framing.
 Never write "this audience" — always name the brand + demographics from the brief.
 Avoid throat-clearing: do not start with "interestingly", "notably", "it is worth noting", "the data shows that". Lead with the noun.
-✅ "Ghadi Detergent Female 2 are 1.7× more likely than Female to block intrusive ads. The brand's launch creative cannot rely on pre-roll interruption — it must earn the watch."
+✅ "BrandX Female 2 are 1.7× more likely than Female to block intrusive ads. The brand's launch creative cannot rely on pre-roll interruption — it must earn the watch."   // BrandX is a placeholder — replace with the actual brief.brand value, never write BrandX verbatim
 ❌ Three sentences. Multiple stats. Throat-clearing openers.
 
 STAT — one line. The sentence a strategist would screenshot.
