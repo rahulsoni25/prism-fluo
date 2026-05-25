@@ -104,8 +104,10 @@ export default function Navbar() {
         {/* Dashboard-only contextual links */}
         {pathname === '/dashboard' && (
           <>
-            <span className="nav-link">Templates</span>
-            <span className="nav-link">Team</span>
+            {/* HIDDEN 2026-05-25: Templates + Team placeholders removed.
+                Inert <span>s with no href / no destination — looked like real
+                nav items but did nothing on click. Re-add only when the
+                actual pages exist. See docs/HIDDEN-FEATURES.md item #5. */}
             {/* Data Mapper: uses isPageOn (not isInNav) — it's published
                 but intentionally NOT a persistent nav item */}
             {isPageOn('/upload') && (
@@ -135,8 +137,11 @@ export default function Navbar() {
           </Link>
         )}
 
-        {/* Admin link — only for admin users */}
-        {me?.isAdmin && (
+        {/* Admin link — only for admin users.
+            HIDDEN 2026-05-25 from rahulsoni25@gmail.com (owner account):
+            owner wanted a clean client-style nav. Admin pages remain fully
+            accessible via direct URL (/admin/pages). See docs/HIDDEN-FEATURES.md item #6. */}
+        {me?.isAdmin && me?.email !== 'rahulsoni25@gmail.com' && (
           <Link
             href="/admin/pages"
             className={`nav-link ${pathname.startsWith('/admin') ? 'active' : ''}`}

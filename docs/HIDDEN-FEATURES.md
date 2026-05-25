@@ -72,6 +72,33 @@ is a one-line change in each case.
 
 ---
 
+## 5. 🧭 Templates + Team nav placeholders
+
+| | |
+|---|---|
+| **Location** | `components/Navbar.js` (was lines 107-108 inside the `pathname === '/dashboard'` block) |
+| **Hidden via** | Render block removed + multi-line HIDDEN comment in place |
+| **Why hidden** | They were inert `<span>` placeholders — no `href`, no destination page. Looked like real nav items but did nothing on click. Misleading UX. |
+| **Hidden on** | 2026-05-25 |
+| **Re-enable** | Build the actual pages first (Templates = saved brief templates, Team = user management). Then add real `<Link>` entries — don't bring back the dead spans. |
+| **Surface when user asks about** | navbar · nav items · "Templates" page · "Team" page · saved templates · team management · user management · placeholder links |
+
+---
+
+## 6. ⚙ Admin link (per-user hide for owner account)
+
+| | |
+|---|---|
+| **Location** | `components/Navbar.js` (Admin link block) |
+| **Hidden via** | `me?.isAdmin && me?.email !== 'rahulsoni25@gmail.com'` |
+| **Why hidden** | Owner (rahulsoni25@gmail.com) wanted a clean client-style nav when demoing. Admin pages stay fully accessible via direct URL (`/admin/pages`, `/admin/users`, etc.) — only the navbar link is suppressed. |
+| **Hidden on** | 2026-05-25 |
+| **Re-enable: flip** | Remove the email check, restore `me?.isAdmin &&` only |
+| **To do before re-enabling** | If hiding for additional users, consider promoting this to a real `client_view_mode` boolean on the user record instead of hard-coded emails — see Q1 Option C in the original discussion |
+| **Surface when user asks about** | admin nav · admin link · ⚙ Admin · navbar admin · "show admin to user" · `/admin/*` access · client-style view · demo mode |
+
+---
+
 ## Pattern used everywhere (deliberate)
 
 All four hidden items use the same architectural approach:
