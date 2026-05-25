@@ -15,7 +15,8 @@
     "preflight": "node scripts/preflight.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "rating:check": "node scripts/check-rating.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

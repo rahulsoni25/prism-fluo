@@ -27,7 +27,6 @@ describe('proofreader — clean baseline', () => {
 describe('proofreader — title checks', () => {
   it('flags truncated title (trailing "Not Just")', async () => {
     const f = await proofreadCard({ ...cleanCard, title: 'White School Uniforms Are Not Just' }, 'Sargam');
-    expect(f.some(x => x.kind === undefined ? false : true)).toBeDefined();
     const blocker = f.find(x => x.severity === 'blocker');
     expect(blocker?.issue).toMatch(/truncated/i);
   });

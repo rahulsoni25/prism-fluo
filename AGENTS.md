@@ -32,6 +32,32 @@ scratch when the user asks for similar functionality, OR they're
 forgotten and never re-enabled even when they should be.
 <!-- END:hidden-features-reminder -->
 
+<!-- BEGIN:rating-consistency-rule -->
+# Rating consistency rule
+
+Before declaring a session "done" or claiming the composite rating has
+been preserved, you MUST run:
+
+    npm run rating:check
+
+The script verifies the baselines in `docs/RATING-BASELINE.md`:
+  • Test count + pass rate
+  • Tsc error count (must not exceed the documented max)
+  • Council count
+  • Verification agent count
+
+Exit code 0 = consistent. Exit code 1 = regression — fix before
+declaring done.
+
+If the work intentionally lowers a baseline (rare — only for explicit
+user-approved trade-offs), update `docs/RATING-BASELINE.md` in the
+same commit with a justification in the commit message.
+
+Never claim "ratings consistent" or "rating preserved" without
+running the check. Don't rely on memory — the script reads the actual
+codebase.
+<!-- END:rating-consistency-rule -->
+
 <!-- BEGIN:proactive-solve-rule -->
 # Proactive-solve rule (applies to Claude AND every council agent)
 
