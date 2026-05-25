@@ -30,6 +30,24 @@ import type { CardInput, Finding, AgentName } from './types';
 
 const NAME: AgentName = 'brand-isolation';
 
+/** Cross-agent confirmation hook. Brand-isolation is analysis-level — it
+ *  can't meaningfully confirm math or stat findings. But it WILL confirm
+ *  any other agent's finding about brand naming / brand consistency /
+ *  competitor leakage since that's its domain. */
+export function brandIsolationConfirms(finding: Finding): boolean {
+  // Proofreader has its own brand-stem check ("Sargam" capitalisation, etc.)
+  // We confirm those because the spirit overlaps with our brand-isolation goal.
+  if (finding.agent === 'proofreader' && /brand\s*(stem|name|spelling)|spelt|capitalis/i.test(finding.issue)) {
+    return true;
+  }
+  // Fact-analyzer findings about a "brand mention" without context overlap with
+  // our brand-mention-thin rule. Confirm those.
+  if (finding.agent === 'fact-analyzer' && /\bbrand mention\b|\bbrand reference\b/i.test(finding.issue)) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Curated list of common Indian + global brands that have appeared in
  * worked examples or could appear in training data. Used for "foreign
@@ -129,7 +147,13 @@ export function checkBrandIsolation(input: BrandIsolationInput): BrandIsolationR
     for (const f of fields) {
       const textLower = f.text.toLowerCase();
       for (const foreign of FOREIGN_BRANDS) {
-        if (!textLower.includes(foreign)) continue;
+        // Use word-boundary regex (NOT includes()) so short brand tokens
+        // like "rin" don't match inside common English words like
+        // "exploRINg" / "duRINg" / "stiRRING". Multi-word brands
+        // ("surf excel") allow flexible whitespace between words.
+        const escaped = foreign.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+        const re = new RegExp(`\\b${escaped}\\b`, 'i');
+        if (!re.test(f.text)) continue;
         if (isAllowed(foreign)) continue;  // brief's own brand or listed competitor
         foreignLeaks.add(foreign);
         findings.push({

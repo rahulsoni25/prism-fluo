@@ -24,7 +24,7 @@ import { checkCardStats, statCheckerConfirms } from './stat-checker';
 import { analyzeCardFacts, factAnalyzerConfirms } from './fact-analyzer';
 import { checkCardMath, checkAnalysisMath, mathIntegrityConfirms } from './math-integrity';
 import { checkCoverage, coverageConfirms } from './coverage';
-import { checkBrandIsolation } from './brand-isolation';
+import { checkBrandIsolation, brandIsolationConfirms } from './brand-isolation';
 import { checkInsightQuality, insightQualityConfirms } from './insight-quality';
 
 const ALL_AGENTS: AgentName[] = ['proofreader', 'stat-checker', 'fact-analyzer', 'math-integrity', 'coverage', 'brand-isolation', 'insight-quality'];
@@ -54,6 +54,7 @@ function consult(
     if (a === 'fact-analyzer')   agrees = factAnalyzerConfirms(finding, card, brand);
     if (a === 'math-integrity')  agrees = mathIntegrityConfirms(finding, card);
     if (a === 'coverage')        agrees = coverageConfirms(finding);
+    if (a === 'brand-isolation') agrees = brandIsolationConfirms(finding);
     if (a === 'insight-quality') agrees = insightQualityConfirms(finding, card);
     if (agrees) confirmedBy.push(a);
     else        disputedBy.push(a);
@@ -82,14 +83,36 @@ export async function verifyCard(
   // Step 1 — parallel scan (5 per-card agents: proofreader + stat-checker
   // + fact-analyzer + math-integrity + insight-quality)
   // brand-isolation + coverage are analysis-level, not per-card.
+  // Resilience: each agent wrapped so one crashing doesn't fail the
+  // whole verification. Missing findings from a crashed agent are
+  // logged but the rest of the council still runs.
+  const safe = async <T>(name: string, p: Promise<T> | T): Promise<T | Finding[]> => {
+    try { return await Promise.resolve(p); }
+    catch (err: any) {
+      // Surface the crash as a "minor" finding so it appears in the report
+      // and can be debugged — better than silent skip.
+      return [{
+        agent: 'proofreader' as AgentName,  // attribute crash to the verification system
+        field: 'obs' as const,
+        severity: 'minor' as const,
+        issue: `verification agent "${name}" crashed: ${err?.message ?? String(err)}`,
+      }] as any;
+    }
+  };
   const [proofFindings, statFindings, factFindings, mathFindings, qualityFindings] = await Promise.all([
-    proofreadCard(card, brand, { llm: opts.llm }),
-    Promise.resolve(checkCardStats(card)),
-    analyzeCardFacts(card, brand, { llm: opts.llm }),
-    Promise.resolve(checkCardMath(card)),
-    Promise.resolve(checkInsightQuality(card)),
+    safe('proofreader',     proofreadCard(card, brand, { llm: opts.llm })),
+    safe('stat-checker',    Promise.resolve(checkCardStats(card))),
+    safe('fact-analyzer',   analyzeCardFacts(card, brand, { llm: opts.llm })),
+    safe('math-integrity',  Promise.resolve(checkCardMath(card))),
+    safe('insight-quality', Promise.resolve(checkInsightQuality(card))),
   ]);
-  const all = [...proofFindings, ...statFindings, ...factFindings, ...mathFindings, ...qualityFindings];
+  const all = [
+    ...(proofFindings   as Finding[]),
+    ...(statFindings    as Finding[]),
+    ...(factFindings    as Finding[]),
+    ...(mathFindings    as Finding[]),
+    ...(qualityFindings as Finding[]),
+  ];
 
   // Step 2 — cross-consult
   const confirmed: ConfirmedFinding[] = all.map(f => resolveVerdict(f, consult(f, card, brand)));
