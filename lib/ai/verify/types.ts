@@ -3,7 +3,7 @@
  * Shared types for the three-agent insight verification council.
  */
 
-export type AgentName = 'proofreader' | 'stat-checker' | 'fact-analyzer' | 'math-integrity' | 'coverage' | 'brand-isolation';
+export type AgentName = 'proofreader' | 'stat-checker' | 'fact-analyzer' | 'math-integrity' | 'coverage' | 'brand-isolation' | 'insight-quality';
 export type Severity  = 'blocker' | 'major' | 'minor';
 export type Field     = 'title' | 'obs' | 'stat' | 'rec';
 export type Verdict   = 'confirmed' | 'disputed' | 'clean';

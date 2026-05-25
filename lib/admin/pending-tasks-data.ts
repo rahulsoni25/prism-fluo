@@ -55,6 +55,21 @@ export interface PendingTask {
 export const PENDING_TASKS: PendingTask[] = [
   // ── HIGH ────────────────────────────────────────────────────────────
   {
+    id:            'insight-quality-agent',
+    title:         '🎯 InsightQuality agent — 7th verification council member',
+    emoji:         '🎯',
+    category:      'hidden-feature',
+    criticality:   'high',
+    dateDiscussed: '2026-05-25',
+    context:       'User raised that insights need to be CORRECT and INTERESTING with DATAPOINTS that help clients. Audit found the system was strong on correctness (StatChecker, MathIntegrity, BrandIsolation) but weak on craft/density — no agent checked datapoint presence, action-verb opener, concrete specificity in rec, dead openers, conviction inflation, or tension hinge in title. Shipped Option 2: dedicated InsightQuality agent with 7 mechanical rules + Gemini prompt tightening so the model self-polices before shipping.',
+    status:        'resolved',
+    resolvedDate:  '2026-05-25',
+    resolution:    '(1) Built lib/ai/verify/insight-quality.ts with 7 rules: no-datapoint (major), no-action-verb (major), no-concrete-noun (major), dead-opener (major), no-stat-context (minor), conviction-inflated (minor), no-tension-hinge (minor). (2) Wired as 5th per-card agent in orchestrator parallel-scan (alongside proofreader/stat-checker/fact-analyzer/math-integrity). (3) Added insightQualityConfirms() cross-confirmation hook for shared judgement on rec specificity. (4) Added INSIGHT QUALITY GATE block to Gemini prompt (lib/ai/gemini.ts) explicitly listing all 7 rules with "the agent will block your cards" framing so the model self-polices upfront. (5) Updated AgentName enum (6 → 7), Verification council descriptor (6 → 7 agents). (6) 18 new tests covering all 7 rules with positive + negative cases + happy-path strategist-quality card returning zero findings.',
+    effort:        '~4 hrs estimated, actual ~3.5 hrs',
+    whereInCode:   'lib/ai/verify/insight-quality.ts · lib/ai/verify/orchestrator.ts (per-card scan + consult hook) · lib/ai/verify/types.ts (AgentName) · lib/ai/gemini.ts (prompt tighten) · lib/agents/councils/verification.ts (descriptor)',
+    doc:           'docs/PENDING-DECISIONS.md',
+  },
+  {
     id:            'brand-isolation-guard',
     title:         'Brand-isolation guard — foreign-brand / placeholder leaks',
     emoji:         '🛡',

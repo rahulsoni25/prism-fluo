@@ -25,8 +25,9 @@ import { analyzeCardFacts, factAnalyzerConfirms } from './fact-analyzer';
 import { checkCardMath, checkAnalysisMath, mathIntegrityConfirms } from './math-integrity';
 import { checkCoverage, coverageConfirms } from './coverage';
 import { checkBrandIsolation } from './brand-isolation';
+import { checkInsightQuality, insightQualityConfirms } from './insight-quality';
 
-const ALL_AGENTS: AgentName[] = ['proofreader', 'stat-checker', 'fact-analyzer', 'math-integrity', 'coverage', 'brand-isolation'];
+const ALL_AGENTS: AgentName[] = ['proofreader', 'stat-checker', 'fact-analyzer', 'math-integrity', 'coverage', 'brand-isolation', 'insight-quality'];
 
 /** A finding has hard evidence if it includes a specific quoted phrase /
  *  number / source-row reference. Hard-evidence findings are confirmed
@@ -53,6 +54,7 @@ function consult(
     if (a === 'fact-analyzer')   agrees = factAnalyzerConfirms(finding, card, brand);
     if (a === 'math-integrity')  agrees = mathIntegrityConfirms(finding, card);
     if (a === 'coverage')        agrees = coverageConfirms(finding);
+    if (a === 'insight-quality') agrees = insightQualityConfirms(finding, card);
     if (agrees) confirmedBy.push(a);
     else        disputedBy.push(a);
   }
@@ -77,15 +79,17 @@ export async function verifyCard(
   brand: string | null,
   opts: { llm?: boolean } = {},
 ): Promise<CardVerification> {
-  // Step 1 — parallel scan (4 agents now: proofreader + stat-checker +
-  // fact-analyzer + math-integrity)
-  const [proofFindings, statFindings, factFindings, mathFindings] = await Promise.all([
+  // Step 1 — parallel scan (5 per-card agents: proofreader + stat-checker
+  // + fact-analyzer + math-integrity + insight-quality)
+  // brand-isolation + coverage are analysis-level, not per-card.
+  const [proofFindings, statFindings, factFindings, mathFindings, qualityFindings] = await Promise.all([
     proofreadCard(card, brand, { llm: opts.llm }),
     Promise.resolve(checkCardStats(card)),
     analyzeCardFacts(card, brand, { llm: opts.llm }),
     Promise.resolve(checkCardMath(card)),
+    Promise.resolve(checkInsightQuality(card)),
   ]);
-  const all = [...proofFindings, ...statFindings, ...factFindings, ...mathFindings];
+  const all = [...proofFindings, ...statFindings, ...factFindings, ...mathFindings, ...qualityFindings];
 
   // Step 2 — cross-consult
   const confirmed: ConfirmedFinding[] = all.map(f => resolveVerdict(f, consult(f, card, brand)));

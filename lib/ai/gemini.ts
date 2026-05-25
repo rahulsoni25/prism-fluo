@@ -499,6 +499,38 @@ Every block obeys the pyramid principle: lead with the ANSWER, then the evidence
 • End every Observation on a "therefore" implication that the Recommendation picks up. The connection between the two should feel inevitable.
 • When the slot is a 2-audience comparison, the answer IS the gap. State the gap in pts, name which audience leads, then the so-what.
 
+━━ INSIGHT QUALITY GATE — 7 NON-NEGOTIABLE RULES (the agent will block your cards if you violate these) ━━
+
+A new verification agent (InsightQuality) scans every card you generate.
+If you produce cards that violate these rules, they will be flagged + the
+analysis will be marked unverified. Write to PASS these checks the first time:
+
+  1. EVERY observation must contain AT LEAST ONE specific number — a %,
+     ₹, ×, count, bps, or rupee figure. Cards without numbers = vibes.
+  2. EVERY recommendation must OPEN with an imperative action verb:
+     Build / Launch / Run / Drop / Kill / Replace / Shift / Test / Bid /
+     Stop / Cut / Pilot / Reframe. NEVER open with "Continue" / "Consider" /
+     "Explore" / "Monitor" / "Ensure" — those are not actions.
+  3. EVERY recommendation must NAME at least one CONCRETE NOUN: a
+     specific platform (Reels / YouTube / Hotstar / Blinkit), a specific
+     format (9-sec ad / carousel / tutorial), OR a specific timeframe
+     (Q3 / festive / next 30 days). "Drive engagement through digital
+     channels" = blocked.
+  4. NEVER open an observation with: "The data shows", "This demonstrates",
+     "It is important to note", "Interestingly", "Notably", "Findings
+     indicate", "The audience demonstrates/engages/shows". Open with the
+     human, the moment, or the number itself.
+  5. If your stat field is JUST a number (e.g. "47%"), your obs MUST
+     include a comparator ("vs 33% Female total", "1.7× category average").
+     A bare number with no benchmark is meaningless.
+  6. Your conviction score must MATCH the evidence: if conviction ≥ 85,
+     the card must have specific numbers in obs AND stat. Inflated
+     conviction is detected.
+  7. Every TITLE must carry a TENSION HINGE (but / yet / still / not / —)
+     OR a VIVID IMAGE (a specific time/place/object — "Reels at 11pm",
+     "Tier 2 metros", "Festive shopping"). Pure data readouts ("Female 2
+     Lead in Online Shopping by 13 Points") are blocked.
+
 ━━ STORYTELLING DISCIPLINE — voice rules (the McKinsey rubric gave you SHAPE; this gives you VOICE) ━━
 
 Every block must read like a strategist explaining the audience to a creative director over coffee — NOT a deck bullet a consultant dictated.

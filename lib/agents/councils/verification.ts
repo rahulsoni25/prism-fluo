@@ -8,8 +8,8 @@ registerCouncil({
   name: 'Verification',
   emoji: '🔍',
   stage: 'verify',
-  agentNames: ['ProofReader', 'StatChecker', 'FactAnalyzer', 'MathIntegrity', 'Coverage', 'BrandIsolation'],
-  description: '6 agents check facts, math, stats, prose, coverage, AND brand-isolation (catches foreign brand leaks + placeholder leaks before they ship to clients). Reads upstream Mapper verdict to weight findings.',
+  agentNames: ['ProofReader', 'StatChecker', 'FactAnalyzer', 'MathIntegrity', 'Coverage', 'BrandIsolation', 'InsightQuality'],
+  description: '7 agents check facts, math, stats, prose, coverage, brand-isolation, AND insight quality (catches generic cards / no-datapoint observations / inactionable recs before they ship). Reads upstream Mapper verdict to weight findings.',
   link: '/admin/verification-history',
   autoRecover: { retry: true, fallback: true },
 
