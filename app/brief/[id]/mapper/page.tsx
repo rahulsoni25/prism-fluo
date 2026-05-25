@@ -59,6 +59,12 @@ export default function MapperPage({ params }: { params: Promise<{ id: string }>
   const [loading,   setLoading]   = useState(true);
   const [generating, setGenerating] = useState(false);
 
+  // Audience labels — auto-detected from GWI uploads + per-brief overrides
+  const [detectedAudiences, setDetectedAudiences] = useState<string[]>([]);
+  const [audienceLabels,    setAudienceLabels]    = useState<Record<string, string>>({});
+  const [savingLabels,      setSavingLabels]      = useState(false);
+  const [labelsSavedAt,     setLabelsSavedAt]     = useState<string | null>(null);
+
   // Load everything in parallel
   useEffect(() => {
     Promise.all([
@@ -66,8 +72,9 @@ export default function MapperPage({ params }: { params: Promise<{ id: string }>
       fetch(`/api/briefs/${briefId}/combined-rows`).then(r => r.ok ? r.json() : null),
       fetch(`/api/briefs/${briefId}/data-completeness`).then(r => r.ok ? r.json() : null),
       fetch(`/api/briefs/${briefId}/focus-questions`).then(r => r.ok ? r.json() : null),
+      fetch(`/api/briefs/${briefId}/audience-labels`).then(r => r.ok ? r.json() : null),
     ])
-      .then(([b, combined, comp, focus]) => {
+      .then(([b, combined, comp, focus, labels]) => {
         setBrief(b);
         setUploads((combined?.activeUploads ?? []) as UploadInfo[]);
         setCompleteness(comp);
@@ -75,9 +82,29 @@ export default function MapperPage({ params }: { params: Promise<{ id: string }>
           setFocusText(focus.raw || '');
           setFocusQuestions(focus.questions || []);
         }
+        if (labels) {
+          setDetectedAudiences(labels.detected || []);
+          setAudienceLabels(labels.labels || {});
+        }
       })
       .finally(() => setLoading(false));
   }, [briefId]);
+
+  async function handleSaveLabels() {
+    setSavingLabels(true);
+    try {
+      const res = await fetch(`/api/briefs/${briefId}/audience-labels`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ labels: audienceLabels }),
+      });
+      if (res.ok) {
+        setLabelsSavedAt(new Date().toLocaleTimeString());
+      }
+    } finally {
+      setSavingLabels(false);
+    }
+  }
 
   async function handleValidate() {
     if (!focusText.trim()) { setFocusQuestions([]); return; }
@@ -184,6 +211,56 @@ export default function MapperPage({ params }: { params: Promise<{ id: string }>
             </div>
           )}
         </div>
+
+        {/* ── Audience Labels (auto-detected from GWI uploads) ── */}
+        {detectedAudiences.length > 0 && (
+          <div style={{ background: '#fff', borderRadius: 14, padding: '18px 22px', boxShadow: '0 1px 3px rgba(0,0,0,.04)', marginBottom: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                🏷 Audience Labels
+              </div>
+              {labelsSavedAt && <span style={{ fontSize: 10.5, color: '#059669', fontWeight: 600 }}>✓ Saved at {labelsSavedAt}</span>}
+            </div>
+            <div style={{ fontSize: 11.5, color: '#64748B', marginBottom: 12, lineHeight: 1.5 }}>
+              GWI exports use generic labels like &quot;Female 2&quot;. Rename them with semantic labels (brand · age · geo) — applied everywhere across insights + cards + PPTX. No regenerate needed.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {detectedAudiences.map(orig => (
+                <div key={orig} style={{ display: 'grid', gridTemplateColumns: '160px auto 1fr', gap: 10, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: '#475569', fontWeight: 700, fontFamily: "'SF Mono', Menlo, monospace" }}>
+                    {orig}
+                  </span>
+                  <span style={{ color: '#94A3B8', fontSize: 14 }}>→</span>
+                  <input
+                    type="text"
+                    value={audienceLabels[orig] || ''}
+                    onChange={e => setAudienceLabels(prev => ({ ...prev, [orig]: e.target.value }))}
+                    placeholder={`e.g. ${brief?.brand || 'Brand'} | Females 25-34 | Suburban/Rural`}
+                    maxLength={80}
+                    style={{
+                      padding: '7px 10px', fontSize: 12.5,
+                      border: '1px solid #CBD5E1', borderRadius: 8,
+                      fontFamily: 'inherit', outline: 'none',
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={handleSaveLabels}
+              disabled={savingLabels}
+              style={{
+                marginTop: 12,
+                padding: '8px 16px', borderRadius: 8, border: 'none',
+                background: savingLabels ? '#94A3B8' : '#6366F1',
+                color: '#fff', fontSize: 12.5, fontWeight: 700,
+                cursor: savingLabels ? 'wait' : 'pointer',
+                fontFamily: 'inherit',
+              }}>
+              {savingLabels ? '⏳ Saving…' : '💾 Save labels'}
+            </button>
+          </div>
+        )}
 
         {/* ── Two-column Add Details + Data Completeness ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 18, marginBottom: 18 }}>

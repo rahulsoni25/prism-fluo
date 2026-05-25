@@ -18,6 +18,7 @@ import VerifiedBadge from '@/components/insights/VerifiedBadge';
 import StaleAnalysisBanner from '@/components/insights/StaleAnalysisBanner';
 import GenreNuggetCard from '@/components/insights/GenreNuggetCard';
 import KeywordIntentCard from '@/components/insights/KeywordIntentCard';
+import { relabelAnalysisCharts } from '@/lib/insights/relabel';
 import { fmtTs, timeAgo, parseRecommendation } from '@/lib/insights/helpers';
 import {
   BUCKET_META, BUCKET_TABS,
@@ -1405,7 +1406,39 @@ function AnalysisDetail({ id }) {
         }
         return r.json();
       })
-      .then(d => {
+      .then(async d => {
+        // Apply per-brief audience-label substitution before render.
+        // The Data Mapper page lets users rename GWI generic labels
+        // ("Female 2") to semantic ones ("Sargam | Females 25-34 | Suburban").
+        // Substitution happens here so all downstream renders use the
+        // display labels without burning Gemini tokens to regenerate.
+        try {
+          const briefId = d?.brief?.id;
+          if (briefId) {
+            const lblRes = await fetch(`/api/briefs/${briefId}/audience-labels`).catch(() => null);
+            if (lblRes && lblRes.ok) {
+              const { labels } = await lblRes.json();
+              if (labels && Object.keys(labels).length > 0 && d.results_json) {
+                d.results_json = relabelAnalysisCharts(d.results_json, labels);
+                // Also relabel headline + audienceSnapshot in overview
+                if (d.results_json.overview) {
+                  if (d.results_json.overview.headline) {
+                    d.results_json.overview.headline = Object.entries(labels).reduce(
+                      (acc, [k, v]) => acc.split(k).join(String(v)),
+                      d.results_json.overview.headline,
+                    );
+                  }
+                  if (d.results_json.overview.audienceSnapshot) {
+                    d.results_json.overview.audienceSnapshot = Object.entries(labels).reduce(
+                      (acc, [k, v]) => acc.split(k).join(String(v)),
+                      d.results_json.overview.audienceSnapshot,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        } catch { /* relabel is best-effort; never block rendering */ }
         setAnalysis(d);
         setLoading(false);
         // Boot into the primary bucket for this tool
