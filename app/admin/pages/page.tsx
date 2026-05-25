@@ -133,6 +133,7 @@ export default function AdminPagesPanel() {
           <Link href="/admin/mapper-history" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Mapper</Link>
           <Link href="/admin/export-history" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Exports</Link>
           <Link href="/admin/agents" style={{ marginLeft: 10, color: '#A5F3FC', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>★ Agents</Link>
+          <Link href="/admin/pending-tasks" style={{ marginLeft: 10, color: '#FDE68A', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>📋 Tasks</Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700 }}>
