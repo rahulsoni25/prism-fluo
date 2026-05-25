@@ -55,6 +55,37 @@ export interface PendingTask {
 export const PENDING_TASKS: PendingTask[] = [
   // ── HIGH ────────────────────────────────────────────────────────────
   {
+    id:            'brief-merge-tier2',
+    title:         'Multi-upload per brief — append + merge with supersede',
+    emoji:         '📚',
+    category:      'hidden-feature',
+    criticality:   'high',
+    dateDiscussed: '2026-05-25',
+    context:       'User asked: when same brief receives a second upload days later, should it overwrite, append, or split? Audit showed current behavior was silently splitting (each upload got its own analysis, never merged). Confirmed correct behavior is Append + merge with source-type-aware supersede.',
+    status:        'resolved',
+    resolvedDate:  '2026-05-25',
+    resolution:    'Shipped Tier 2: (1) New uploads.superseded_by + uploads.source_type columns with auto-migration · (2) lib/uploads/source-type.ts classifier for the 9 canonical source types · (3) handleUpload now infers source type from tool_data, marks same-source prior uploads as superseded, returns supersededUploads + briefActiveUploadCount in the response · (4) New GET /api/briefs/[id]/combined-rows endpoint pools rows from all non-superseded uploads with provenance tagging · (5) Upload page logs supersede events ("🔁 Replaced previous Keyword data...") + detects multi-source briefs and auto-fetches combined rows before analysis · (6) Falls back to single-upload data gracefully if combined fetch fails · 9 new tests covering classifier + supersede rule.',
+    effort:        '~5 hrs estimated, actual ~4 hrs',
+    whereInCode:   'lib/uploads/source-type.ts · lib/uploads/handler.ts (supersede logic) · app/api/briefs/[id]/combined-rows/route.ts · app/upload/page.tsx (multi-source orchestration)',
+    doc:           'docs/PENDING-DECISIONS.md',
+  },
+  {
+    id:            'brief-merge-tier3',
+    title:         'Row-level dedup across same-source uploads (Tier 3 follow-up)',
+    emoji:         '🔬',
+    category:      'deferred-improvement',
+    criticality:   'low',
+    dateDiscussed: '2026-05-25',
+    context:       'Tier 2 shipped today (same-source uploads supersede, different sources stack). Tier 3 would add per-row hashing so two same-source uploads with overlapping rows produce a union instead of full replacement. Defer until anyone hits a real case — typically users either fully replace (Tier 2 handles) or stack different sources (Tier 2 handles).',
+    status:        'parked',
+    effort:        '~3-4 hrs additional on top of Tier 2',
+    whereInCode:   'lib/uploads/source-type.ts · app/api/briefs/[id]/combined-rows/route.ts',
+    blockers:      [
+      'Confirm with a real-world case that two same-source files with overlapping rows happens in practice',
+      'Decide tie-breaker for conflicting rows (latest wins / most-recent file wins / explicit user choice)',
+    ],
+  },
+  {
     id:            'oauth-login-google',
     title:         'Google OAuth login — LIVE',
     emoji:         '🔐',

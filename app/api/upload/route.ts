@@ -93,6 +93,10 @@ export const POST = async (req: NextRequest) => {
         deduplicated:       summary.deduplicated       ?? false,
         existingAnalysisId: summary.existingAnalysisId ?? null,
         mapper:             summary.mapper             ?? null,
+        sourceType:         summary.sourceType         ?? null,
+        sourceTypeLabel:    summary.sourceTypeLabel    ?? null,
+        supersededUploads:  summary.supersededUploads  ?? [],
+        briefActiveUploadCount: summary.briefActiveUploadCount ?? 1,
       });
     }
 
@@ -170,6 +174,10 @@ export const POST = async (req: NextRequest) => {
         deduplicated:       summary.deduplicated       ?? false,
         existingAnalysisId: summary.existingAnalysisId ?? null,
         mapper:             summary.mapper             ?? null,
+        sourceType:         summary.sourceType         ?? null,
+        sourceTypeLabel:    summary.sourceTypeLabel    ?? null,
+        supersededUploads:  summary.supersededUploads  ?? [],
+        briefActiveUploadCount: summary.briefActiveUploadCount ?? 1,
       });
     }
 
@@ -228,6 +236,10 @@ export const POST = async (req: NextRequest) => {
       rawText:      summary.rawText ?? null,
       deduplicated: summary.deduplicated ?? false,
       mapper:       summary.mapper ?? null,
+      sourceType:         summary.sourceType         ?? null,
+      sourceTypeLabel:    summary.sourceTypeLabel    ?? null,
+      supersededUploads:  summary.supersededUploads  ?? [],
+      briefActiveUploadCount: summary.briefActiveUploadCount ?? 1,
     });
 
   } catch (err: any) {

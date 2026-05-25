@@ -29,6 +29,15 @@ export interface UploadSummary {
     /** Plain-language top finding to show the user (first blocker or first major). */
     topFinding?:   string;
   };
+  /** Brief-merge (Tier 2): the canonical SourceType for this upload. */
+  sourceType?:      string;
+  /** Display label for sourceType (e.g. "Google Keyword Planner"). */
+  sourceTypeLabel?: string;
+  /** Prior same-source uploads on the same brief that this upload superseded. */
+  supersededUploads?: { id: string; filename: string }[];
+  /** Number of currently-active (non-superseded) uploads on the brief
+   *  AFTER this one. >1 means "this brief now combines multiple sources". */
+  briefActiveUploadCount?: number;
 }
 
 export interface SheetMeta {

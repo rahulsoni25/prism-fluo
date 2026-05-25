@@ -41,6 +41,7 @@ import { extractPptxText, extractPptxStructured } from '@/lib/pptx/parser';
 
 import { runMapperCouncil } from '@/lib/mapper/orchestrator';
 import { recordMapperRun }  from '@/lib/mapper/persistence';
+import { classifySourceType, shouldSupersede, SOURCE_TYPE_LABEL, type SourceType } from '@/lib/uploads/source-type';
 
 import type { UploadSummary, SheetMeta, SheetType } from '@/types/dataset';
 
@@ -72,6 +73,14 @@ async function ensureSchema(): Promise<void> {
     db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMP WITH TIME ZONE`),
     // Cross-council: stash the mapper verdict so verification can read it later
     db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS mapper_verdict JSONB`),
+    // Brief-merge (Tier 2): a newer upload of the same source type supersedes
+    // an older one. NULL = still active. Re-analysis pools rows from all
+    // non-superseded uploads of a brief.
+    db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS superseded_by UUID REFERENCES uploads(id) ON DELETE SET NULL`),
+    db.query(`ALTER TABLE uploads ADD COLUMN IF NOT EXISTS source_type   TEXT`),
+    db.query(`CREATE INDEX IF NOT EXISTS uploads_brief_active_idx
+                ON uploads (brief_id, source_type)
+                WHERE superseded_by IS NULL`),
   ]);
 
   // Create tool_data (depends on uploads existing — must run after ALTER TABLE above)
@@ -974,9 +983,85 @@ export async function handleUpload(
     logger.warn('upload:no_structured_sheets', { filename, hasRawText: !!rawText });
   }
 
+  // ── BRIEF-MERGE (Tier 2): supersede prior same-source uploads ──
+  // After parsing settles, infer the source type for this upload,
+  // store it, and mark any older sibling upload of the same source
+  // type (on the same brief) as superseded. Different source types
+  // (e.g. keyword + GWI) stay co-active. Stable per-upload behavior
+  // even when called outside a brief context (briefId null = no-op).
+  let supersededUploads: { id: string; filename: string }[] = [];
+  let sourceType: SourceType = 'unknown';
+  try {
+    // Pull the distinct tool_types this upload produced (parser-populated)
+    const ttRes = await db.query(
+      'SELECT DISTINCT tool_type FROM tool_data WHERE upload_id = $1',
+      [uploadId],
+    );
+    const toolTypes: string[] = ttRes.rows.map((r: any) => r.tool_type).filter(Boolean);
+    sourceType = classifySourceType({ toolTypes, filename });
+    // Persist on this upload row (best-effort)
+    await db.query(`UPDATE uploads SET source_type = $1 WHERE id = $2`, [sourceType, uploadId]).catch(() => {});
+
+    if (briefId && sourceType !== 'unknown') {
+      // Find prior NON-superseded uploads on this brief
+      const priorRes = await db.query(
+        `SELECT id, filename, source_type
+           FROM uploads
+          WHERE brief_id = $1
+            AND id <> $2
+            AND superseded_by IS NULL`,
+        [briefId, uploadId],
+      );
+      const toSupersede = priorRes.rows.filter((r: any) =>
+        shouldSupersede((r.source_type as SourceType) || 'unknown', sourceType),
+      );
+      if (toSupersede.length > 0) {
+        await db.query(
+          `UPDATE uploads SET superseded_by = $1 WHERE id = ANY($2::uuid[])`,
+          [uploadId, toSupersede.map((r: any) => r.id)],
+        );
+        supersededUploads = toSupersede.map((r: any) => ({ id: r.id, filename: r.filename }));
+        logger.info('upload:superseded', {
+          newUploadId: uploadId,
+          newFilename: filename,
+          sourceType,
+          superseded:  supersededUploads.map(u => ({ id: u.id, filename: u.filename })),
+        });
+      }
+    }
+  } catch (err: any) {
+    // Supersede is best-effort — never block the upload return
+    logger.warn('upload:supersede_failed', { uploadId, error: err.message });
+  }
+
+  // Detect whether this brief now has MULTIPLE non-superseded uploads
+  // (different source types stacking). The client uses this flag to fetch
+  // combined rows + re-analyze instead of analyzing just this upload's data.
+  let briefActiveUploadCount = 1;
+  if (briefId) {
+    try {
+      const c = await db.query(
+        `SELECT COUNT(*)::int AS n FROM uploads WHERE brief_id = $1 AND superseded_by IS NULL`,
+        [briefId],
+      );
+      briefActiveUploadCount = c.rows[0]?.n ?? 1;
+    } catch { /* best-effort */ }
+  }
+
   logger.info('upload:done', {
-    uploadId, filename, briefId: briefId ?? null, sheets: sheetsMeta.length, ms: Date.now() - t0,
+    uploadId, filename, briefId: briefId ?? null, sheets: sheetsMeta.length,
+    sourceType, supersededCount: supersededUploads.length, briefActiveUploadCount,
+    ms: Date.now() - t0,
   });
 
-  return { uploadId, sheets: sheetsMeta, rawText, mapper: mapperSummary };
+  return {
+    uploadId,
+    sheets: sheetsMeta,
+    rawText,
+    mapper: mapperSummary,
+    sourceType,
+    sourceTypeLabel: SOURCE_TYPE_LABEL[sourceType],
+    supersededUploads,
+    briefActiveUploadCount,
+  };
 }

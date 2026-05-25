@@ -433,7 +433,25 @@ function UploadDataInner() {
     }
     const summary = await upRes.json();
 
-    const { uploadId, sheets, rawText, deduplicated, existingAnalysisId, mapper } = summary;
+    const {
+      uploadId, sheets, rawText, deduplicated, existingAnalysisId, mapper,
+      sourceType, sourceTypeLabel,
+      supersededUploads = [],
+      briefActiveUploadCount = 1,
+    } = summary;
+
+    // ── Brief-merge surfacing ──
+    // When a new upload of the same source type replaced an older one,
+    // tell the user which file got superseded. When the brief now has
+    // multiple active sources, log it — downstream we'll fetch combined
+    // rows before re-analyzing so the analysis reflects ALL data.
+    if (supersededUploads.length > 0) {
+      const names = supersededUploads.map((u: any) => `"${u.filename}"`).join(', ');
+      addLog(`🔁 Replaced previous ${sourceTypeLabel || sourceType || ''} data — ${names} superseded by the new upload`);
+    }
+    if (briefId && briefActiveUploadCount > 1) {
+      addLog(`📚 Brief now has ${briefActiveUploadCount} active data sources — re-analysis will combine all of them`);
+    }
     if (deduplicated) {
       addLog(`♻️ "${file.name}" matches a recent upload — reusing existing parse`);
     }
@@ -510,19 +528,44 @@ function UploadDataInner() {
     }
 
     let rawData: any[] = [];
+    // Brief-merge: if the brief now has multiple active sources, pool
+    // rows from ALL of them so analysis reflects every uploaded file.
+    // Falls back to single-upload data if the pooled fetch fails for any reason.
+    const useCombined = briefId && briefActiveUploadCount > 1;
     try {
-      const dataRes = await fetch(
-        `/api/uploads/${uploadId}/sheets/${encodeURIComponent(preferredSheet.sheetName)}/data`,
-      );
+      const url = useCombined
+        ? `/api/briefs/${briefId}/combined-rows`
+        : `/api/uploads/${uploadId}/sheets/${encodeURIComponent(preferredSheet.sheetName)}/data`;
+      const dataRes = await fetch(url);
       if (!dataRes.ok) {
         const errBody = await dataRes.json().catch(() => ({}));
         throw new Error((errBody as any).message || `HTTP ${dataRes.status}`);
       }
-      rawData = await dataRes.json().catch(() => []);
+      const body = await dataRes.json().catch(() => null);
+      if (useCombined) {
+        // Combined endpoint shape: { rows, activeUploads, totalRows, ... }
+        rawData = Array.isArray(body?.rows) ? body.rows : [];
+        const activeFiles = (body?.activeUploads ?? []).map((u: any) => u.filename).join(', ');
+        addLog(`📦 Combined ${rawData.length} rows from ${body?.activeUploads?.length ?? '?'} source file(s) — ${activeFiles}`);
+      } else {
+        rawData = Array.isArray(body) ? body : [];
+      }
     } catch (err: any) {
-      addLog(`⚠ Could not load sheet data: ${err.message}`);
-      updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: `Failed to read sheet "${preferredSheet.sheetName}": ${err.message}` });
-      return { charts: [], uploadId };
+      addLog(`⚠ Could not load ${useCombined ? 'combined' : 'sheet'} data: ${err.message}`);
+      // Last-ditch fallback to single-upload data if the combined fetch failed
+      if (useCombined) {
+        try {
+          const single = await fetch(`/api/uploads/${uploadId}/sheets/${encodeURIComponent(preferredSheet.sheetName)}/data`);
+          if (single.ok) {
+            rawData = await single.json().catch(() => []);
+            addLog(`⚠ Fell back to single-upload data — combined fetch failed`);
+          }
+        } catch { /* swallow — will trigger empty-data path below */ }
+      }
+      if (!rawData || rawData.length === 0) {
+        updateEntry(entryIdx, { status: 'error', chartsFound: 0, error: `Failed to read sheet "${preferredSheet.sheetName}": ${err.message}` });
+        return { charts: [], uploadId };
+      }
     }
 
     if (!Array.isArray(rawData) || rawData.length === 0) {
