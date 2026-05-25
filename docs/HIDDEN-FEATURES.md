@@ -30,16 +30,15 @@ is a one-line change in each case.
 
 ---
 
-## 2. 🔐 OAuth login buttons (Google + LinkedIn)
+## 2. 🔐 OAuth login — Google (UI live, env vars pending)
 
 | | |
 |---|---|
-| **Location** | `app/login/page.js:63` (comment marks the spot) |
-| **Hidden via** | Block removed from JSX render — comment placeholder remains |
-| **Why hidden** | Google redirect URI not registered for all environments (dev / preview / prod) |
-| **Hidden on** | Earlier in this session (around dashboard auth work) |
-| **Re-enable: restore** | Block from git history, register redirect URI in Google Cloud Console (and LinkedIn dev portal for LinkedIn) |
-| **To do before re-enabling** | Register `https://prism-fluo.vercel.app/api/auth/oauth/google/callback` in Google Cloud Console · same for LinkedIn · add `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` env vars to Vercel (Production + Preview) · test the round-trip in incognito · re-enable in `app/login/page.js` |
+| **Location** | `app/login/page.js` — Google + LinkedIn render blocks restored 2026-05-25 |
+| **State** | UI is **live and server-driven**. The button only renders when `/api/auth/providers` reports the env vars are set. So this is no longer "hidden" — it's "auto-detecting." |
+| **Backend** | ✅ Google routes complete (`app/api/auth/oauth/google/{route,callback/route}.ts`). LinkedIn backend NOT built — UI has the button stub but it'll 404 until `app/api/auth/oauth/linkedin/route.ts` is implemented. |
+| **What's left** | (1) Register `https://prism-fluo.vercel.app/api/auth/oauth/google/callback` in Google Cloud Console · (2) Add `AUTH_GOOGLE_ID` + `AUTH_GOOGLE_SECRET` env vars to Vercel · (3) Vercel auto-redeploys · (4) Button auto-appears on `/login` |
+| **LinkedIn separately** | Needs (1) build `app/api/auth/oauth/linkedin/{route,callback/route}.ts` mirroring Google, (2) register LinkedIn dev app, (3) add `AUTH_LINKEDIN_ID` + `AUTH_LINKEDIN_SECRET` |
 | **Surface when user asks about** | login · auth · OAuth · "sign in with X" · onboarding flow · new-user signup · authentication UI · password reset |
 
 ---
