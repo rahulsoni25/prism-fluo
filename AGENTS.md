@@ -4,6 +4,34 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
+<!-- BEGIN:hidden-features-reminder -->
+# Hidden-features auto-reminder rule
+
+The repo has a small set of features that are **hidden in the UI but
+intact in code** (gated behind `{false /* FLAG_NAME */ && ...}` or
+similar). They are listed in `docs/HIDDEN-FEATURES.md`.
+
+**MANDATORY before any UI / dashboard / insights / login / presentation
+work:**
+
+1. Read `docs/HIDDEN-FEATURES.md` once at the start of any session that
+   touches those areas
+2. When the user requests a new feature, modification, or UI change in
+   an overlapping area, **proactively surface the relevant hidden
+   item(s)** before writing code. Example: "You currently have the
+   Trends panel hidden — should this new dashboard widget account for
+   it, or should we re-enable Trends first?"
+3. When the user decides to hide a new feature, append a row to
+   `docs/HIDDEN-FEATURES.md` in the same commit. Don't lose it.
+4. When the user asks to "re-enable" or "bring back" something, check
+   that doc first — the answer is almost always a one-line flag flip,
+   not a rebuild.
+
+Why this rule exists: without it, hidden features get re-built from
+scratch when the user asks for similar functionality, OR they're
+forgotten and never re-enabled even when they should be.
+<!-- END:hidden-features-reminder -->
+
 <!-- BEGIN:proactive-solve-rule -->
 # Proactive-solve rule (applies to Claude AND every council agent)
 

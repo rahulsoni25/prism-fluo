@@ -3,6 +3,11 @@
 Tracking decisions the user wants to come back to. Future Claude sessions:
 read this at the start of any agent/insight-related work.
 
+> **See also:** `docs/HIDDEN-FEATURES.md` for UI elements that exist in
+> code but are intentionally hidden. The two docs cover different
+> things — this one is "decisions to make"; that one is "things to
+> remember are gated."
+
 ---
 
 ## 🚧 Live Google Trends panel (HIDDEN on dashboard)
