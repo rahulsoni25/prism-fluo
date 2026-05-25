@@ -55,6 +55,21 @@ export interface PendingTask {
 export const PENDING_TASKS: PendingTask[] = [
   // ── HIGH ────────────────────────────────────────────────────────────
   {
+    id:            'data-mapper-page',
+    title:         '📋 Data Mapper page — Add Details + Data Completeness',
+    emoji:         '📋',
+    category:      'hidden-feature',
+    criticality:   'high',
+    dateDiscussed: '2026-05-25',
+    context:       'User wanted a dedicated Data Mapper page where they can: (1) Add Details — write focus questions + analytical direction that get validated against uploaded data and injected into Gemini\'s prompt as priority instructions, (2) Data Completeness — proactively see what data is MISSING (high/medium/low severity) before clicking Generate. Shipped both as a combined Pre-flight Check at /brief/[id]/mapper.',
+    status:        'resolved',
+    resolvedDate:  '2026-05-25',
+    resolution:    '(1) lib/mapper/focus-validator.ts — parses multi-line user text into individual questions, classifies as answerable/partial/unanswerable/direction based on topic-rule matching against uploaded data sources + tool types + columns. Direction statements (Think/Consider/Frame) pass through verbatim. Auto-migrating briefs.focus_questions JSONB column. (2) lib/mapper/data-completeness.ts — proactive gap analyzer with 9 catalog rules (no-audience-data HIGH, no-search-data HIGH, no-genre-data MEDIUM, no-keyword-trend-cols MEDIUM, no-social-data MEDIUM, no-competitors-listed MEDIUM, no-amazon-data LOW, no-trends-data LOW, no-brief-objective LOW). Returns ranked gaps + 0-100 score + suggested fix per gap. (3) Three new endpoints: GET/POST /api/briefs/[id]/focus-questions, GET /api/briefs/[id]/data-completeness. (4) app/brief/[id]/mapper/page.tsx — new dedicated page with: uploaded data summary, side-by-side Add Details + Data Completeness panels, three-action footer (Generate / Generate-anyway-with-gaps / Upload-more). (5) Gemini prompt wiring in app/api/ai/analyze-data/route.ts buildBriefContext — adds USER-PRIORITIZED FOCUS block (must-address) + ANALYTICAL DIRECTION block (framing lens) + DATA-LIMIT NOTES block (honest "data missing" cards instead of fabrication). (6) 11 new tests covering parser splitting, direction-vs-question detection, unanswerable topics when data missing, partial when no topic match.',
+    effort:        '~12 hrs estimated, actual ~6 hrs (faster because heavy reuse of existing source-type classifier, combined-rows endpoint, GWI question-type detection, stale-brief pattern)',
+    whereInCode:   'lib/mapper/focus-validator.ts · lib/mapper/data-completeness.ts · app/brief/[id]/mapper/page.tsx · app/api/briefs/[id]/focus-questions/route.ts · app/api/briefs/[id]/data-completeness/route.ts · app/api/ai/analyze-data/route.ts (prompt wiring)',
+    doc:           'docs/PENDING-DECISIONS.md',
+  },
+  {
     id:            'keyword-intent-nugget',
     title:         '🔍 Keyword Intent nugget — transactional / informational / brand-led',
     emoji:         '🔍',

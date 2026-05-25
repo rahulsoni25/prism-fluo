@@ -922,6 +922,36 @@ function buildBriefContext(brief: any): string {
   if (brief.market)     lines.push(`MARKET: ${brief.market}`);
   if (brief.competitors)lines.push(`KEY COMPETITORS: ${brief.competitors}`);
   if (brief.insight_buckets) lines.push(`PRIORITY INSIGHT AREAS: ${brief.insight_buckets}`);
+
+  // ── Focus questions (from /brief/[id]/mapper) ──
+  // The Data Mapper page lets the user write specific focus questions +
+  // analytical direction. Validated questions become a MUST-ADDRESS list
+  // for Gemini; unanswerable ones surface as honest "data limit" cards.
+  if (brief.focus_questions && Array.isArray(brief.focus_questions) && brief.focus_questions.length > 0) {
+    const answerable   = brief.focus_questions.filter((q: any) => q.status === 'answerable');
+    const partial      = brief.focus_questions.filter((q: any) => q.status === 'partial');
+    const directions   = brief.focus_questions.filter((q: any) => q.status === 'direction');
+    const unanswerable = brief.focus_questions.filter((q: any) => q.status === 'unanswerable');
+
+    if (answerable.length > 0 || partial.length > 0) {
+      lines.push('');
+      lines.push('━━ USER-PRIORITIZED FOCUS (must address in first 3 cards) ━━');
+      [...answerable, ...partial].forEach((q: any, i: number) => {
+        lines.push(`${i + 1}. ${q.question}`);
+      });
+    }
+    if (directions.length > 0) {
+      lines.push('');
+      lines.push('━━ ANALYTICAL DIRECTION (frame all cards through this lens) ━━');
+      directions.forEach((q: any) => lines.push(`• ${q.question}`));
+    }
+    if (unanswerable.length > 0) {
+      lines.push('');
+      lines.push('━━ DATA-LIMIT NOTES (do NOT fabricate — surface as honest "data missing" cards) ━━');
+      unanswerable.forEach((q: any) => lines.push(`✗ ${q.question} (${q.reason})`));
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -930,7 +960,7 @@ async function fetchBrief(briefId: string): Promise<any | null> {
   try {
     const { rows } = await getPool().query(
       `SELECT brand, category, objective, background, age_ranges, gender, sec,
-              market, geography, competitors, insight_buckets
+              market, geography, competitors, insight_buckets, focus_questions
          FROM briefs WHERE id = $1`,
       [briefId],
     );
