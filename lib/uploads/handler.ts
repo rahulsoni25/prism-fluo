@@ -131,10 +131,17 @@ async function bulkInsertGwi(
   rows: Awaited<ReturnType<typeof tidyGwiTimeSpent>>
 ) {
   if (rows.length === 0) return;
+  // Auto-migrate question_type column on first call (back-compat with
+  // older DBs that pre-date the genre nugget feature).
+  await getPool().query(
+    `ALTER TABLE gwi_time_spent ADD COLUMN IF NOT EXISTS question_type TEXT`,
+  ).catch(() => {});
+
   const uploadIds     = rows.map(r => r.uploadId);
   const sheetNames    = rows.map(r => r.sheetName);
   const questionNames = rows.map(r => r.questionName);
   const questionMsgs  = rows.map(r => r.questionMessage);
+  const questionTypes = rows.map(r => r.questionType ?? 'unknown');
   const timeBuckets   = rows.map(r => r.timeBucket);
   const audiences     = rows.map(r => r.audience);
   const audiencePcts  = rows.map(r => r.audiencePct ?? null);
@@ -145,17 +152,17 @@ async function bulkInsertGwi(
 
   await getPool().query(
     `INSERT INTO gwi_time_spent
-       (upload_id, sheet_name, question_name, question_message,
+       (upload_id, sheet_name, question_name, question_message, question_type,
         time_bucket, audience, audience_pct, data_point_pct,
         universe, index_score, responses)
      SELECT * FROM UNNEST(
-       $1::uuid[], $2::text[], $3::text[], $4::text[],
-       $5::text[], $6::text[], $7::numeric[], $8::numeric[],
-       $9::numeric[], $10::numeric[], $11::numeric[]
-     ) AS t(upload_id, sheet_name, question_name, question_message,
+       $1::uuid[], $2::text[], $3::text[], $4::text[], $5::text[],
+       $6::text[], $7::text[], $8::numeric[], $9::numeric[],
+       $10::numeric[], $11::numeric[], $12::numeric[]
+     ) AS t(upload_id, sheet_name, question_name, question_message, question_type,
             time_bucket, audience, audience_pct, data_point_pct,
             universe, index_score, responses)`,
-    [uploadIds, sheetNames, questionNames, questionMsgs,
+    [uploadIds, sheetNames, questionNames, questionMsgs, questionTypes,
      timeBuckets, audiences, audiencePcts, dataPointPcts,
      universes, indexScores, responses]
   );

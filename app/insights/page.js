@@ -16,6 +16,7 @@ import MarketPyramidCard from '@/components/insights/MarketPyramidCard';
 import ProofreadButton from '@/components/insights/ProofreadButton';
 import VerifiedBadge from '@/components/insights/VerifiedBadge';
 import StaleAnalysisBanner from '@/components/insights/StaleAnalysisBanner';
+import GenreNuggetCard from '@/components/insights/GenreNuggetCard';
 import { fmtTs, timeAgo, parseRecommendation } from '@/lib/insights/helpers';
 import {
   BUCKET_META, BUCKET_TABS,
@@ -1790,6 +1791,13 @@ function AnalysisDetail({ id }) {
               audienceDescriptor={audienceDescriptor}
               categoryIntel={categoryIntel}
             />
+            {/* Content Genres They Prefer — derived live from GWI uploads
+                if present, honest placeholder otherwise. Lives in the
+                Content-tab adjacent rail so it's visible without needing
+                to dig through buckets. */}
+            {analysis.brief?.id && (
+              <GenreNuggetCard briefId={analysis.brief.id} />
+            )}
           </div>
         </section>
       )}
