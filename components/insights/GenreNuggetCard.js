@@ -40,33 +40,13 @@ export default function GenreNuggetCard({ briefId }) {
 
   const nugget = data.nugget;
 
-  // ── No-data honest placeholder ──
-  if (!nugget) {
-    return (
-      <div style={{
-        background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)',
-        border: '1px solid #FCD34D', borderRadius: 14,
-        padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,.04)',
-        fontFamily: 'Inter, system-ui, sans-serif',
-      }}>
-        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: '#92400E', marginBottom: 6 }}>
-          🎬 Genre preferences <span style={{ background: '#FEF3C7', color: '#78350F', padding: '1px 6px', borderRadius: 6, fontSize: 9, marginLeft: 6 }}>NO DATA</span>
-        </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#78350F', marginBottom: 8 }}>
-          No genre data uploaded for this brief
-        </div>
-        <div style={{ fontSize: 11.5, color: '#92400E', lineHeight: 1.55 }}>
-          To populate this card, upload one of these GWI questions:
-          <ul style={{ marginTop: 6, marginBottom: 6, paddingLeft: 18 }}>
-            {data.suggestedUploads?.slice(0, 4).map((s, i) => (
-              <li key={i} style={{ marginBottom: 2 }}>{s}</li>
-            ))}
-          </ul>
-          <em>This card stays empty rather than fabricating numbers — see <code>docs/AGENT-NETWORK.md</code>.</em>
-        </div>
-      </div>
-    );
-  }
+  // No data → render nothing. A blank gap is cleaner than a banner that
+  // would (a) break the visual grid of other nuggets, (b) look like a
+  // system error to a client, and (c) leak internal language. The honest
+  // alternative is "if it's not there, don't show it" — not "shout that
+  // it's empty." Discoverability of the missing capability happens via
+  // /admin/pending-tasks instead, which is the right audience for it.
+  if (!nugget) return null;
 
   // ── Has data ──
   const maxPct = Math.max(...nugget.rankings.map(r => r.pct));
