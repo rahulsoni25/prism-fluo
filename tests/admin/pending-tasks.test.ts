@@ -14,7 +14,7 @@ describe('pending tasks registry — data integrity', () => {
       expect(t.context.length).toBeGreaterThan(20);
       expect(['high', 'medium', 'low']).toContain(t.criticality);
       expect(['hidden-feature', 'decision', 'deferred-improvement', 'technical-debt']).toContain(t.category);
-      expect(['open', 'parked', 'in-progress', 'awaiting-confirmation']).toContain(t.status);
+      expect(['open', 'parked', 'in-progress', 'awaiting-confirmation', 'resolved']).toContain(t.status);
     }
   });
 

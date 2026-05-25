@@ -30,15 +30,15 @@ is a one-line change in each case.
 
 ---
 
-## 2. 🔐 OAuth login — Google (UI live, env vars pending)
+## 2. 🔐 OAuth login — Google ✓ LIVE (resolved 2026-05-25)
 
 | | |
 |---|---|
-| **Location** | `app/login/page.js` — Google + LinkedIn render blocks restored 2026-05-25 |
-| **State** | UI is **live and server-driven**. The button only renders when `/api/auth/providers` reports the env vars are set. So this is no longer "hidden" — it's "auto-detecting." |
-| **Backend** | ✅ Google routes complete (`app/api/auth/oauth/google/{route,callback/route}.ts`). LinkedIn backend NOT built — UI has the button stub but it'll 404 until `app/api/auth/oauth/linkedin/route.ts` is implemented. |
-| **What's left** | (1) Register `https://prism-fluo.vercel.app/api/auth/oauth/google/callback` in Google Cloud Console · (2) Add `AUTH_GOOGLE_ID` + `AUTH_GOOGLE_SECRET` env vars to Vercel · (3) Vercel auto-redeploys · (4) Button auto-appears on `/login` |
-| **LinkedIn separately** | Needs (1) build `app/api/auth/oauth/linkedin/{route,callback/route}.ts` mirroring Google, (2) register LinkedIn dev app, (3) add `AUTH_LINKEDIN_ID` + `AUTH_LINKEDIN_SECRET` |
+| **Status** | **✅ RESOLVED** — Google OAuth fully working in production |
+| **Location** | `app/login/page.js` — Google + LinkedIn render blocks live |
+| **Backend** | ✅ Google routes complete. LinkedIn backend NOT built — UI has the button stub but `/api/auth/oauth/linkedin` returns 404 until implemented. |
+| **Resolution** | (1) Registered redirect URI `https://prism-fluo.vercel.app/api/auth/oauth/google/callback` in Google Cloud Console (Prism Fluo Web client) · (2) Set `AUTH_GOOGLE_ID` + `AUTH_GOOGLE_SECRET` env vars in Vercel · (3) Vercel redeployed · (4) Verified round-trip in incognito · (5) Disabled old duplicate client secret (`****hyck` Apr 29) per security hygiene |
+| **LinkedIn — separate work** | Still pending. Needs: (1) build `app/api/auth/oauth/linkedin/{route,callback/route}.ts` mirroring Google, (2) register LinkedIn dev app, (3) add `AUTH_LINKEDIN_ID` + `AUTH_LINKEDIN_SECRET` env vars. UI button stub auto-activates the same way once env vars are set. |
 | **Surface when user asks about** | login · auth · OAuth · "sign in with X" · onboarding flow · new-user signup · authentication UI · password reset |
 
 ---

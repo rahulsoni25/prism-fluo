@@ -23,7 +23,8 @@ export type TaskStatus =
   | 'open'                  // raised, not yet acted on
   | 'parked'                // user said "later" explicitly
   | 'in-progress'           // partial work shipped, more to do
-  | 'awaiting-confirmation'; // proposal made, user reply pending
+  | 'awaiting-confirmation' // proposal made, user reply pending
+  | 'resolved';             // shipped + verified working — kept as historical record
 
 export interface PendingTask {
   id:             string;
@@ -44,28 +45,29 @@ export interface PendingTask {
   blockers?:      string[];
   /** Link to the markdown doc that carries the longer narrative. */
   doc?:           string;
+  /** ISO date when status flipped to 'resolved'. Display-only — UI greys
+   *  out resolved tasks and shows this date next to a ✓. */
+  resolvedDate?:  string;
+  /** Short note on HOW it was resolved — surfaces on the resolved card. */
+  resolution?:    string;
 }
 
 export const PENDING_TASKS: PendingTask[] = [
   // ── HIGH ────────────────────────────────────────────────────────────
   {
     id:            'oauth-login-google',
-    title:         'Activate Google OAuth login (UI restored — env vars pending)',
+    title:         'Google OAuth login — LIVE',
     emoji:         '🔐',
     category:      'hidden-feature',
     criticality:   'high',
     dateDiscussed: '2026-05-25',
-    context:       'Google OAuth button restored on /login (2026-05-25). The UI is server-driven via /api/auth/providers — the button auto-appears the moment env vars are configured server-side, no re-deploy needed. Google OAuth backend routes (/api/auth/oauth/google + callback) were already complete. LinkedIn was scoped out — no backend exists yet, would need to be built separately.',
-    status:        'in-progress',
-    effort:        '~10 min Vercel env + 5 min Google Console',
-    whereInCode:   'app/login/page.js (UI) · app/api/auth/oauth/google/route.ts (backend, exists) · app/api/auth/providers/route.ts (env-detection)',
-    blockers:      [
-      'In Google Cloud Console (console.cloud.google.com → APIs & Services → Credentials → your OAuth 2.0 Client) add an Authorized redirect URI: https://prism-fluo.vercel.app/api/auth/oauth/google/callback',
-      'In Vercel project settings → Environment Variables add AUTH_GOOGLE_ID (client ID) and AUTH_GOOGLE_SECRET (client secret) — apply to Production (and Preview if desired)',
-      'Vercel auto-redeploys on env change; otherwise trigger one',
-      'Test in incognito: visit /login → Google button should appear → click → round-trip should succeed and land on /dashboard',
-    ],
-    doc:           'docs/HIDDEN-FEATURES.md#2-🔐-oauth-login-buttons-google--linkedin',
+    context:       'Google OAuth button restored on /login (2026-05-25). Server-driven via /api/auth/providers — button auto-appears when env vars are present. Backend routes /api/auth/oauth/google + callback already existed.',
+    status:        'resolved',
+    resolvedDate:  '2026-05-25',
+    resolution:    'User registered redirect URI https://prism-fluo.vercel.app/api/auth/oauth/google/callback in Google Cloud Console (Prism Fluo Web client), pasted AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET into Vercel env, Vercel redeployed, button appeared at /login, round-trip verified working. Old duplicate client secret (****hyck Apr 29) disabled per security hygiene — only the Apr 30 secret remains active.',
+    effort:        '~10 min Vercel env + 5 min Google Console (actual: ~15 min)',
+    whereInCode:   'app/login/page.js (UI) · app/api/auth/oauth/google/route.ts (backend) · app/api/auth/providers/route.ts (env-detection)',
+    doc:           'docs/HIDDEN-FEATURES.md#2-🔐-oauth-login-google-ui-live-env-vars-pending',
   },
 
   // ── MEDIUM ──────────────────────────────────────────────────────────
@@ -226,7 +228,7 @@ export function sortedTasks(): PendingTask[] {
 /** Summary counts for the page header. */
 export function taskStats() {
   const byCriticality = { high: 0, medium: 0, low: 0 };
-  const byStatus = { open: 0, parked: 0, 'in-progress': 0, 'awaiting-confirmation': 0 };
+  const byStatus = { open: 0, parked: 0, 'in-progress': 0, 'awaiting-confirmation': 0, resolved: 0 };
   const byCategory: Record<TaskCategory, number> = {
     'hidden-feature': 0, 'decision': 0, 'deferred-improvement': 0, 'technical-debt': 0,
   };

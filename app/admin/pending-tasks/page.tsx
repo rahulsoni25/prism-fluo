@@ -11,11 +11,13 @@ interface Task {
   criticality: 'high' | 'medium' | 'low';
   dateDiscussed: string;
   context: string;
-  status: 'open' | 'parked' | 'in-progress' | 'awaiting-confirmation';
+  status: 'open' | 'parked' | 'in-progress' | 'awaiting-confirmation' | 'resolved';
   effort?: string;
   whereInCode?: string;
   blockers?: string[];
   doc?: string;
+  resolvedDate?: string;
+  resolution?: string;
 }
 
 interface Stats {
@@ -48,6 +50,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   'parked':                { label: 'Parked',                color: '#64748B' },
   'in-progress':           { label: 'In progress',           color: '#2563EB' },
   'awaiting-confirmation': { label: 'Awaiting confirmation', color: '#D97706' },
+  'resolved':              { label: '✓ Resolved',            color: '#059669' },
 };
 
 function fmtDate(d: string): string {
@@ -130,6 +133,7 @@ export default function PendingTasksPage() {
             { label: 'Open',                value: (data.stats.byStatus.open ?? 0).toString(),  color: '#DC2626' },
             { label: 'Awaiting confirmation', value: (data.stats.byStatus['awaiting-confirmation'] ?? 0).toString(), color: '#D97706' },
             { label: 'Parked',              value: (data.stats.byStatus.parked ?? 0).toString(), color: '#64748B' },
+            { label: 'Resolved',            value: (data.stats.byStatus.resolved ?? 0).toString(), color: '#059669' },
           ].map(c => (
             <div key={c.label} style={{ background: '#fff', borderRadius: 14, padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
               <div style={{ fontSize: 10.5, fontWeight: 800, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.08em' }}>{c.label}</div>
@@ -172,10 +176,14 @@ export default function PendingTasksPage() {
             const cat  = CATEGORY_LABEL[t.category];
             const stat = STATUS_LABEL[t.status];
             const isOpen = expanded.has(t.id);
+            const isResolved = t.status === 'resolved';
             return (
               <div key={t.id} style={{
-                background: '#fff', borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,.04)',
-                borderLeft: `4px solid ${crit.color}`, overflow: 'hidden',
+                background: isResolved ? '#F8FAFC' : '#fff',
+                opacity: isResolved ? 0.7 : 1,
+                borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,.04)',
+                borderLeft: `4px solid ${isResolved ? '#059669' : crit.color}`,
+                overflow: 'hidden',
               }}>
                 {/* Collapsed row */}
                 <button onClick={() => toggle(t.id)} style={{
@@ -213,6 +221,18 @@ export default function PendingTasksPage() {
                 {/* Expanded body */}
                 {isOpen && (
                   <div style={{ padding: '0 20px 18px 20px', borderTop: '1px solid #F1F5F9' }}>
+                    {t.resolution && (
+                      <div style={{
+                        marginTop: 14, padding: '12px 14px',
+                        background: '#ECFDF5', border: '1px solid #A7F3D0',
+                        borderRadius: 8, fontSize: 12, color: '#065F46', lineHeight: 1.5,
+                      }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4, color: '#047857' }}>
+                          ✓ Resolved {t.resolvedDate ? `· ${fmtDate(t.resolvedDate)}` : ''}
+                        </div>
+                        {t.resolution}
+                      </div>
+                    )}
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '10px 14px', fontSize: 12, color: '#475569', marginTop: 14 }}>
                       {t.effort && (<>
                         <span style={{ color: '#94A3B8', fontWeight: 600 }}>Effort:</span>
