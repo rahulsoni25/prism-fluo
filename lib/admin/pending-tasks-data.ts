@@ -55,6 +55,21 @@ export interface PendingTask {
 export const PENDING_TASKS: PendingTask[] = [
   // ── HIGH ────────────────────────────────────────────────────────────
   {
+    id:            'keyword-intent-nugget',
+    title:         '🔍 Keyword Intent nugget — transactional / informational / brand-led',
+    emoji:         '🔍',
+    category:      'hidden-feature',
+    criticality:   'high',
+    dateDiscussed: '2026-05-25',
+    context:       'User requested keyword intent mapping on Google Keywords data with 4 outputs: top branded search terms, search volumes for key terms, top non-branded/category searches, and trending queries from the last 90 days. Audit found Layer 2 (Intent) was already in the Gemini methodology prompt but had no deterministic classifier and no structured display — purely LLM-judged. Shipped a full deterministic stack: classifier + aggregator + endpoint + card.',
+    status:        'resolved',
+    resolvedDate:  '2026-05-25',
+    resolution:    '(1) lib/keywords/intent.ts: deterministic 4-way classifier (brand-led / transactional / informational / category) with brand-led priority (brief brand + competitors win over commercial signals). Question-opener priority (how/what/why/which start) for informational queries. Word-boundary regex matching to prevent false positives like "buy" matching "buyer". (2) Extended Google Keyword Planner parser to capture Three-Month-Change + YoY-Change columns (auto-migrating keywords table). (3) lib/nuggets/keyword-intent.ts: aggregator producing intent mix by volume %, top 5 branded, top 5 non-branded, top 5 transactional, top 5 informational, top 5 trending (sorted by 3-month change %). (4) GET /api/briefs/[id]/keyword-intent endpoint. (5) <KeywordIntentCard> renders intent-mix bar with colored segments + 3 ranked lists with volumes + 90-day trend % on trending list. Hides when no Keyword Planner data uploaded (honest-skip pattern). (6) Placed on /insights right after GenreNuggetCard. SEARCH cross-ref pill per Option B classifier. (7) 16 new tests across all 4 intent types + brand-led priority + word-boundary safety + edge cases.',
+    effort:        '~5 hrs estimated, actual ~4 hrs',
+    whereInCode:   'lib/keywords/intent.ts (classifier) · lib/keywords/parser.ts (trend col extract) · lib/uploads/handler.ts (schema migration) · lib/nuggets/keyword-intent.ts (aggregator) · app/api/briefs/[id]/keyword-intent/route.ts · components/insights/KeywordIntentCard.js · types/keywords.ts',
+    doc:           'docs/PENDING-DECISIONS.md',
+  },
+  {
     id:            'insight-quality-agent',
     title:         '🎯 InsightQuality agent — 7th verification council member',
     emoji:         '🎯',

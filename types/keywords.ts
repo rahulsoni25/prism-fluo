@@ -11,4 +11,9 @@ export interface KeywordRow {
   brand: string;
   categories: string;
   isPriceIntent: boolean;
+  /** Google Keyword Planner "Three month change" column (%, can be negative).
+   *  Surfaced as "Trending queries (last 90 days)" in the intent nugget. */
+  threeMonthChange?: number | null;
+  /** Google Keyword Planner "YoY change" column (%, can be negative). */
+  yoyChange?: number | null;
 }

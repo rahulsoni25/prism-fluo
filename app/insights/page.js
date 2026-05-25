@@ -17,6 +17,7 @@ import ProofreadButton from '@/components/insights/ProofreadButton';
 import VerifiedBadge from '@/components/insights/VerifiedBadge';
 import StaleAnalysisBanner from '@/components/insights/StaleAnalysisBanner';
 import GenreNuggetCard from '@/components/insights/GenreNuggetCard';
+import KeywordIntentCard from '@/components/insights/KeywordIntentCard';
 import { fmtTs, timeAgo, parseRecommendation } from '@/lib/insights/helpers';
 import {
   BUCKET_META, BUCKET_TABS,
@@ -1797,6 +1798,9 @@ function AnalysisDetail({ id }) {
                 to dig through buckets. */}
             {analysis.brief?.id && (
               <GenreNuggetCard briefId={analysis.brief.id} />
+            )}
+            {analysis.brief?.id && (
+              <KeywordIntentCard briefId={analysis.brief.id} />
             )}
           </div>
         </section>

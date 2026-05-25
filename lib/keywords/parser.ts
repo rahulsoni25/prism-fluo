@@ -54,6 +54,9 @@ export function tidyKeywordPlan(
   const compIdxCol = headers.findIndex(h => String(h || '').toLowerCase().includes('competition (indexed'));
   const bidLowCol = headers.findIndex(h => String(h || '').toLowerCase().includes('low range'));
   const bidHighCol = headers.findIndex(h => String(h || '').toLowerCase().includes('high range'));
+  // Trend columns — present in standard Google Keyword Planner exports
+  const tmCol  = headers.findIndex(h => /three.?month change|3.?month change/i.test(String(h || '')));
+  const yoyCol = headers.findIndex(h => /yoy change|year.?over.?year change/i.test(String(h || '')));
 
   // 2. Extract Data
   const rawData: any[] = [];
@@ -78,6 +81,17 @@ export function tidyKeywordPlan(
 
     const classification = classifyKeyword(item.kw);
 
+    // Parse trend columns — Google Keyword Planner exports them as
+    // either a numeric % or a literal "∞"/"-" string for new/missing.
+    // Treat non-numeric as null so downstream code can filter cleanly.
+    const parseTrend = (val: any): number | null => {
+      if (val == null) return null;
+      const s = String(val).trim().replace(/[,%]/g, '');
+      if (!s || s === '∞' || s === '-' || s === '—') return null;
+      const n = parseFloat(s);
+      return Number.isFinite(n) ? n : null;
+    };
+
     return {
       uploadId,
       sheetName,
@@ -90,7 +104,9 @@ export function tidyKeywordPlan(
       tier,
       brand: classification.brand,
       categories: classification.categories,
-      isPriceIntent: classification.isPriceIntent
+      isPriceIntent: classification.isPriceIntent,
+      threeMonthChange: tmCol  !== -1 ? parseTrend(item.row[tmCol])  : null,
+      yoyChange:        yoyCol !== -1 ? parseTrend(item.row[yoyCol]) : null,
     };
   });
 }

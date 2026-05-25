@@ -172,6 +172,14 @@ async function bulkInsertKeywords(
   rows: Awaited<ReturnType<typeof tidyKeywordPlan>>
 ) {
   if (rows.length === 0) return;
+  // Auto-migrate the trend columns on first call so the KeywordIntent
+  // nugget can surface "trending queries last 90 days".
+  await getPool().query(
+    `ALTER TABLE keywords
+       ADD COLUMN IF NOT EXISTS three_month_change NUMERIC,
+       ADD COLUMN IF NOT EXISTS yoy_change         NUMERIC`,
+  ).catch(() => {});
+
   const uploadIds    = rows.map(r => r.uploadId);
   const sheetNames   = rows.map(r => r.sheetName);
   const keywords     = rows.map(r => r.keyword);
@@ -184,19 +192,25 @@ async function bulkInsertKeywords(
   const brands       = rows.map(r => r.brand ?? null);
   const categories   = rows.map(r => r.categories ?? null);
   const priceIntents = rows.map(r => r.isPriceIntent ?? false);
+  const tmChanges    = rows.map(r => r.threeMonthChange ?? null);
+  const yoyChanges   = rows.map(r => r.yoyChange ?? null);
 
   await getPool().query(
     `INSERT INTO keywords
        (upload_id, sheet_name, keyword, avg_monthly_searches, competition,
-        competition_indexed, bid_low, bid_high, tier, brand, categories, is_price_intent)
+        competition_indexed, bid_low, bid_high, tier, brand, categories, is_price_intent,
+        three_month_change, yoy_change)
      SELECT * FROM UNNEST(
        $1::uuid[], $2::text[], $3::text[], $4::numeric[],
        $5::text[], $6::numeric[], $7::numeric[], $8::numeric[],
-       $9::text[], $10::text[], $11::text[], $12::boolean[]
+       $9::text[], $10::text[], $11::text[], $12::boolean[],
+       $13::numeric[], $14::numeric[]
      ) AS t(upload_id, sheet_name, keyword, avg_monthly_searches, competition,
-            competition_indexed, bid_low, bid_high, tier, brand, categories, is_price_intent)`,
+            competition_indexed, bid_low, bid_high, tier, brand, categories, is_price_intent,
+            three_month_change, yoy_change)`,
     [uploadIds, sheetNames, keywords, searches, competitions,
-     compIndexed, bidLows, bidHighs, tiers, brands, categories, priceIntents]
+     compIndexed, bidLows, bidHighs, tiers, brands, categories, priceIntents,
+     tmChanges, yoyChanges]
   );
 }
 
