@@ -124,7 +124,7 @@ function shortenAudiencePair(a, b) {
  * behind a single "⋯" button. Click-outside + Escape close it. The primary
  * "Generate Presentation" CTA stays inline next to it.
  */
-function ActionOverflowMenu({ regenerating, onRegenerate, onExportExcel, onExportPdf, briefId, router }) {
+function ActionOverflowMenu({ regenerating, onRegenerate, onExportExcel, onExportPdf, onShareLink, briefId, router }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -168,6 +168,11 @@ function ActionOverflowMenu({ regenerating, onRegenerate, onExportExcel, onExpor
           </button>
           <button role="menuitem" onClick={run(onExportExcel)}>⬇ Export to Excel</button>
           <button role="menuitem" onClick={run(onExportPdf)}>⬇ Export to PDF</button>
+          {briefId && onShareLink && (
+            <button role="menuitem" onClick={run(onShareLink)}>
+              🔗 Get shareable link
+            </button>
+          )}
           {briefId && (
             <button role="menuitem" onClick={run(() => router.push(`/brief/new?from=${briefId}`))}>
               ⎘ Use as template for a new brief
@@ -1448,6 +1453,33 @@ function AnalysisDetail({ id }) {
       .catch(err => { setError(err.message); setLoading(false); });
   }, [id]);
 
+  // Share-link handler: hits POST /api/briefs/[id]/share-link (idempotent —
+  // returns existing link if one is active), copies the URL to clipboard
+  // and shows a confirmation. The link lands on /share/[token] which is a
+  // public, no-auth viewer of the brief's verified insight cards.
+  async function handleShareLink() {
+    const briefId = analysis?.brief?.id;
+    if (!briefId) { alert('No brief associated with this analysis.'); return; }
+    try {
+      const res = await fetch(`/api/briefs/${briefId}/share-link`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.link?.url) {
+        alert(body?.error || 'Could not create share link.');
+        return;
+      }
+      const url = body.link.url;
+      try {
+        await navigator.clipboard.writeText(url);
+        alert(`Share link copied to clipboard:\n\n${url}\n\nAnyone with this link can view the verified insights. Expires in 90 days.`);
+      } catch {
+        // Clipboard blocked — just show it
+        window.prompt('Share link (copy this):', url);
+      }
+    } catch (err) {
+      alert('Network error generating share link: ' + (err?.message || err));
+    }
+  }
+
   // PDF export = expand all buckets, print, restore. The print stylesheet
   // (globals.css) hides nav/copilot/buttons during the print pass.
   function handleExportPdf() {
@@ -1754,6 +1786,7 @@ function AnalysisDetail({ id }) {
               onRegenerate={handleRegenerate}
               onExportExcel={handleExportExcel}
               onExportPdf={handleExportPdf}
+              onShareLink={handleShareLink}
               briefId={analysis.brief?.id}
               router={router}
             />

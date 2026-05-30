@@ -19,6 +19,7 @@ import { db } from '@/lib/db/client';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/auth/server';
 import { callOpenRouterText } from '@/lib/ai/openrouter';
+import { audit, reqMeta } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
@@ -154,6 +155,23 @@ When answering:
       answerLength: answer.length,
       provider: 'openrouter/gemma',
     });
+
+    // Audit trail: every Co-Pilot question is recorded so the admin log
+    // can surface "what did the strategy team ask, when, on which brief"
+    // — useful for both compliance and product analytics.
+    audit({
+      kind: 'copilot.ask',
+      userId:    session.userId,
+      userEmail: session.email,
+      targetType: 'analysis',
+      targetId:   String(analysisId),
+      ...reqMeta(req),
+      metadata: {
+        questionLength: question.length,
+        answerLength:   answer.length,
+        ms:             Date.now() - t0,
+      },
+    }).catch(() => {});  // fire-and-forget; never block the response
 
     return NextResponse.json({ answer }, { status: 200 });
 

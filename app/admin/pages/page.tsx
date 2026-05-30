@@ -128,6 +128,7 @@ export default function AdminPagesPanel() {
           <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Pages</span>
           <Link href="/admin/users" style={{ marginLeft: 18, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Users</Link>
           <Link href="/admin/audit-log" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Audit Log</Link>
+          <Link href="/admin/audit-events" style={{ marginLeft: 10, color: '#A5F3FC', fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>📜 Audit Events</Link>
           <Link href="/admin/ai-health" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ AI Health</Link>
           <Link href="/admin/verification-history" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Verification</Link>
           <Link href="/admin/mapper-history" style={{ marginLeft: 10, color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>→ Mapper</Link>

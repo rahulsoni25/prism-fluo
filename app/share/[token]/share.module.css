@@ -1,0 +1,145 @@
+/* Public share viewer — clean, print-friendly, no login chrome */
+
+.page {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #0a0a0a;
+  background: #fafafa;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.topBar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 32px;
+  background: #fff;
+  border-bottom: 1px solid #eaeaea;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brandIcon {
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  color: #fff; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 15px;
+}
+.brandText { font-weight: 600; font-size: 16px; letter-spacing: -0.3px; }
+.brandText em { font-style: normal; color: #6366F1; font-weight: 500; }
+.badge {
+  font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+  color: #6366F1; background: rgba(99, 102, 241, 0.1);
+  padding: 5px 12px; border-radius: 999px;
+}
+
+.main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 64px 32px 96px;
+}
+
+.meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 13.5px; color: #737373; margin-bottom: 24px;
+}
+.briefBrand { font-weight: 600; color: #0a0a0a; }
+.dot { color: #c4c4c8; }
+
+.headline {
+  font-size: clamp(30px, 4.5vw, 48px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -1.2px;
+  margin: 0 0 32px;
+  color: #0a0a0a;
+  text-wrap: balance;
+}
+
+.snapshot {
+  background: #fff;
+  border: 1px solid #eaeaea;
+  border-left: 3px solid #6366F1;
+  border-radius: 0 12px 12px 0;
+  padding: 22px 24px;
+  margin-bottom: 40px;
+}
+.snapshotLabel {
+  font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+  color: #6366F1; margin-bottom: 8px;
+}
+.snapshot p { margin: 0; font-size: 16px; color: #404040; line-height: 1.55; }
+
+.cards { display: flex; flex-direction: column; gap: 20px; }
+.card {
+  background: #fff;
+  border: 1px solid #eaeaea;
+  border-radius: 14px;
+  padding: 28px 26px;
+}
+.cardTitle {
+  font-size: 22px; font-weight: 700;
+  letter-spacing: -0.5px;
+  margin: 0 0 12px;
+  color: #0a0a0a;
+  line-height: 1.25;
+}
+.cardObs {
+  margin: 0 0 18px;
+  font-size: 15.5px; color: #404040; line-height: 1.55;
+}
+.cardStat {
+  background: linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(139,92,246,0.04) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.statLabel {
+  font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  color: #6366F1;
+}
+.statValue {
+  font-size: 18px; font-weight: 600; color: #0a0a0a;
+  letter-spacing: -0.3px;
+}
+.cardRec {
+  padding-top: 16px;
+  border-top: 1px solid #f4f4f5;
+}
+.recLabel {
+  display: inline-block;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  color: #737373; margin-bottom: 8px;
+}
+.cardRec p { margin: 0; font-size: 15px; color: #404040; line-height: 1.55; }
+
+.emptyState {
+  text-align: center; padding: 40px;
+  color: #737373; background: #fff; border-radius: 12px;
+  border: 1px dashed #d4d4d8;
+}
+
+.footer {
+  padding: 24px 32px;
+  border-top: 1px solid #eaeaea;
+  background: #fff;
+  font-size: 13px; color: #737373;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+}
+.footer strong { color: #0a0a0a; }
+.ctaLink {
+  color: #6366F1; text-decoration: none; font-weight: 500;
+}
+.ctaLink:hover { text-decoration: underline; }
+
+@media (max-width: 600px) {
+  .main { padding: 40px 20px 64px; }
+  .topBar { padding: 14px 18px; }
+  .footer { padding: 18px 20px; flex-direction: column; align-items: flex-start; }
+}
+
+@media print {
+  .topBar, .footer { display: none; }
+  .page { background: #fff; }
+  .card { break-inside: avoid; }
+}
