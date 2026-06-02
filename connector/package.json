@@ -1,0 +1,15 @@
+{
+  "name": "prism-ads-connector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "1-click Model Context Protocol connector that lets Claude audit and manage Google Ads & Meta Ads (and read GA4).",
+  "type": "module",
+  "engines": { "node": ">=18.0.0" },
+  "bin": { "prism-ads-connector": "src/server.mjs" },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "keywords": ["mcp", "model-context-protocol", "google-ads", "meta-ads", "claude", "connector"],
+  "license": "MIT"
+}
