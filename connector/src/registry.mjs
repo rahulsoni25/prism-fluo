@@ -20,8 +20,9 @@ import negatives from './skills/negatives.mjs';
 import reports from './skills/reports.mjs';
 import schedule from './skills/schedule.mjs';
 import raw from './skills/raw.mjs';
+import exportDeck from './skills/export.mjs';
 
-const MODULES = [accounts, audit, wastedSpend, pause, negatives, reports, schedule, raw];
+const MODULES = [accounts, audit, wastedSpend, pause, negatives, reports, schedule, raw, exportDeck];
 
 /** Flat array of skill definitions, with uniqueness enforced. */
 export const skills = (() => {

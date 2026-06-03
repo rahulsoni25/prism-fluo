@@ -61,6 +61,9 @@ function buildConfig() {
     // Default currency for human-readable thresholds in skill output.
     currency: env('CONNECTOR_CURRENCY') || 'USD',
     httpTimeoutMs: Number(env('CONNECTOR_HTTP_TIMEOUT_MS') || 30000),
+    // PRISM's deck renderer endpoint, e.g. https://prism-fluo.vercel.app/api/connector/render-deck
+    // Enables export_deck_pptx to turn build_report decks into real .pptx files.
+    renderUrl: env('PRISM_RENDER_URL'),
   };
 }
 

@@ -23,6 +23,7 @@ from the same connector.
 | 3 | `pause_underperformers` | *"pause all ad groups with CPA above $60 across all campaigns"* (dry-run by default) |
 | 4 | `add_negative_keywords` | One command adds negatives across **every** campaign in the account |
 | 5 | `build_report` | *"create an 8-slide audit deck with charts and recommendations"* → a structured deck spec |
+| 5b | `export_deck_pptx` | Renders a `build_report` deck into a real **.pptx** via PRISM's PptxGenJS pipeline (needs `PRISM_RENDER_URL`) |
 | 6 | `schedule_task` | *"every Monday check budget pacing and alert me if anything is off"* |
 | + | `list_ad_accounts` | Discover the account IDs the other skills need |
 | + | `google_ads_query` · `meta_ads_insights` · `ga4_run_report` | Raw power tools — ask Claude anything the curated skills don't cover |
@@ -79,6 +80,20 @@ you can connect Google first and add Meta later.
 > "Build me an 8-slide audit deck."
 
 ---
+
+## Exporting audits to .pptx
+
+`build_report` returns a structured deck spec. To turn it into a real
+PowerPoint file, the connector POSTs that spec to PRISM's renderer endpoint
+(`POST /api/connector/render-deck`), which uses the app's existing PptxGenJS
+pipeline and house styles. Set:
+
+```
+PRISM_RENDER_URL=https://prism-fluo.vercel.app/api/connector/render-deck
+```
+
+Then ask Claude to *"build an 8-slide audit deck and export it to PowerPoint"* —
+`export_deck_pptx` saves the .pptx and returns the path.
 
 ## Requirements
 

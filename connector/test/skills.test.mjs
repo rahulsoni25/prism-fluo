@@ -96,6 +96,12 @@ test('schedule_task persists and list/delete round-trips', async () => {
   assert.equal(del.removed, true);
 });
 
+test('export_deck_pptx is registered and errors clearly when PRISM_RENDER_URL is unset', async () => {
+  assert.ok(toolList().some((t) => t.name === 'export_deck_pptx'));
+  const deck = { title: 'T', slides: [{ layout: 'cover', title: 'T' }] };
+  await assert.rejects(() => callSkill('export_deck_pptx', { deck }, ctx), /PRISM_RENDER_URL/);
+});
+
 test('unknown skill rejects with UNKNOWN_TOOL', async () => {
   await assert.rejects(() => callSkill('nope', {}, ctx), (e) => e.code === 'UNKNOWN_TOOL');
 });
