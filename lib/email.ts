@@ -1,49 +1,123 @@
 /**
  * lib/email.ts
- * Transactional email via Nodemailer (SMTP — no third-party account needed).
+ * Transactional email — Resend-first with Gmail SMTP fallback.
  *
- * Required Vercel env vars:
- *   SMTP_USER  — Gmail address e.g. prism@fluodigital.com  (or any Gmail)
- *   SMTP_PASS  — Gmail App Password (16-char, spaces ignored)
- *                Get it: myaccount.google.com → Security → 2-Step → App Passwords
+ * Preferred (production): Resend
+ *   RESEND_API_KEY  - get from resend.com -> API Keys
+ *   RESEND_FROM     - optional, default "PRISM Intelligence <onboarding@resend.dev>"
+ *                     (use Resend's default sandbox domain until fluodigital.com
+ *                      is domain-verified in Resend)
  *
- * Optional overrides (defaults work for Gmail):
- *   SMTP_HOST  — default: smtp.gmail.com
- *   SMTP_PORT  — default: 465
- *   SMTP_FROM  — default: "PRISM Intelligence <SMTP_USER>"
- *   NOTIFY_EMAIL — who receives brief notifications (default: rahul@fluodigital.com)
+ * Fallback (dev / legacy): Gmail SMTP via nodemailer
+ *   SMTP_USER, SMTP_PASS   - Gmail address + App Password
+ *   SMTP_HOST, SMTP_PORT   - optional overrides
+ *   SMTP_FROM              - optional From header override
+ *
+ * Common:
+ *   NOTIFY_EMAIL  - who receives brief notifications (default: rahul@fluodigital.com)
+ *
+ * If neither Resend nor SMTP is configured, sendMail() logs the URL / body
+ * to Vercel console so developers can still test the flow.
  */
 
-// nodemailer is loaded lazily (dynamic import) to avoid bundler issues in
-// Next.js serverless/Edge environments where top-level Node.js-only modules
-// can fail at initialisation time.
-let _transporter: import('nodemailer').Transporter | null = null;
+import { Resend } from 'resend';
 
+// ── Resend client (preferred) ──────────────────────────────────────
+let _resend: Resend | null = null;
+function getResend(): Resend | null {
+  if (_resend) return _resend;
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  _resend = new Resend(key);
+  return _resend;
+}
+
+// ── Nodemailer / Gmail SMTP (fallback) ─────────────────────────────
+// Loaded lazily to avoid bundler issues in Next.js serverless.
+let _transporter: import('nodemailer').Transporter | null = null;
 async function getTransporter(): Promise<import('nodemailer').Transporter | null> {
   if (_transporter) return _transporter;
-
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-
-  if (!user || !pass) {
-    console.log('[Email] SMTP_USER / SMTP_PASS not set — emails disabled');
-    return null;
-  }
-
-  const nodemailer = (await import('nodemailer')).default;
+  if (!user || !pass) return null;
+  const nodemailer = await import('nodemailer');
   _transporter = nodemailer.createTransport({
     host:   process.env.SMTP_HOST ?? 'smtp.gmail.com',
     port:   Number(process.env.SMTP_PORT ?? 465),
-    secure: true,          // SSL on port 465
+    secure: true,
     auth:   { user, pass },
   });
-
   return _transporter;
 }
 
-const NOTIFY_TO   = process.env.NOTIFY_EMAIL ?? 'rahul@fluodigital.com';
-const FROM_LABEL  = (user: string) =>
+const NOTIFY_TO  = process.env.NOTIFY_EMAIL ?? 'rahul@fluodigital.com';
+const FROM_LABEL = (user: string) =>
   process.env.SMTP_FROM ?? `PRISM Intelligence <${user}>`;
+
+// Resend's default sandbox From address works out of the box. Once you
+// verify fluodigital.com in Resend, set RESEND_FROM to
+// "PRISM Intelligence <no-reply@fluodigital.com>".
+const RESEND_FROM = process.env.RESEND_FROM ?? 'PRISM Intelligence <onboarding@resend.dev>';
+
+/**
+ * Unified email send. Tries Resend first (production-grade), then Gmail SMTP
+ * (legacy fallback), then console-log (dev). Returns true iff a real delivery
+ * was attempted (regardless of ultimate delivery success — that's async).
+ *
+ * All 5 exported email functions below delegate to this. Adding a new email
+ * type is now one call, not one nodemailer transport dance per function.
+ */
+async function sendMail(opts: {
+  to:       string | string[];
+  subject:  string;
+  html:     string;
+  replyTo?: string;
+  label?:   string;   // for log lines, e.g. "verification", "brief-created"
+}): Promise<boolean> {
+  const label = opts.label ?? 'mail';
+
+  // 1. Resend (preferred)
+  const resend = getResend();
+  if (resend) {
+    try {
+      await resend.emails.send({
+        from:      RESEND_FROM,
+        to:        opts.to,
+        subject:   opts.subject,
+        html:      opts.html,
+        replyTo:   opts.replyTo,
+      });
+      console.log(`[Email] ${label} sent via Resend to`, opts.to);
+      return true;
+    } catch (err: any) {
+      console.error(`[Email] Resend ${label} failed:`, err?.message ?? err);
+      // fall through to SMTP so we don't fully lose the message
+    }
+  }
+
+  // 2. Gmail SMTP (legacy fallback)
+  const transport = await getTransporter();
+  if (transport) {
+    const user = process.env.SMTP_USER!;
+    try {
+      await transport.sendMail({
+        from:    FROM_LABEL(user),
+        to:      opts.to,
+        subject: opts.subject,
+        html:    opts.html,
+        replyTo: opts.replyTo,
+      });
+      console.log(`[Email] ${label} sent via SMTP to`, opts.to);
+      return true;
+    } catch (err: any) {
+      console.error(`[Email] SMTP ${label} failed:`, err?.message ?? err);
+    }
+  }
+
+  // 3. Nothing configured — log so devs can still complete the flow
+  console.log(`[Email] ${label} — no provider configured. To:`, opts.to, 'Subject:', opts.subject);
+  return false;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -71,10 +145,6 @@ export async function sendBriefCreatedEmail(
   },
   submittedBy: { name?: string; email: string },
 ): Promise<void> {
-  const transport = await getTransporter();
-  if (!transport) return;
-
-  const user    = process.env.SMTP_USER!;
   const now     = new Date();
   const dateStr = now.toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'long', year:'numeric' });
   const timeStr = now.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true }) + ' IST';
@@ -138,18 +208,13 @@ export async function sendBriefCreatedEmail(
 </div>
 </body></html>`;
 
-  try {
-    await transport.sendMail({
-      from:     FROM_LABEL(user),
-      to:       NOTIFY_TO,
-      replyTo:  submittedBy.email,
-      subject:  `📊 New Brief: ${brief.brand}${brief.category ? ' — ' + brief.category : ''}`,
-      html,
-    });
-    console.log('[Email] Brief-created sent to', NOTIFY_TO);
-  } catch (err) {
-    console.error('[Email] sendBriefCreatedEmail failed:', (err as Error).message);
-  }
+  await sendMail({
+    to:      NOTIFY_TO,
+    replyTo: submittedBy.email,
+    subject: `📊 New Brief: ${brief.brand}${brief.category ? ' — ' + brief.category : ''}`,
+    html,
+    label:   'brief-created',
+  });
 }
 
 // ── Email Verification ───────────────────────────────────────────────────────
@@ -158,14 +223,6 @@ export async function sendVerificationEmail(
   user: { name: string; email: string },
   verifyUrl: string,
 ): Promise<void> {
-  const transport = await getTransporter();
-  if (!transport) {
-    // No SMTP configured — log the link so devs can test locally
-    console.log(`[Email] Verification link for ${user.email}: ${verifyUrl}`);
-    return;
-  }
-
-  const smtpUser = process.env.SMTP_USER!;
   const firstName = user.name.split(' ')[0];
 
   const html = `<!DOCTYPE html>
@@ -209,17 +266,15 @@ export async function sendVerificationEmail(
 </div>
 </body></html>`;
 
-  try {
-    await transport.sendMail({
-      from:    FROM_LABEL(smtpUser),
-      to:      user.email,
-      subject: `Verify your PRISM account`,
-      html,
-    });
-    console.log('[Email] Verification email sent to', user.email);
-  } catch (err) {
-    console.error('[Email] sendVerificationEmail failed:', (err as Error).message);
-    // Still log the URL so devs can test even if SMTP is misconfigured
+  const ok = await sendMail({
+    to:      user.email,
+    subject: `Verify your PRISM account`,
+    html,
+    label:   'verification',
+  });
+  if (!ok) {
+    // Belt-and-suspenders: still log the URL so the admin can hand it to
+    // the signup victim over WhatsApp if all providers are down.
     console.log(`[Email] Verify URL: ${verifyUrl}`);
   }
 }
@@ -230,13 +285,6 @@ export async function sendPasswordResetEmail(
   user: { name: string; email: string },
   resetUrl: string,
 ): Promise<void> {
-  const transport = await getTransporter();
-  if (!transport) {
-    console.log(`[Email] Password reset link for ${user.email}: ${resetUrl}`);
-    return;
-  }
-
-  const smtpUser  = process.env.SMTP_USER!;
   const firstName = (user.name || user.email).split(' ')[0];
 
   const html = `<!DOCTYPE html>
@@ -271,18 +319,13 @@ export async function sendPasswordResetEmail(
 </div>
 </body></html>`;
 
-  try {
-    await transport.sendMail({
-      from:    FROM_LABEL(smtpUser),
-      to:      user.email,
-      subject: `Reset your PRISM password`,
-      html,
-    });
-    console.log('[Email] Password-reset sent to', user.email);
-  } catch (err) {
-    console.error('[Email] sendPasswordResetEmail failed:', (err as Error).message);
-    console.log(`[Email] Reset URL: ${resetUrl}`);
-  }
+  const ok = await sendMail({
+    to:      user.email,
+    subject: `Reset your PRISM password`,
+    html,
+    label:   'password-reset',
+  });
+  if (!ok) console.log(`[Email] Reset URL: ${resetUrl}`);
 }
 
 // ── AI Fallback Burst Alert (admin-only) ─────────────────────────────────────
@@ -293,12 +336,6 @@ export async function sendPasswordResetEmail(
  * so an outage doesn't flood the inbox.
  */
 export async function sendBurstAlertEmail(subject: string, body: string): Promise<void> {
-  const transport = await getTransporter();
-  if (!transport) {
-    console.warn('[Email] burst alert NOT sent (no SMTP) —', subject);
-    return;
-  }
-  const user = process.env.SMTP_USER!;
   const html = `<!DOCTYPE html>
 <html><body style="font-family:Inter,Arial,sans-serif;background:#FEF2F2;padding:24px">
 <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:2px solid #DC2626">
@@ -311,17 +348,12 @@ export async function sendBurstAlertEmail(subject: string, body: string): Promis
     </p>
   </div>
 </div></body></html>`;
-  try {
-    await transport.sendMail({
-      from:    FROM_LABEL(user),
-      to:      NOTIFY_TO,
-      subject: `🚨 ${subject}`,
-      html,
-    });
-    console.log('[Email] burst alert sent to', NOTIFY_TO);
-  } catch (e) {
-    console.error('[Email] burst alert failed:', (e as Error).message);
-  }
+  await sendMail({
+    to:      NOTIFY_TO,
+    subject: `🚨 ${subject}`,
+    html,
+    label:   'burst-alert',
+  });
 }
 
 // ── Brief Active (data uploaded) ─────────────────────────────────────────────
@@ -331,10 +363,6 @@ export async function sendBriefActiveEmail(
   submittedBy: { name?: string; email: string },
   slaHours: number,
 ): Promise<void> {
-  const transport = await getTransporter();
-  if (!transport) return;
-
-  const user     = process.env.SMTP_USER!;
   const slaDue   = new Date(Date.now() + slaHours * 3600_000);
   const slaDueStr = slaDue.toLocaleString('en-IN', {
     weekday:'short', day:'numeric', month:'short',
@@ -365,16 +393,11 @@ export async function sendBriefActiveEmail(
 </div>
 </body></html>`;
 
-  try {
-    await transport.sendMail({
-      from:    FROM_LABEL(user),
-      to:      NOTIFY_TO,
-      replyTo: submittedBy.email,
-      subject: `✅ Brief Active: ${brief.brand} — insights ready in ${slaHours}h`,
-      html,
-    });
-    console.log('[Email] Brief-active sent to', NOTIFY_TO);
-  } catch (err) {
-    console.error('[Email] sendBriefActiveEmail failed:', (err as Error).message);
-  }
+  await sendMail({
+    to:      NOTIFY_TO,
+    replyTo: submittedBy.email,
+    subject: `✅ Brief Active: ${brief.brand} — insights ready in ${slaHours}h`,
+    html,
+    label:   'brief-active',
+  });
 }
