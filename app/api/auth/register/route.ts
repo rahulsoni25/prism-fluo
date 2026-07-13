@@ -1,7 +1,19 @@
 /**
  * POST /api/auth/register
- * Creates a pending verification token and sends a confirmation email.
- * The user account is only created after they click the link.
+ *
+ * INSTANT SIGNUP MODE (default): creates the user immediately, signs them in
+ * with a session cookie, and fires the verification email as fire-and-forget.
+ * User lands on /dashboard signed-in even if the email pipeline is down.
+ *
+ * Rationale (2026-05-31): email deliverability was blocking new signups
+ * entirely — Gmail SMTP unreliable, Resend sandbox restricted. Rather than
+ * make signup dependent on a moving-target email service, we auto-create
+ * the account. Email verification can be re-required later by setting env
+ * REQUIRE_EMAIL_VERIFICATION=true.
+ *
+ * Fallback behaviour (REQUIRE_EMAIL_VERIFICATION=true): the original flow —
+ * creates a pending verification_tokens row + sends confirmation email,
+ * user must click link to activate.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,6 +22,7 @@ import { sendVerificationEmail } from '@/lib/email';
 import { hashPassword } from '@/lib/auth/password';
 import { isAllowedEmail, WORK_EMAIL_ERROR } from '@/lib/auth/email-policy';
 import { checkRateLimit, clientIp, rateLimitResponse } from '@/lib/auth/rate-limit';
+import { signSession, SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS } from '@/lib/auth/session';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -70,23 +83,62 @@ export async function POST(req: NextRequest) {
     // Hash the password BEFORE persisting — the plaintext never touches the DB
     const passwordHash = await hashPassword(password);
 
-    // Generate a 32-byte hex token (64 chars) — unguessable
-    const token     = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 h
+    const requireEmailVerification = process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
 
-    await db.query(
-      'INSERT INTO verification_tokens (token, email, name, password_hash, expires_at) VALUES ($1, $2, $3, $4, $5)',
-      [token, normalEmail, fullName, passwordHash, expiresAt],
+    // Build the verify URL either way (fire-and-forget email + fallback log)
+    const host      = req.headers.get('host') ?? 'prism-fluo.vercel.app';
+    const proto     = host.startsWith('localhost') ? 'http' : 'https';
+
+    if (requireEmailVerification) {
+      // ── LEGACY FLOW: email-verified activation ──────────────────
+      const token     = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+      await db.query(
+        'INSERT INTO verification_tokens (token, email, name, password_hash, expires_at) VALUES ($1, $2, $3, $4, $5)',
+        [token, normalEmail, fullName, passwordHash, expiresAt],
+      );
+      const verifyUrl = `${proto}://${host}/api/auth/verify?token=${token}`;
+      await sendVerificationEmail({ name: fullName, email: normalEmail }, verifyUrl);
+      return NextResponse.json({ success: true, mode: 'verify-first' });
+    }
+
+    // ── INSTANT SIGNUP FLOW (default): create the user + sign them in ──
+    const insertRes = await db.query(
+      `INSERT INTO users (email, name, password_hash, provider, created_at, last_login)
+       VALUES ($1, $2, $3, 'email', NOW(), NOW())
+       RETURNING id, email, name, image`,
+      [normalEmail, fullName, passwordHash],
     );
+    const user = insertRes.rows[0];
 
-    // Build verify URL relative to the incoming request host
-    const host     = req.headers.get('host') ?? 'prism-fluo.vercel.app';
-    const proto    = host.startsWith('localhost') ? 'http' : 'https';
-    const verifyUrl = `${proto}://${host}/api/auth/verify?token=${token}`;
+    // Sign a session cookie so the user lands on /dashboard already logged in.
+    // Provider is 'demo' — matches the login route's password-based path and
+    // fits the current SessionPayload union ('demo' | 'google' | 'linkedin').
+    // When we add a proper 'email' provider to the union, this can move too.
+    const sessionToken = await signSession({
+      userId:   user.id,
+      email:    user.email,
+      name:     user.name,
+      image:    user.image,
+      provider: 'demo',
+    });
 
-    await sendVerificationEmail({ name: fullName, email: normalEmail }, verifyUrl);
+    // Fire the welcome / verification email as fire-and-forget. If it fails,
+    // the signup still succeeds — the user is already logged in.
+    const verifyUrl = `${proto}://${host}/api/auth/verify?instant=1`;
+    sendVerificationEmail({ name: fullName, email: normalEmail }, verifyUrl)
+      .catch(err => console.warn('[register] welcome email fire-and-forget failed:', err?.message));
 
-    return NextResponse.json({ success: true });
+    const res = NextResponse.json({
+      success:      true,
+      mode:         'instant',
+      id:           user.id,
+      email:        user.email,
+      name:         user.name,
+      redirectTo:   '/dashboard',
+    });
+    res.cookies.set(SESSION_COOKIE_NAME, sessionToken, SESSION_COOKIE_OPTIONS);
+    return res;
   } catch (err) {
     console.error('[register] error:', err);
     return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 });

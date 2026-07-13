@@ -33,6 +33,12 @@ export default function Signup() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      // Instant-signup mode: server set a session cookie, land on /dashboard.
+      // Legacy verify-first mode: show the "check your inbox" screen.
+      if (body.mode === 'instant' || body.redirectTo) {
+        router.replace(body.redirectTo || '/dashboard');
+        return;
+      }
       setSent(true);
     } catch (err) {
       setError(err.message);
