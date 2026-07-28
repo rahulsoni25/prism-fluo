@@ -1,4 +1,5 @@
 import "./globals.css";
+import DbStatusBanner from "@/components/DbStatusBanner";
 
 /**
  * Root metadata — drives both the <title>/description fallback for every
@@ -46,7 +47,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <DbStatusBanner />
+        {children}
+      </body>
     </html>
   );
 }

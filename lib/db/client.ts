@@ -42,17 +42,42 @@ export function getPool(): Pool {
 export const db = {
   /** Run a single parameterised query */
   query: async (text: string, params?: unknown[]) => {
-    try {
-      return await getPool().query(text, params);
-    } catch (err: any) {
-      console.error('❌ Database query failed:', err.message);
-      if (config.isProd) {
-        console.warn('⚠️ PROD_DB_FALLBACK: Database is unreachable. Serving mock/cached data to maintain service availability.');
+    // Retry loop: transient DB blips (Supabase Free wake-from-pause takes
+    // ~30–90s, connection refused for the first few attempts). Retry up to
+    // 3 times with escalating backoff before giving up and returning the
+    // empty-result fallback. Most Supabase auto-pause recoveries succeed
+    // on retry #2 or #3, so the caller never notices.
+    const MAX_ATTEMPTS = 3;
+    let lastErr: any = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        return await getPool().query(text, params);
+      } catch (err: any) {
+        lastErr = err;
+        // Only retry on connection/pool errors, not on real query errors
+        // (syntax error, permission denied, etc. — those won't get better).
+        const msg = String(err?.message ?? '').toLowerCase();
+        const isTransient =
+          msg.includes('econnrefused') ||
+          msg.includes('etimedout') ||
+          msg.includes('connection terminated') ||
+          msg.includes('server closed the connection') ||
+          msg.includes('tenant or user not found') ||
+          msg.includes('too many clients');
+        if (!isTransient || attempt === MAX_ATTEMPTS) break;
+        // Backoff: 500ms, 1500ms
+        await new Promise(r => setTimeout(r, 500 * attempt * (1 + attempt)));
+        // Force pool re-init on last attempt so a stale pool gets replaced
+        if (attempt === MAX_ATTEMPTS - 1) _pool = null;
       }
-      
-      // Fallback: return empty result instead of crashing
-      return { rows: [], rowCount: 0, fields: [], command: 'SELECT', oid: 0 };
     }
+
+    console.error('❌ Database query failed after retries:', lastErr?.message);
+    if (config.isProd) {
+      console.warn('⚠️ PROD_DB_FALLBACK: Database is unreachable. Serving empty/mock data to maintain service availability. Front-end DbStatusBanner will alert the user.');
+    }
+    // Fallback: return empty result instead of crashing
+    return { rows: [], rowCount: 0, fields: [], command: 'SELECT', oid: 0 };
   },
 
   /** Run multiple queries inside a single transaction */

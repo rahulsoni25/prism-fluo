@@ -60,5 +60,11 @@
       "destination": "/dashboard",
       "permanent": false
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/keepalive",
+      "schedule": "0 * * * *"
+    }
   ]
 }
