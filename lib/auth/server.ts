@@ -96,15 +96,18 @@ export async function upsertUser(input: {
       console.log('✅ upsertUser recovered via PostgREST, userId:', restUser.id);
       return restUser;
     }
-    // Both pg and REST failed — generate a stable UUID so the session is at least valid
-    const emailHash = Buffer.from(input.email.toLowerCase()).toString('hex').padEnd(32, '0').slice(0, 32);
-    const fallbackUUID = `${emailHash.slice(0,8)}-${emailHash.slice(8,12)}-4${emailHash.slice(13,16)}-a${emailHash.slice(17,20)}-${emailHash.slice(20,32)}`;
-    return {
-      id:    fallbackUUID,
-      email: input.email.toLowerCase().trim(),
-      name:  input.name ?? input.email.split('@')[0],
-      image: input.image ?? null,
-    };
+    // ── DELIBERATELY FAIL LOUDLY ──
+    // Previously we synthesized a fake UUID from the email hash so the session
+    // "looked valid". That was worse than useless: the fake UUID never matches
+    // rows in briefs/analyses/etc., so the user gets logged in but sees zero
+    // real data — indistinguishable from data loss. It caused a real panic
+    // on 2026-05-31. Now we throw so the caller returns "please try again
+    // shortly" and the user does NOT get a corrupted session cookie.
+    throw new Error(
+      'DB_UNREACHABLE: Both direct Postgres and PostgREST fallback failed. ' +
+      'Cannot create or resolve user right now — refusing to sign a session ' +
+      'with a synthetic userId that would silently break every subsequent query.'
+    );
   }
 }
 

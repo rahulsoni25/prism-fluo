@@ -99,21 +99,34 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const user = await upsertUser({
-    email,
-    name:     name || email.split('@')[0],
-    provider: 'demo',
-  });
+  try {
+    const user = await upsertUser({
+      email,
+      name:     name || email.split('@')[0],
+      provider: 'demo',
+    });
 
-  const token = await signSession({
-    userId:   user.id,
-    email:    user.email,
-    name:     user.name,
-    image:    user.image,
-    provider: 'demo',
-  });
+    const token = await signSession({
+      userId:   user.id,
+      email:    user.email,
+      name:     user.name,
+      image:    user.image,
+      provider: 'demo',
+    });
 
-  const res = NextResponse.json({ id: user.id, email: user.email, name: user.name });
-  res.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS);
-  return res;
+    const res = NextResponse.json({ id: user.id, email: user.email, name: user.name });
+    res.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS);
+    return res;
+  } catch (err: any) {
+    // upsertUser now throws DB_UNREACHABLE rather than synthesizing a fake user.
+    // Surface an honest 503 instead of a corrupted session cookie.
+    const isDbDown = String(err?.message ?? '').includes('DB_UNREACHABLE');
+    console.error('[login] upsertUser failed:', err?.message);
+    return NextResponse.json(
+      { error: isDbDown
+          ? 'Our database is temporarily unavailable. Please try signing in again in a minute.'
+          : 'Sign-in failed. Please try again shortly.' },
+      { status: isDbDown ? 503 : 500 },
+    );
+  }
 }
