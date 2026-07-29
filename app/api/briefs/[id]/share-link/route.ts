@@ -41,6 +41,12 @@ async function ensureSchema(): Promise<void> {
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS share_links_brief_idx
                     ON share_links (brief_id, created_at DESC)`);
+    // Security posture: share_links.token is a bearer secret — anyone
+    // holding it can view the associated brief without auth. Must NOT
+    // be exposed via PostgREST anon/authenticated access. pg.Pool
+    // (postgres role) bypasses these grants, so the app is unaffected.
+    await db.query(`ALTER TABLE share_links ENABLE ROW LEVEL SECURITY`);
+    await db.query(`REVOKE ALL ON share_links FROM anon, authenticated`);
   } catch (err: any) {
     logger.warn('share-link:schema_init_failed', { error: err.message });
   }

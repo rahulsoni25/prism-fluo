@@ -53,6 +53,11 @@ async function ensureSchema(): Promise<void> {
                     ON audit_events (kind, occurred_at DESC)`);
     await db.query(`CREATE INDEX IF NOT EXISTS audit_events_target_idx
                     ON audit_events (target_type, target_id)`);
+    // Security posture: audit_events contains user_email + IP + user_agent
+    // so it must NOT be exposed via PostgREST anon/authenticated access.
+    // pg.Pool (postgres role) bypasses these grants, so the app is unaffected.
+    await db.query(`ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY`);
+    await db.query(`REVOKE ALL ON audit_events FROM anon, authenticated`);
   } catch (err: any) {
     logger.warn('audit:schema_init_failed', { error: err.message });
   }
