@@ -1,0 +1,14 @@
+{
+  "name": "apple-vs-samsung-usp-deck",
+  "private": true,
+  "description": "Generator for the Apple vs Samsung USP presentation",
+  "scripts": {
+    "art": "node art.js",
+    "deck": "node build.js",
+    "build": "node art.js && node build.js"
+  },
+  "dependencies": {
+    "pptxgenjs": "^3.12.0",
+    "sharp": "^0.33.0"
+  }
+}
