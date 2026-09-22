@@ -90,3 +90,11 @@ Example of the right pattern:
 >  silently retries via CloudConvert's domain (which isn't blocked).
 >  Tested + deployed. Try the upload again."
 <!-- END:proactive-solve-rule -->
+# Learning-book rule
+
+`PRISM_LEARNING.md` is the single source of truth for the analysis notes.
+`docs/book/PRISM_LEARNING_BOOK.html` (+ `docs/book/figures/*.svg`) is a
+**generated** illustrated edition of it — never hand-edit the book. After
+changing the notes, run `npm run book:build` and commit the regenerated
+files in the same commit. The build fails if any line of the notes is
+missing from the book or if a figure anchor no longer matches a heading.
