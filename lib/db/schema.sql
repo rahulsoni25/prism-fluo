@@ -304,3 +304,30 @@ INSERT INTO pages (id, name, slug, description, icon, status, show_in_nav, prote
   ('presentations', 'Presentations', '/presentations', 'AI-generated slide decks',          '🎨', 'published', true,  false, 7),
   ('brief-new',     'New Brief',     '/brief/new',     'Create a new campaign brief',       '📋', 'published', false, false, 8)
 ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- SUPABASE DATA API GRANTS (required from 2026-10-30)
+-- Supabase no longer auto-grants Data API (PostgREST) access to NEW
+-- tables in `public`. The app reaches users + briefs over PostgREST
+-- with the service-role key when pg.Pool is unreachable
+-- (lib/auth/server.ts, app/api/briefs/route.js), so a freshly built
+-- database (new project, branch, db reset) needs these explicitly.
+-- Every other table is only read over pg.Pool, which is unaffected.
+--
+-- anon / authenticated are deliberately NOT granted anything — see
+-- scripts/revoke-anon-grants.sql.
+--
+-- Guarded: plain Postgres (CI, docker-compose, Railway) has no
+-- service_role, and a failed grant must never block startup.
+-- Any new `/rest/v1/<table>` call needs its table added here —
+-- tests/db/data-api-grants.test.ts enforces that.
+-- ============================================================
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON public.users  TO service_role;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON public.briefs TO service_role;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'Skipped Supabase service_role grants: %', SQLERRM;
+END $$;

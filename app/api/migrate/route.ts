@@ -158,6 +158,18 @@ const STATEMENTS = [
     ('presentations','Presentations','/presentations','AI-generated slide decks','🎨','published',true,false,7),
     ('brief-new','New Brief','/brief/new','Create a new campaign brief','📋','published',false,false,8)
    ON CONFLICT (id) DO NOTHING`,
+
+  // Supabase Data API grants (required from 2026-10-30) — see the matching
+  // block at the end of lib/db/schema.sql for why only these two tables.
+  `DO $$
+   BEGIN
+     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+       GRANT SELECT, INSERT, UPDATE, DELETE ON public.users  TO service_role;
+       GRANT SELECT, INSERT, UPDATE, DELETE ON public.briefs TO service_role;
+     END IF;
+   EXCEPTION WHEN OTHERS THEN
+     RAISE WARNING 'Skipped Supabase service_role grants: %', SQLERRM;
+   END $$`,
 ];
 
 export async function GET(req: NextRequest) {
